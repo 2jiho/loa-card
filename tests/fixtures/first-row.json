@@ -1,0 +1,17 @@
+{
+  "description": "영상 1의 성장 탭 첫 행을 육안으로 확인한 정답. 원본 영상은 로컬 전용.",
+  "expectedOwnedTypes": 384,
+  "capacity": 450,
+  "cards": [
+    {"name":"가디언 루","awakening":0,"extraCopies":15},
+    {"name":"가룸","awakening":4,"extraCopies":5},
+    {"name":"가비슈","awakening":5,"extraCopies":0},
+    {"name":"각성한 진저웨일","awakening":0,"extraCopies":0},
+    {"name":"갈기파도 항구 네리아","awakening":0,"extraCopies":15},
+    {"name":"객주도사","awakening":5,"extraCopies":0},
+    {"name":"거신 카스피엘","awakening":5,"extraCopies":0},
+    {"name":"검은 산의 포식자","awakening":0,"extraCopies":0},
+    {"name":"검은이빨","awakening":2,"extraCopies":12},
+    {"name":"게르디아","awakening":0,"extraCopies":15}
+  ]
+}

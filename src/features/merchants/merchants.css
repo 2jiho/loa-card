@@ -1,0 +1,38 @@
+.merchant-panel { padding:24px; }
+.merchant-heading { display:flex; align-items:center; justify-content:space-between; gap:15px; }
+.merchant-heading h2 { font-size:19px; }
+.merchant-heading p,.merchant-guidance,.merchant-footnote { font-size:12px; color:var(--muted); margin:8px 0; }
+.merchant-tabs { margin-top:18px; }
+.merchant-guidance { margin:16px 0; }
+.merchant-guidance a { color:var(--accent); }
+.merchant-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:start; }
+.merchant-column { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.merchant-item { overflow:hidden; background:var(--surface-alt) !important; }
+.merchant-toggle.MuiAccordionSummary-root { padding:0 16px; min-height:72px; }
+.merchant-toggle .MuiAccordionSummary-content { align-items:center; gap:12px; margin:14px 0; }
+.merchant-name strong { font-size:13px; font-weight:600; }
+.merchant-item small { display:block; font-size:11px; color:var(--muted); margin-top:5px; }
+.merchant-result { margin-left:auto; text-align:right; padding-right:12px; color:var(--accent); font-size:12px; }
+.merchant-item.complete .merchant-result { color:var(--success); }
+.merchant-item ul { list-style:none; margin:0; padding:0; border-top:1px solid var(--line); }
+.merchant-item li { display:flex; justify-content:space-between; gap:12px; padding-top:10px; font-size:12px; }
+.merchant-item li>span:last-child { text-align:right; }
+.merchant-empty { font-size:13px; color:var(--muted); padding:10px 0; }
+.merchant-copy-status { font-size:12px; color:var(--success); margin:10px 0 0; }
+.merchant-copy-status:empty { display:none; }
+.merchant-footnote { font-size:11px; margin:20px 0 0; }
+.merchant-schedule { margin-top:20px; padding:14px 16px; background:var(--surface-alt); border:1px solid var(--line); border-radius:8px; }
+.merchant-schedule-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:12px; }
+.merchant-schedule-heading strong { display:flex; align-items:center; gap:7px; font-weight:600; }
+.merchant-schedule-heading small { color:var(--muted); font-weight:400; }
+.merchant-schedule-heading>span { color:var(--accent); font-variant-numeric:tabular-nums; }
+.merchant-sessions { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:12px 0; }
+.merchant-sessions>div { padding:8px; border:1px solid var(--line); border-radius:5px; }
+.merchant-sessions strong { display:block; font-size:12px; font-weight:500; font-variant-numeric:tabular-nums; }
+.merchant-sessions small { display:block; color:var(--muted); font-size:11px; margin-top:4px; }
+.merchant-sessions .is-active { border-color:var(--accent); background:var(--accent-soft); }
+.merchant-schedule p,.merchant-region-hours { margin:6px 0 0; color:var(--muted); font-size:11px; line-height:1.6; }
+.merchant-region-hours { margin:0 0 10px; }
+.merchant-item .merchant-region-time.is-active { color:var(--success); }
+@media(max-width:700px) { .merchant-sessions { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:640px) { .merchant-panel { padding:16px; } .merchant-heading { align-items:flex-start; flex-direction:column; } .merchant-grid { grid-template-columns:1fr; } }

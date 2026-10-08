@@ -1,0 +1,28 @@
+Scanner runtime:
+OpenCV.js: Apache-2.0, https://github.com/opencv/opencv
+Runtime distributed by @techstark/opencv-js. The audited npm runtime is copied to ocr/opencv.js at build time and is not stored as a duplicate in Git.
+
+Card catalog: local client SeasonCard and GameMsg tables, verified 2026-10-08.
+Client DB SHA-256 hashes are in cards.json. Existing application IDs are preserved;
+clientId records the verified SeasonCard key.
+388 RGB/portrait references and display WebP thumbnails are generated only from
+local client atlas crops. See artwork-provenance.json and scripts/client-artwork-map.json
+for source hashes, crop bounds and label provenance. Historical Inven/Codex images
+were used to establish visual label correspondence, not an authoritative DB-to-UV map.
+No external website artwork pixels or fallback references are shipped.
+32 unverified crops are omitted; 28 have separate user-captured screen references,
+and 4 retain name OCR only. Artwork availability is not evidence of ownership.
+
+Lost Ark game artwork and UI are owned by Smilegate RPG. This project is unofficial.
+Raw user recordings and frames are excluded from version control and production builds.
+Text recognition uses locally served Tesseract.js 6.0.1 (Apache-2.0), Tesseract.js-core (Apache-2.0), tessdata_best/kor 4.1.0, and tessdata_fast/eng 4.1.0 (Apache-2.0). Their generated assets and license notices are prepared in public/ocr at build time. No external recognition API is used.
+Non-growing metadata is verified against the exact local SeasonCard primary key (SecondaryKey=0).
+
+OCR recognition: PaddlePaddle Korean PP-OCRv5 and PP-OCRv6 tiny ONNX (Apache-2.0), ONNX Runtime Web (MIT). Tesseract remains a selective OCR cross-check. License files are included here; pinned model sources and hashes are recorded in ocr/NOTICE-Paddle*.txt.
+
+Growth tab selection anchor: cropped game UI from a local screenshot (256x48), used only to verify the active Growth tab. Smilegate RPG UI asset, same provenance as the inventory header anchor. No full user screenshots are included.
+
+stars.json retains only the gray and gold jewel exemplars used at runtime. Unused back-of-card and extra jewel references have been removed. Their removal does not change the provenance or rights of the remaining artwork-derived references.
+artwork-details.json: 388 client-atlas portrait descriptors; name, extra-copy counter and awakening jewels are excluded. Prepared by scripts/build-client-card-art.py. artwork/*.webp contains 160x234 client-art display thumbnails.
+
+screen-artwork-details.json: supplemental 20x10 grayscale portrait descriptors from the user-provided screenshots-1 calibration set (2026-10-05). Card IDs were checked against the existing named inventory and independent name/portrait recognizer. Name, extra-copy count, awakening jewels and surrounding desktop pixels are excluded. Full screenshots are not distributed. Same Smilegate RPG artwork ownership as above. scripts/prepare-screen-portraits.mjs validates and builds the compact artifact; screenshots-2 and videos are held out from its generation.

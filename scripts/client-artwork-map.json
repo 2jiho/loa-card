@@ -1,0 +1,4663 @@
+{
+  "version": 1,
+  "pixelSource": "local-client-atlas",
+  "labelMethod": "Historical Inven/Codex reference images were used to select visually equivalent local crops (correlation >= 0.99, margin >= 0.05, mean RGB error <= 5). Names and rarity are verified against SeasonCard/GameMsg. This is not an authoritative DB-to-UV mapping. External reference pixels are not distributed.",
+  "cards": [
+    {
+      "id": "3200000",
+      "name": "아만",
+      "sourceAtlas": "card_legend_0.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "49c29114bda93f525e6fba55ae503b80acb728d8ac773b07d4958f075197c72e"
+    },
+    {
+      "id": "3200001",
+      "name": "실리안",
+      "sourceAtlas": "card_legend_0.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "49c29114bda93f525e6fba55ae503b80acb728d8ac773b07d4958f075197c72e"
+    },
+    {
+      "id": "3200002",
+      "name": "발탄",
+      "sourceAtlas": "card_legend_1.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "665d0d376fbd8f40c27ca1bb44dd9c1aea91881fb2fc5e38ebbf077e63590044"
+    },
+    {
+      "id": "3200003",
+      "name": "국왕 실리안",
+      "sourceAtlas": "card_legend_1.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "665d0d376fbd8f40c27ca1bb44dd9c1aea91881fb2fc5e38ebbf077e63590044"
+    },
+    {
+      "id": "3200006",
+      "name": "데런 아만",
+      "sourceAtlas": "card_legend_1.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "665d0d376fbd8f40c27ca1bb44dd9c1aea91881fb2fc5e38ebbf077e63590044"
+    },
+    {
+      "id": "3200007",
+      "name": "쿠크세이튼",
+      "sourceAtlas": "card_legend_1.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "665d0d376fbd8f40c27ca1bb44dd9c1aea91881fb2fc5e38ebbf077e63590044"
+    },
+    {
+      "id": "3200009",
+      "name": "비아키스",
+      "sourceAtlas": "card_legend_1.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "665d0d376fbd8f40c27ca1bb44dd9c1aea91881fb2fc5e38ebbf077e63590044"
+    },
+    {
+      "id": "3200010",
+      "name": "일리아칸",
+      "sourceAtlas": "card_legend_2.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "59dac5ba0b665b7b99fd61564ab66482e1d5a11c49296e7b7c938349488a91dc"
+    },
+    {
+      "id": "3200011",
+      "name": "카마인",
+      "sourceAtlas": "card_legend_2.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "59dac5ba0b665b7b99fd61564ab66482e1d5a11c49296e7b7c938349488a91dc"
+    },
+    {
+      "id": "3200004",
+      "name": "샨디",
+      "sourceAtlas": "card_legend_1.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "665d0d376fbd8f40c27ca1bb44dd9c1aea91881fb2fc5e38ebbf077e63590044"
+    },
+    {
+      "id": "3200008",
+      "name": "웨이",
+      "sourceAtlas": "card_legend_1.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "665d0d376fbd8f40c27ca1bb44dd9c1aea91881fb2fc5e38ebbf077e63590044"
+    },
+    {
+      "id": "3200013",
+      "name": "아브렐슈드",
+      "sourceAtlas": "card_legend_2.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "59dac5ba0b665b7b99fd61564ab66482e1d5a11c49296e7b7c938349488a91dc"
+    },
+    {
+      "id": "3200014",
+      "name": "베아트리스",
+      "sourceAtlas": "card_legend_2.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "59dac5ba0b665b7b99fd61564ab66482e1d5a11c49296e7b7c938349488a91dc"
+    },
+    {
+      "id": "3200015",
+      "name": "아제나&이난나",
+      "sourceAtlas": "card_legend_2.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "59dac5ba0b665b7b99fd61564ab66482e1d5a11c49296e7b7c938349488a91dc"
+    },
+    {
+      "id": "3200016",
+      "name": "바훈투르",
+      "sourceAtlas": "card_legend_2.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "59dac5ba0b665b7b99fd61564ab66482e1d5a11c49296e7b7c938349488a91dc"
+    },
+    {
+      "id": "3200017",
+      "name": "가디언 루",
+      "sourceAtlas": "card_legend_2.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "59dac5ba0b665b7b99fd61564ab66482e1d5a11c49296e7b7c938349488a91dc"
+    },
+    {
+      "id": "3200018",
+      "name": "에스더 루테란",
+      "sourceAtlas": "card_legend_3.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8c52a023e00b2bb468aa8a7801a64975dffe79c749d2fef0499ee6cf828cfdaa"
+    },
+    {
+      "id": "3200019",
+      "name": "에스더 시엔",
+      "sourceAtlas": "card_legend_3.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8c52a023e00b2bb468aa8a7801a64975dffe79c749d2fef0499ee6cf828cfdaa"
+    },
+    {
+      "id": "3200020",
+      "name": "에스더 갈라투르",
+      "sourceAtlas": "card_legend_3.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8c52a023e00b2bb468aa8a7801a64975dffe79c749d2fef0499ee6cf828cfdaa"
+    },
+    {
+      "id": "3200021",
+      "name": "니나브",
+      "sourceAtlas": "card_legend_3.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8c52a023e00b2bb468aa8a7801a64975dffe79c749d2fef0499ee6cf828cfdaa"
+    },
+    {
+      "id": "3200022",
+      "name": "카단",
+      "sourceAtlas": "card_legend_3.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "8c52a023e00b2bb468aa8a7801a64975dffe79c749d2fef0499ee6cf828cfdaa"
+    },
+    {
+      "id": "3200023",
+      "name": "타나토스",
+      "sourceAtlas": "card_epic_0.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "b78dc04a4fa6481a10ff7980615f63a916665bf917da748629b9db198042618c"
+    },
+    {
+      "id": "3200024",
+      "name": "천둥날개",
+      "sourceAtlas": "card_epic_0.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "b78dc04a4fa6481a10ff7980615f63a916665bf917da748629b9db198042618c"
+    },
+    {
+      "id": "3200026",
+      "name": "알레그로",
+      "sourceAtlas": "card_epic_0.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "b78dc04a4fa6481a10ff7980615f63a916665bf917da748629b9db198042618c"
+    },
+    {
+      "id": "3200027",
+      "name": "마법사 로나운",
+      "sourceAtlas": "card_epic_0.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "b78dc04a4fa6481a10ff7980615f63a916665bf917da748629b9db198042618c"
+    },
+    {
+      "id": "3200028",
+      "name": "자간",
+      "sourceAtlas": "card_epic_0.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "b78dc04a4fa6481a10ff7980615f63a916665bf917da748629b9db198042618c"
+    },
+    {
+      "id": "3200029",
+      "name": "검은이빨",
+      "sourceAtlas": "card_epic_0.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "b78dc04a4fa6481a10ff7980615f63a916665bf917da748629b9db198042618c"
+    },
+    {
+      "id": "3200030",
+      "name": "모카모카",
+      "sourceAtlas": "card_epic_0.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "b78dc04a4fa6481a10ff7980615f63a916665bf917da748629b9db198042618c"
+    },
+    {
+      "id": "3200031",
+      "name": "하백",
+      "sourceAtlas": "card_epic_1.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "b186f69d1bfe6e1fec2811dedf0a60ad5d959f6cdeb90d421399445b2b4edfc1"
+    },
+    {
+      "id": "3200032",
+      "name": "반다",
+      "sourceAtlas": "card_epic_1.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "b186f69d1bfe6e1fec2811dedf0a60ad5d959f6cdeb90d421399445b2b4edfc1"
+    },
+    {
+      "id": "3200033",
+      "name": "바스티안",
+      "sourceAtlas": "card_epic_1.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "b186f69d1bfe6e1fec2811dedf0a60ad5d959f6cdeb90d421399445b2b4edfc1"
+    },
+    {
+      "id": "3200034",
+      "name": "사샤",
+      "sourceAtlas": "card_epic_1.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "b186f69d1bfe6e1fec2811dedf0a60ad5d959f6cdeb90d421399445b2b4edfc1"
+    },
+    {
+      "id": "3200035",
+      "name": "카인",
+      "sourceAtlas": "card_epic_1.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "b186f69d1bfe6e1fec2811dedf0a60ad5d959f6cdeb90d421399445b2b4edfc1"
+    },
+    {
+      "id": "3200036",
+      "name": "마리 파우렌츠",
+      "sourceAtlas": "card_epic_1.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "b186f69d1bfe6e1fec2811dedf0a60ad5d959f6cdeb90d421399445b2b4edfc1"
+    },
+    {
+      "id": "3200037",
+      "name": "진화의 군주 카인",
+      "sourceAtlas": "card_epic_1.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "b186f69d1bfe6e1fec2811dedf0a60ad5d959f6cdeb90d421399445b2b4edfc1"
+    },
+    {
+      "id": "3200038",
+      "name": "진 매드닉",
+      "sourceAtlas": "card_epic_1.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "b186f69d1bfe6e1fec2811dedf0a60ad5d959f6cdeb90d421399445b2b4edfc1"
+    },
+    {
+      "id": "3200039",
+      "name": "라하르트",
+      "sourceAtlas": "card_epic_2.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "0a0ad79535e81dac4b6e45da9c309682da6bcc2d80e3221d117d977aba1e8586"
+    },
+    {
+      "id": "3200040",
+      "name": "아나벨",
+      "sourceAtlas": "card_epic_2.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "0a0ad79535e81dac4b6e45da9c309682da6bcc2d80e3221d117d977aba1e8586"
+    },
+    {
+      "id": "3200041",
+      "name": "지그문트",
+      "sourceAtlas": "card_epic_2.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "0a0ad79535e81dac4b6e45da9c309682da6bcc2d80e3221d117d977aba1e8586"
+    },
+    {
+      "id": "3200042",
+      "name": "나크라세나",
+      "sourceAtlas": "card_epic_2.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "0a0ad79535e81dac4b6e45da9c309682da6bcc2d80e3221d117d977aba1e8586"
+    },
+    {
+      "id": "3200044",
+      "name": "베르투스",
+      "sourceAtlas": "card_epic_2.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "0a0ad79535e81dac4b6e45da9c309682da6bcc2d80e3221d117d977aba1e8586"
+    },
+    {
+      "id": "3200045",
+      "name": "크로마니움",
+      "sourceAtlas": "card_epic_2.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "0a0ad79535e81dac4b6e45da9c309682da6bcc2d80e3221d117d977aba1e8586"
+    },
+    {
+      "id": "3200046",
+      "name": "헬가이아",
+      "sourceAtlas": "card_epic_2.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "0a0ad79535e81dac4b6e45da9c309682da6bcc2d80e3221d117d977aba1e8586"
+    },
+    {
+      "id": "3200047",
+      "name": "빙결의 레기오로스",
+      "sourceAtlas": "card_epic_3.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8e21872a44379cb292488e03adf35c4fe878ba3f3746b922856cb7d4a9ec0880"
+    },
+    {
+      "id": "3200048",
+      "name": "어둠의 레기오로스",
+      "sourceAtlas": "card_epic_3.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8e21872a44379cb292488e03adf35c4fe878ba3f3746b922856cb7d4a9ec0880"
+    },
+    {
+      "id": "3200049",
+      "name": "에페르니아",
+      "sourceAtlas": "card_epic_3.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8e21872a44379cb292488e03adf35c4fe878ba3f3746b922856cb7d4a9ec0880"
+    },
+    {
+      "id": "3200050",
+      "name": "그노시스",
+      "sourceAtlas": "card_epic_3.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8e21872a44379cb292488e03adf35c4fe878ba3f3746b922856cb7d4a9ec0880"
+    },
+    {
+      "id": "3200051",
+      "name": "운다트",
+      "sourceAtlas": "card_epic_3.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "8e21872a44379cb292488e03adf35c4fe878ba3f3746b922856cb7d4a9ec0880"
+    },
+    {
+      "id": "3200052",
+      "name": "실페리온",
+      "sourceAtlas": "card_epic_3.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "8e21872a44379cb292488e03adf35c4fe878ba3f3746b922856cb7d4a9ec0880"
+    },
+    {
+      "id": "3200053",
+      "name": "케이사르",
+      "sourceAtlas": "card_epic_3.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "8e21872a44379cb292488e03adf35c4fe878ba3f3746b922856cb7d4a9ec0880"
+    },
+    {
+      "id": "3200054",
+      "name": "벨크루제",
+      "sourceAtlas": "card_epic_3.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "8e21872a44379cb292488e03adf35c4fe878ba3f3746b922856cb7d4a9ec0880"
+    },
+    {
+      "id": "3200055",
+      "name": "카이슈르",
+      "sourceAtlas": "card_epic_4.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "1a6ec6f5bef0d360c53d2d65f05b4c2833add202f04e31a497da744976d42aae"
+    },
+    {
+      "id": "3200056",
+      "name": "사이카",
+      "sourceAtlas": "card_epic_4.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "1a6ec6f5bef0d360c53d2d65f05b4c2833add202f04e31a497da744976d42aae"
+    },
+    {
+      "id": "3200057",
+      "name": "칼도르",
+      "sourceAtlas": "card_epic_4.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "1a6ec6f5bef0d360c53d2d65f05b4c2833add202f04e31a497da744976d42aae"
+    },
+    {
+      "id": "3200058",
+      "name": "페데리코",
+      "sourceAtlas": "card_epic_4.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "1a6ec6f5bef0d360c53d2d65f05b4c2833add202f04e31a497da744976d42aae"
+    },
+    {
+      "id": "3200059",
+      "name": "칼트말루스",
+      "sourceAtlas": "card_epic_4.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "1a6ec6f5bef0d360c53d2d65f05b4c2833add202f04e31a497da744976d42aae"
+    },
+    {
+      "id": "3200060",
+      "name": "혼돈의 사이카",
+      "sourceAtlas": "card_epic_4.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "1a6ec6f5bef0d360c53d2d65f05b4c2833add202f04e31a497da744976d42aae"
+    },
+    {
+      "id": "3200061",
+      "name": "아델",
+      "sourceAtlas": "card_epic_4.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "1a6ec6f5bef0d360c53d2d65f05b4c2833add202f04e31a497da744976d42aae"
+    },
+    {
+      "id": "3200062",
+      "name": "에아달린",
+      "sourceAtlas": "card_epic_4.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "1a6ec6f5bef0d360c53d2d65f05b4c2833add202f04e31a497da744976d42aae"
+    },
+    {
+      "id": "3200063",
+      "name": "엔비스카",
+      "sourceAtlas": "card_epic_5.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "eac5ef5d361a42a8795252e42ff14abc89ca71da3853af21bdd4c2df11fe6a25"
+    },
+    {
+      "id": "3200064",
+      "name": "루메루스",
+      "sourceAtlas": "card_epic_5.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "eac5ef5d361a42a8795252e42ff14abc89ca71da3853af21bdd4c2df11fe6a25"
+    },
+    {
+      "id": "3200065",
+      "name": "우르닐",
+      "sourceAtlas": "card_epic_5.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "eac5ef5d361a42a8795252e42ff14abc89ca71da3853af21bdd4c2df11fe6a25"
+    },
+    {
+      "id": "3200067",
+      "name": "칼벤투스",
+      "sourceAtlas": "card_epic_5.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "eac5ef5d361a42a8795252e42ff14abc89ca71da3853af21bdd4c2df11fe6a25"
+    },
+    {
+      "id": "3200068",
+      "name": "용암 크로마니움",
+      "sourceAtlas": "card_epic_5.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "eac5ef5d361a42a8795252e42ff14abc89ca71da3853af21bdd4c2df11fe6a25"
+    },
+    {
+      "id": "3200069",
+      "name": "중갑 나크라세나",
+      "sourceAtlas": "card_epic_5.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "eac5ef5d361a42a8795252e42ff14abc89ca71da3853af21bdd4c2df11fe6a25"
+    },
+    {
+      "id": "3200070",
+      "name": "홍염의 요호",
+      "sourceAtlas": "card_epic_5.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "eac5ef5d361a42a8795252e42ff14abc89ca71da3853af21bdd4c2df11fe6a25"
+    },
+    {
+      "id": "3200071",
+      "name": "혹한의 헬가이아",
+      "sourceAtlas": "card_epic_6.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "86258c75a4b346b69f5e17bef15ab7261b7a129d96a9a3a0a96746ffc1d8f544"
+    },
+    {
+      "id": "3200072",
+      "name": "타이탈로스",
+      "sourceAtlas": "card_epic_6.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "86258c75a4b346b69f5e17bef15ab7261b7a129d96a9a3a0a96746ffc1d8f544"
+    },
+    {
+      "id": "3200073",
+      "name": "흑야의 요호",
+      "sourceAtlas": "card_epic_6.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "86258c75a4b346b69f5e17bef15ab7261b7a129d96a9a3a0a96746ffc1d8f544"
+    },
+    {
+      "id": "3200074",
+      "name": "벨가누스",
+      "sourceAtlas": "card_epic_6.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "86258c75a4b346b69f5e17bef15ab7261b7a129d96a9a3a0a96746ffc1d8f544"
+    },
+    {
+      "id": "3200075",
+      "name": "칼엘리고스",
+      "sourceAtlas": "card_epic_6.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "86258c75a4b346b69f5e17bef15ab7261b7a129d96a9a3a0a96746ffc1d8f544"
+    },
+    {
+      "id": "3200076",
+      "name": "아카테스",
+      "sourceAtlas": "card_epic_6.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "86258c75a4b346b69f5e17bef15ab7261b7a129d96a9a3a0a96746ffc1d8f544"
+    },
+    {
+      "id": "3200077",
+      "name": "이그렉시온",
+      "sourceAtlas": "card_epic_6.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "86258c75a4b346b69f5e17bef15ab7261b7a129d96a9a3a0a96746ffc1d8f544"
+    },
+    {
+      "id": "3200078",
+      "name": "미스틱",
+      "sourceAtlas": "card_epic_6.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "86258c75a4b346b69f5e17bef15ab7261b7a129d96a9a3a0a96746ffc1d8f544"
+    },
+    {
+      "id": "3200079",
+      "name": "카이슈테르",
+      "sourceAtlas": "card_epic_7.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "eda4b6691821812140ddc8bf9afdf0135ba7d0deee4ca282c618d204b01b4655"
+    },
+    {
+      "id": "3200080",
+      "name": "엘버하스틱",
+      "sourceAtlas": "card_epic_7.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "eda4b6691821812140ddc8bf9afdf0135ba7d0deee4ca282c618d204b01b4655"
+    },
+    {
+      "id": "3200081",
+      "name": "아르카디아",
+      "sourceAtlas": "card_epic_7.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "eda4b6691821812140ddc8bf9afdf0135ba7d0deee4ca282c618d204b01b4655"
+    },
+    {
+      "id": "3200082",
+      "name": "피요르긴",
+      "sourceAtlas": "card_epic_7.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "eda4b6691821812140ddc8bf9afdf0135ba7d0deee4ca282c618d204b01b4655"
+    },
+    {
+      "id": "3200083",
+      "name": "파르쿠나스",
+      "sourceAtlas": "card_epic_7.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "eda4b6691821812140ddc8bf9afdf0135ba7d0deee4ca282c618d204b01b4655"
+    },
+    {
+      "id": "3200084",
+      "name": "나히니르",
+      "sourceAtlas": "card_epic_7.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "eda4b6691821812140ddc8bf9afdf0135ba7d0deee4ca282c618d204b01b4655"
+    },
+    {
+      "id": "3200085",
+      "name": "신뢰의 아크 아스타",
+      "sourceAtlas": "card_epic_7.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "eda4b6691821812140ddc8bf9afdf0135ba7d0deee4ca282c618d204b01b4655"
+    },
+    {
+      "id": "3200086",
+      "name": "창조의 아크 오르투스",
+      "sourceAtlas": "card_epic_7.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "eda4b6691821812140ddc8bf9afdf0135ba7d0deee4ca282c618d204b01b4655"
+    },
+    {
+      "id": "3200087",
+      "name": "예지의 아크 아가톤",
+      "sourceAtlas": "card_epic_8.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "f499016d04c5f0ceada56d54743892f8105df5a069002106500155bff07526ad"
+    },
+    {
+      "id": "3200088",
+      "name": "희망의 아크 엘피스",
+      "sourceAtlas": "card_epic_8.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "f499016d04c5f0ceada56d54743892f8105df5a069002106500155bff07526ad"
+    },
+    {
+      "id": "3200089",
+      "name": "지혜의 아크 라디체",
+      "sourceAtlas": "card_epic_8.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "f499016d04c5f0ceada56d54743892f8105df5a069002106500155bff07526ad"
+    },
+    {
+      "id": "3200090",
+      "name": "헌신의 아크 카르타",
+      "sourceAtlas": "card_epic_8.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "f499016d04c5f0ceada56d54743892f8105df5a069002106500155bff07526ad"
+    },
+    {
+      "id": "3200091",
+      "name": "에르제베트",
+      "sourceAtlas": "card_epic_8.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "f499016d04c5f0ceada56d54743892f8105df5a069002106500155bff07526ad"
+    },
+    {
+      "id": "3200092",
+      "name": "크리스틴",
+      "sourceAtlas": "card_epic_8.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "f499016d04c5f0ceada56d54743892f8105df5a069002106500155bff07526ad"
+    },
+    {
+      "id": "3200094",
+      "name": "바루투",
+      "sourceAtlas": "card_rare_0.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "27ebacbd4588bad06b41e76739dfcdfdd896e4f3b7ba2a60bfa82ae1e897a50b"
+    },
+    {
+      "id": "3200095",
+      "name": "레온하트 네리아",
+      "sourceAtlas": "card_rare_0.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "27ebacbd4588bad06b41e76739dfcdfdd896e4f3b7ba2a60bfa82ae1e897a50b"
+    },
+    {
+      "id": "3200096",
+      "name": "루드릭",
+      "sourceAtlas": "card_rare_0.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "27ebacbd4588bad06b41e76739dfcdfdd896e4f3b7ba2a60bfa82ae1e897a50b"
+    },
+    {
+      "id": "3200097",
+      "name": "도굴단장 우고",
+      "sourceAtlas": "card_rare_0.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "27ebacbd4588bad06b41e76739dfcdfdd896e4f3b7ba2a60bfa82ae1e897a50b"
+    },
+    {
+      "id": "3200098",
+      "name": "불칸",
+      "sourceAtlas": "card_rare_0.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "27ebacbd4588bad06b41e76739dfcdfdd896e4f3b7ba2a60bfa82ae1e897a50b"
+    },
+    {
+      "id": "3200099",
+      "name": "역병 인도자",
+      "sourceAtlas": "card_rare_0.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "27ebacbd4588bad06b41e76739dfcdfdd896e4f3b7ba2a60bfa82ae1e897a50b"
+    },
+    {
+      "id": "3200100",
+      "name": "하르잘",
+      "sourceAtlas": "card_rare_0.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "27ebacbd4588bad06b41e76739dfcdfdd896e4f3b7ba2a60bfa82ae1e897a50b"
+    },
+    {
+      "id": "3200101",
+      "name": "소금거인",
+      "sourceAtlas": "card_rare_0.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "27ebacbd4588bad06b41e76739dfcdfdd896e4f3b7ba2a60bfa82ae1e897a50b"
+    },
+    {
+      "id": "3200102",
+      "name": "천둥",
+      "sourceAtlas": "card_rare_1.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "2bb3cb0e6c87dffb7340c70c9a9055c0f9d09de38acb947260393a30a4e1f924"
+    },
+    {
+      "id": "3200103",
+      "name": "칼라도세",
+      "sourceAtlas": "card_rare_1.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "2bb3cb0e6c87dffb7340c70c9a9055c0f9d09de38acb947260393a30a4e1f924"
+    },
+    {
+      "id": "3200104",
+      "name": "미한",
+      "sourceAtlas": "card_rare_1.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "2bb3cb0e6c87dffb7340c70c9a9055c0f9d09de38acb947260393a30a4e1f924"
+    },
+    {
+      "id": "3200105",
+      "name": "릭투스",
+      "sourceAtlas": "card_rare_1.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "2bb3cb0e6c87dffb7340c70c9a9055c0f9d09de38acb947260393a30a4e1f924"
+    },
+    {
+      "id": "3200106",
+      "name": "하셀링크",
+      "sourceAtlas": "card_rare_1.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "2bb3cb0e6c87dffb7340c70c9a9055c0f9d09de38acb947260393a30a4e1f924"
+    },
+    {
+      "id": "3200107",
+      "name": "로블롬",
+      "sourceAtlas": "card_rare_1.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "2bb3cb0e6c87dffb7340c70c9a9055c0f9d09de38acb947260393a30a4e1f924"
+    },
+    {
+      "id": "3200108",
+      "name": "알리페르",
+      "sourceAtlas": "card_rare_1.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "2bb3cb0e6c87dffb7340c70c9a9055c0f9d09de38acb947260393a30a4e1f924"
+    },
+    {
+      "id": "3200109",
+      "name": "루테란 성 네리아",
+      "sourceAtlas": "card_rare_1.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "2bb3cb0e6c87dffb7340c70c9a9055c0f9d09de38acb947260393a30a4e1f924"
+    },
+    {
+      "id": "3200110",
+      "name": "윌리윌리",
+      "sourceAtlas": "card_rare_2.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "75a21ed50eae832b150ee5879db04b8521e2bcad8e21e477cb3f307300350391"
+    },
+    {
+      "id": "3200111",
+      "name": "세리아",
+      "sourceAtlas": "card_rare_2.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "75a21ed50eae832b150ee5879db04b8521e2bcad8e21e477cb3f307300350391"
+    },
+    {
+      "id": "3200112",
+      "name": "사교도 대제사장",
+      "sourceAtlas": "card_rare_2.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "75a21ed50eae832b150ee5879db04b8521e2bcad8e21e477cb3f307300350391"
+    },
+    {
+      "id": "3200113",
+      "name": "자히아",
+      "sourceAtlas": "card_rare_2.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "75a21ed50eae832b150ee5879db04b8521e2bcad8e21e477cb3f307300350391"
+    },
+    {
+      "id": "3200114",
+      "name": "리게아스",
+      "sourceAtlas": "card_rare_2.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "75a21ed50eae832b150ee5879db04b8521e2bcad8e21e477cb3f307300350391"
+    },
+    {
+      "id": "3200115",
+      "name": "하울로크",
+      "sourceAtlas": "card_rare_2.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "75a21ed50eae832b150ee5879db04b8521e2bcad8e21e477cb3f307300350391"
+    },
+    {
+      "id": "3200116",
+      "name": "칼스 모론토",
+      "sourceAtlas": "card_rare_2.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "75a21ed50eae832b150ee5879db04b8521e2bcad8e21e477cb3f307300350391"
+    },
+    {
+      "id": "3200117",
+      "name": "히바이크",
+      "sourceAtlas": "card_rare_2.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "75a21ed50eae832b150ee5879db04b8521e2bcad8e21e477cb3f307300350391"
+    },
+    {
+      "id": "3200120",
+      "name": "토토마",
+      "sourceAtlas": "card_rare_3.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "1cc8e34b3ad8e47d000f0f32f8fbf5ac9d4ef1ce21466c8734cc4d16f92586bd"
+    },
+    {
+      "id": "3200122",
+      "name": "수호자 에오로",
+      "sourceAtlas": "card_rare_3.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "1cc8e34b3ad8e47d000f0f32f8fbf5ac9d4ef1ce21466c8734cc4d16f92586bd"
+    },
+    {
+      "id": "3200123",
+      "name": "붉은 남작 에디",
+      "sourceAtlas": "card_rare_3.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "1cc8e34b3ad8e47d000f0f32f8fbf5ac9d4ef1ce21466c8734cc4d16f92586bd"
+    },
+    {
+      "id": "3200124",
+      "name": "수호자 티르",
+      "sourceAtlas": "card_rare_3.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "1cc8e34b3ad8e47d000f0f32f8fbf5ac9d4ef1ce21466c8734cc4d16f92586bd"
+    },
+    {
+      "id": "3200125",
+      "name": "거신 카스피엘",
+      "sourceAtlas": "card_rare_3.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "1cc8e34b3ad8e47d000f0f32f8fbf5ac9d4ef1ce21466c8734cc4d16f92586bd"
+    },
+    {
+      "id": "3200126",
+      "name": "아크의 수호자 오셀",
+      "sourceAtlas": "card_rare_4.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "1301a56f1500e574ad1734d1ab3c6b640d65215535118270d3b1b92810902e3c"
+    },
+    {
+      "id": "3200127",
+      "name": "파한",
+      "sourceAtlas": "card_rare_4.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "1301a56f1500e574ad1734d1ab3c6b640d65215535118270d3b1b92810902e3c"
+    },
+    {
+      "id": "3200129",
+      "name": "미령",
+      "sourceAtlas": "card_rare_4.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "1301a56f1500e574ad1734d1ab3c6b640d65215535118270d3b1b92810902e3c"
+    },
+    {
+      "id": "3200130",
+      "name": "원포",
+      "sourceAtlas": "card_rare_4.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "1301a56f1500e574ad1734d1ab3c6b640d65215535118270d3b1b92810902e3c"
+    },
+    {
+      "id": "3200131",
+      "name": "길달",
+      "sourceAtlas": "card_rare_4.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "1301a56f1500e574ad1734d1ab3c6b640d65215535118270d3b1b92810902e3c"
+    },
+    {
+      "id": "3200132",
+      "name": "절망의 레키엘",
+      "sourceAtlas": "card_rare_4.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "1301a56f1500e574ad1734d1ab3c6b640d65215535118270d3b1b92810902e3c"
+    },
+    {
+      "id": "3200133",
+      "name": "역병군단 바르토",
+      "sourceAtlas": "card_rare_4.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "1301a56f1500e574ad1734d1ab3c6b640d65215535118270d3b1b92810902e3c"
+    },
+    {
+      "id": "3200134",
+      "name": "도철",
+      "sourceAtlas": "card_rare_5.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "fd5612a41e1ed6c152c5d3cba1e02c71789034bddff3163069d68820a9075c38"
+    },
+    {
+      "id": "3200135",
+      "name": "혼재의 추오",
+      "sourceAtlas": "card_rare_5.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "fd5612a41e1ed6c152c5d3cba1e02c71789034bddff3163069d68820a9075c38"
+    },
+    {
+      "id": "3200136",
+      "name": "슈테른 네리아",
+      "sourceAtlas": "card_rare_5.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "fd5612a41e1ed6c152c5d3cba1e02c71789034bddff3163069d68820a9075c38"
+    },
+    {
+      "id": "3200137",
+      "name": "시그나투스",
+      "sourceAtlas": "card_rare_5.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "fd5612a41e1ed6c152c5d3cba1e02c71789034bddff3163069d68820a9075c38"
+    },
+    {
+      "id": "3200140",
+      "name": "안톤",
+      "sourceAtlas": "card_rare_5.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "fd5612a41e1ed6c152c5d3cba1e02c71789034bddff3163069d68820a9075c38"
+    },
+    {
+      "id": "3200141",
+      "name": "바에단",
+      "sourceAtlas": "card_rare_5.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "fd5612a41e1ed6c152c5d3cba1e02c71789034bddff3163069d68820a9075c38"
+    },
+    {
+      "id": "3200142",
+      "name": "타르실라",
+      "sourceAtlas": "card_rare_6.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "60e79979705c2743e68ed26ee0bcb0ce68dabfda173b7426deb57b0e86e4ce68"
+    },
+    {
+      "id": "3200143",
+      "name": "루아브",
+      "sourceAtlas": "card_rare_6.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "60e79979705c2743e68ed26ee0bcb0ce68dabfda173b7426deb57b0e86e4ce68"
+    },
+    {
+      "id": "3200144",
+      "name": "시안",
+      "sourceAtlas": "card_rare_6.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "60e79979705c2743e68ed26ee0bcb0ce68dabfda173b7426deb57b0e86e4ce68"
+    },
+    {
+      "id": "3200145",
+      "name": "마네스",
+      "sourceAtlas": "card_rare_6.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "60e79979705c2743e68ed26ee0bcb0ce68dabfda173b7426deb57b0e86e4ce68"
+    },
+    {
+      "id": "3200146",
+      "name": "기드온",
+      "sourceAtlas": "card_rare_6.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "60e79979705c2743e68ed26ee0bcb0ce68dabfda173b7426deb57b0e86e4ce68"
+    },
+    {
+      "id": "3200147",
+      "name": "가룸",
+      "sourceAtlas": "card_rare_6.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "60e79979705c2743e68ed26ee0bcb0ce68dabfda173b7426deb57b0e86e4ce68"
+    },
+    {
+      "id": "3200148",
+      "name": "페일린",
+      "sourceAtlas": "card_rare_6.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "60e79979705c2743e68ed26ee0bcb0ce68dabfda173b7426deb57b0e86e4ce68"
+    },
+    {
+      "id": "3200149",
+      "name": "고르곤",
+      "sourceAtlas": "card_rare_6.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "60e79979705c2743e68ed26ee0bcb0ce68dabfda173b7426deb57b0e86e4ce68"
+    },
+    {
+      "id": "3200150",
+      "name": "프록시마",
+      "sourceAtlas": "card_rare_7.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8d04533e5bb8778e800c0557debd69a139bc6d435aa9c432e1a4d2b02b65e32a"
+    },
+    {
+      "id": "3200151",
+      "name": "에라스모",
+      "sourceAtlas": "card_rare_7.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8d04533e5bb8778e800c0557debd69a139bc6d435aa9c432e1a4d2b02b65e32a"
+    },
+    {
+      "id": "3200153",
+      "name": "브리아레오스",
+      "sourceAtlas": "card_rare_7.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8d04533e5bb8778e800c0557debd69a139bc6d435aa9c432e1a4d2b02b65e32a"
+    },
+    {
+      "id": "3200154",
+      "name": "고르카그로스",
+      "sourceAtlas": "card_rare_7.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "8d04533e5bb8778e800c0557debd69a139bc6d435aa9c432e1a4d2b02b65e32a"
+    },
+    {
+      "id": "3200156",
+      "name": "실험체 타르마쿰",
+      "sourceAtlas": "card_rare_7.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "8d04533e5bb8778e800c0557debd69a139bc6d435aa9c432e1a4d2b02b65e32a"
+    },
+    {
+      "id": "3200158",
+      "name": "엘레노아",
+      "sourceAtlas": "card_rare_8.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "f4fa144858d06bd439c4701091994aa4490084978231ad122c0779da4db5055a"
+    },
+    {
+      "id": "3200159",
+      "name": "아벤",
+      "sourceAtlas": "card_rare_8.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "f4fa144858d06bd439c4701091994aa4490084978231ad122c0779da4db5055a"
+    },
+    {
+      "id": "3200160",
+      "name": "게르디아",
+      "sourceAtlas": "card_rare_8.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "f4fa144858d06bd439c4701091994aa4490084978231ad122c0779da4db5055a"
+    },
+    {
+      "id": "3200161",
+      "name": "오렐다",
+      "sourceAtlas": "card_rare_8.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "f4fa144858d06bd439c4701091994aa4490084978231ad122c0779da4db5055a"
+    },
+    {
+      "id": "3200162",
+      "name": "몽환의 퀸",
+      "sourceAtlas": "card_rare_8.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "f4fa144858d06bd439c4701091994aa4490084978231ad122c0779da4db5055a"
+    },
+    {
+      "id": "3200163",
+      "name": "몽환의 킹",
+      "sourceAtlas": "card_rare_8.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "f4fa144858d06bd439c4701091994aa4490084978231ad122c0779da4db5055a"
+    },
+    {
+      "id": "3200164",
+      "name": "위대한 성 네리아",
+      "sourceAtlas": "card_rare_8.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "f4fa144858d06bd439c4701091994aa4490084978231ad122c0779da4db5055a"
+    },
+    {
+      "id": "3200165",
+      "name": "피에르",
+      "sourceAtlas": "card_rare_8.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "f4fa144858d06bd439c4701091994aa4490084978231ad122c0779da4db5055a"
+    },
+    {
+      "id": "3200166",
+      "name": "나잔",
+      "sourceAtlas": "card_rare_9.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "571dab2f226db3bbb57e4563c4eafbe45ea9eda925875d9bba7fce46c0fc6d6e"
+    },
+    {
+      "id": "3200167",
+      "name": "키즈라",
+      "sourceAtlas": "card_rare_9.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "571dab2f226db3bbb57e4563c4eafbe45ea9eda925875d9bba7fce46c0fc6d6e"
+    },
+    {
+      "id": "3200168",
+      "name": "에이케르",
+      "sourceAtlas": "card_rare_9.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "571dab2f226db3bbb57e4563c4eafbe45ea9eda925875d9bba7fce46c0fc6d6e"
+    },
+    {
+      "id": "3200169",
+      "name": "나베르",
+      "sourceAtlas": "card_rare_9.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "571dab2f226db3bbb57e4563c4eafbe45ea9eda925875d9bba7fce46c0fc6d6e"
+    },
+    {
+      "id": "3200170",
+      "name": "비올레",
+      "sourceAtlas": "card_rare_9.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "571dab2f226db3bbb57e4563c4eafbe45ea9eda925875d9bba7fce46c0fc6d6e"
+    },
+    {
+      "id": "3200171",
+      "name": "굴딩",
+      "sourceAtlas": "card_rare_9.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "571dab2f226db3bbb57e4563c4eafbe45ea9eda925875d9bba7fce46c0fc6d6e"
+    },
+    {
+      "id": "3200172",
+      "name": "변절자 제페토",
+      "sourceAtlas": "card_rare_9.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "571dab2f226db3bbb57e4563c4eafbe45ea9eda925875d9bba7fce46c0fc6d6e"
+    },
+    {
+      "id": "3200173",
+      "name": "아드모스",
+      "sourceAtlas": "card_rare_9.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "571dab2f226db3bbb57e4563c4eafbe45ea9eda925875d9bba7fce46c0fc6d6e"
+    },
+    {
+      "id": "3200174",
+      "name": "아이히만 박사",
+      "sourceAtlas": "card_rare_10.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a52c67484bdec1e026ccde50c97825097886d56f1455709707c198a527b27e64"
+    },
+    {
+      "id": "3200175",
+      "name": "패자의 검",
+      "sourceAtlas": "card_rare_10.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a52c67484bdec1e026ccde50c97825097886d56f1455709707c198a527b27e64"
+    },
+    {
+      "id": "3200176",
+      "name": "진멸의 창",
+      "sourceAtlas": "card_rare_10.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a52c67484bdec1e026ccde50c97825097886d56f1455709707c198a527b27e64"
+    },
+    {
+      "id": "3200177",
+      "name": "갈기파도 항구 네리아",
+      "sourceAtlas": "card_rare_10.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a52c67484bdec1e026ccde50c97825097886d56f1455709707c198a527b27e64"
+    },
+    {
+      "id": "3200178",
+      "name": "아비시나",
+      "sourceAtlas": "card_rare_10.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a52c67484bdec1e026ccde50c97825097886d56f1455709707c198a527b27e64"
+    },
+    {
+      "id": "3200179",
+      "name": "판다 푸푸",
+      "sourceAtlas": "card_rare_10.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a52c67484bdec1e026ccde50c97825097886d56f1455709707c198a527b27e64"
+    },
+    {
+      "id": "3200180",
+      "name": "샐리",
+      "sourceAtlas": "card_rare_10.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a52c67484bdec1e026ccde50c97825097886d56f1455709707c198a527b27e64"
+    },
+    {
+      "id": "3200181",
+      "name": "크누트",
+      "sourceAtlas": "card_rare_10.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a52c67484bdec1e026ccde50c97825097886d56f1455709707c198a527b27e64"
+    },
+    {
+      "id": "3200182",
+      "name": "아드린느",
+      "sourceAtlas": "card_rare_17.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "e210ca6891d21f6ae1f0ecceb0b035b4c9b534f097f9e539a30e5dc2a89ccae2"
+    },
+    {
+      "id": "3200183",
+      "name": "한이 서린 여인",
+      "sourceAtlas": "card_uncommon_0.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a592dbfaa865a9283ec978e98af6f7724c1f496f055f6a3d380b746e84f946f7"
+    },
+    {
+      "id": "3200184",
+      "name": "다단",
+      "sourceAtlas": "card_uncommon_0.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a592dbfaa865a9283ec978e98af6f7724c1f496f055f6a3d380b746e84f946f7"
+    },
+    {
+      "id": "3200186",
+      "name": "우르르",
+      "sourceAtlas": "card_uncommon_0.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a592dbfaa865a9283ec978e98af6f7724c1f496f055f6a3d380b746e84f946f7"
+    },
+    {
+      "id": "3200187",
+      "name": "베나르",
+      "sourceAtlas": "card_uncommon_0.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a592dbfaa865a9283ec978e98af6f7724c1f496f055f6a3d380b746e84f946f7"
+    },
+    {
+      "id": "3200189",
+      "name": "몬테르크",
+      "sourceAtlas": "card_uncommon_0.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a592dbfaa865a9283ec978e98af6f7724c1f496f055f6a3d380b746e84f946f7"
+    },
+    {
+      "id": "3200190",
+      "name": "비슈츠",
+      "sourceAtlas": "card_uncommon_0.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a592dbfaa865a9283ec978e98af6f7724c1f496f055f6a3d380b746e84f946f7"
+    },
+    {
+      "id": "3200191",
+      "name": "베르하트",
+      "sourceAtlas": "card_uncommon_1.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "ee78752415c6d3016ee7a44fe09497577bb3ffe3e870694c22fef6337de0c553"
+    },
+    {
+      "id": "3200193",
+      "name": "아자란",
+      "sourceAtlas": "card_uncommon_1.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "ee78752415c6d3016ee7a44fe09497577bb3ffe3e870694c22fef6337de0c553"
+    },
+    {
+      "id": "3200194",
+      "name": "가비슈",
+      "sourceAtlas": "card_uncommon_1.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "ee78752415c6d3016ee7a44fe09497577bb3ffe3e870694c22fef6337de0c553"
+    },
+    {
+      "id": "3200195",
+      "name": "집행관 솔라스",
+      "sourceAtlas": "card_uncommon_1.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "ee78752415c6d3016ee7a44fe09497577bb3ffe3e870694c22fef6337de0c553"
+    },
+    {
+      "id": "3200196",
+      "name": "토토이끼",
+      "sourceAtlas": "card_uncommon_1.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "ee78752415c6d3016ee7a44fe09497577bb3ffe3e870694c22fef6337de0c553"
+    },
+    {
+      "id": "3200197",
+      "name": "창조의 알",
+      "sourceAtlas": "card_uncommon_1.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "ee78752415c6d3016ee7a44fe09497577bb3ffe3e870694c22fef6337de0c553"
+    },
+    {
+      "id": "3200198",
+      "name": "수호자 페오스",
+      "sourceAtlas": "card_uncommon_1.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "ee78752415c6d3016ee7a44fe09497577bb3ffe3e870694c22fef6337de0c553"
+    },
+    {
+      "id": "3200199",
+      "name": "여울",
+      "sourceAtlas": "card_uncommon_2.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "27e7e85cca17476cba58dacf40e4c618464f0a9e479cbc4d3e0b52e30695e035"
+    },
+    {
+      "id": "3200200",
+      "name": "하리",
+      "sourceAtlas": "card_uncommon_2.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "27e7e85cca17476cba58dacf40e4c618464f0a9e479cbc4d3e0b52e30695e035"
+    },
+    {
+      "id": "3200201",
+      "name": "한손",
+      "sourceAtlas": "card_uncommon_2.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "27e7e85cca17476cba58dacf40e4c618464f0a9e479cbc4d3e0b52e30695e035"
+    },
+    {
+      "id": "3200202",
+      "name": "호동",
+      "sourceAtlas": "card_uncommon_2.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "27e7e85cca17476cba58dacf40e4c618464f0a9e479cbc4d3e0b52e30695e035"
+    },
+    {
+      "id": "3200203",
+      "name": "금강",
+      "sourceAtlas": "card_uncommon_2.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "27e7e85cca17476cba58dacf40e4c618464f0a9e479cbc4d3e0b52e30695e035"
+    },
+    {
+      "id": "3200204",
+      "name": "삭월",
+      "sourceAtlas": "card_uncommon_2.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "27e7e85cca17476cba58dacf40e4c618464f0a9e479cbc4d3e0b52e30695e035"
+    },
+    {
+      "id": "3200205",
+      "name": "객주도사",
+      "sourceAtlas": "card_uncommon_2.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "27e7e85cca17476cba58dacf40e4c618464f0a9e479cbc4d3e0b52e30695e035"
+    },
+    {
+      "id": "3200206",
+      "name": "수령도사",
+      "sourceAtlas": "card_uncommon_2.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "27e7e85cca17476cba58dacf40e4c618464f0a9e479cbc4d3e0b52e30695e035"
+    },
+    {
+      "id": "3200207",
+      "name": "세비엘",
+      "sourceAtlas": "card_uncommon_3.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "0902178fb65ed3a6d410c803fa924285dedc8adb95d0f93eadfbb8ea1022c69c"
+    },
+    {
+      "id": "3200209",
+      "name": "자베른",
+      "sourceAtlas": "card_uncommon_3.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "0902178fb65ed3a6d410c803fa924285dedc8adb95d0f93eadfbb8ea1022c69c"
+    },
+    {
+      "id": "3200210",
+      "name": "레이든",
+      "sourceAtlas": "card_uncommon_3.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "0902178fb65ed3a6d410c803fa924285dedc8adb95d0f93eadfbb8ea1022c69c"
+    },
+    {
+      "id": "3200211",
+      "name": "나크슌",
+      "sourceAtlas": "card_uncommon_3.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "0902178fb65ed3a6d410c803fa924285dedc8adb95d0f93eadfbb8ea1022c69c"
+    },
+    {
+      "id": "3200212",
+      "name": "포포",
+      "sourceAtlas": "card_uncommon_3.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "0902178fb65ed3a6d410c803fa924285dedc8adb95d0f93eadfbb8ea1022c69c"
+    },
+    {
+      "id": "3200215",
+      "name": "레나",
+      "sourceAtlas": "card_uncommon_4.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a6959320a951ec196922280fa0ccca66871df88af6fcbdd9a57aeded4c98b65d"
+    },
+    {
+      "id": "3200216",
+      "name": "프랭크",
+      "sourceAtlas": "card_uncommon_4.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a6959320a951ec196922280fa0ccca66871df88af6fcbdd9a57aeded4c98b65d"
+    },
+    {
+      "id": "3200217",
+      "name": "헨리",
+      "sourceAtlas": "card_uncommon_4.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a6959320a951ec196922280fa0ccca66871df88af6fcbdd9a57aeded4c98b65d"
+    },
+    {
+      "id": "3200218",
+      "name": "미카엘과 노메드",
+      "sourceAtlas": "card_uncommon_4.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a6959320a951ec196922280fa0ccca66871df88af6fcbdd9a57aeded4c98b65d"
+    },
+    {
+      "id": "3200219",
+      "name": "몽환의 나이트",
+      "sourceAtlas": "card_uncommon_4.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a6959320a951ec196922280fa0ccca66871df88af6fcbdd9a57aeded4c98b65d"
+    },
+    {
+      "id": "3200220",
+      "name": "몽환의 룩",
+      "sourceAtlas": "card_uncommon_4.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a6959320a951ec196922280fa0ccca66871df88af6fcbdd9a57aeded4c98b65d"
+    },
+    {
+      "id": "3200221",
+      "name": "몽환의 비숍",
+      "sourceAtlas": "card_uncommon_4.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a6959320a951ec196922280fa0ccca66871df88af6fcbdd9a57aeded4c98b65d"
+    },
+    {
+      "id": "3200222",
+      "name": "시이라",
+      "sourceAtlas": "card_uncommon_4.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a6959320a951ec196922280fa0ccca66871df88af6fcbdd9a57aeded4c98b65d"
+    },
+    {
+      "id": "3200223",
+      "name": "루벤스타인 델 아르코",
+      "sourceAtlas": "card_uncommon_5.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "caa3d49e7d1eecc2a43aaa30b77b784ead9fdb7f4f73c8d32e0afce7b81f128d"
+    },
+    {
+      "id": "3200224",
+      "name": "이마르",
+      "sourceAtlas": "card_uncommon_5.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "caa3d49e7d1eecc2a43aaa30b77b784ead9fdb7f4f73c8d32e0afce7b81f128d"
+    },
+    {
+      "id": "3200225",
+      "name": "루티아",
+      "sourceAtlas": "card_uncommon_6.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8fb1562b8ad263e260430b10e82ea8f0b00e62e376c252776065e606d58d2de8"
+    },
+    {
+      "id": "3200226",
+      "name": "모르페오",
+      "sourceAtlas": "card_uncommon_5.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "caa3d49e7d1eecc2a43aaa30b77b784ead9fdb7f4f73c8d32e0afce7b81f128d"
+    },
+    {
+      "id": "3200227",
+      "name": "모리나",
+      "sourceAtlas": "card_uncommon_5.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "caa3d49e7d1eecc2a43aaa30b77b784ead9fdb7f4f73c8d32e0afce7b81f128d"
+    },
+    {
+      "id": "3200228",
+      "name": "월향도사",
+      "sourceAtlas": "card_uncommon_5.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "caa3d49e7d1eecc2a43aaa30b77b784ead9fdb7f4f73c8d32e0afce7b81f128d"
+    },
+    {
+      "id": "3200229",
+      "name": "다쿠쿠",
+      "sourceAtlas": "card_uncommon_5.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "caa3d49e7d1eecc2a43aaa30b77b784ead9fdb7f4f73c8d32e0afce7b81f128d"
+    },
+    {
+      "id": "3200230",
+      "name": "표류소녀 엠마",
+      "sourceAtlas": "card_uncommon_5.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "caa3d49e7d1eecc2a43aaa30b77b784ead9fdb7f4f73c8d32e0afce7b81f128d"
+    },
+    {
+      "id": "3200231",
+      "name": "타냐 벤텀",
+      "sourceAtlas": "card_uncommon_5.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "caa3d49e7d1eecc2a43aaa30b77b784ead9fdb7f4f73c8d32e0afce7b81f128d"
+    },
+    {
+      "id": "3200232",
+      "name": "고비우스 24세",
+      "sourceAtlas": "card_uncommon_6.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8fb1562b8ad263e260430b10e82ea8f0b00e62e376c252776065e606d58d2de8"
+    },
+    {
+      "id": "3200233",
+      "name": "용병 세이라",
+      "sourceAtlas": "card_uncommon_6.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8fb1562b8ad263e260430b10e82ea8f0b00e62e376c252776065e606d58d2de8"
+    },
+    {
+      "id": "3200234",
+      "name": "리웰라",
+      "sourceAtlas": "card_common_0.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "f934ef4c568d9353201bd4c90b9cf4533fb013876d646c3f91a7a6f412604ba0"
+    },
+    {
+      "id": "3200235",
+      "name": "비비안",
+      "sourceAtlas": "card_common_0.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "f934ef4c568d9353201bd4c90b9cf4533fb013876d646c3f91a7a6f412604ba0"
+    },
+    {
+      "id": "3200236",
+      "name": "크란테루스",
+      "sourceAtlas": "card_common_0.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "f934ef4c568d9353201bd4c90b9cf4533fb013876d646c3f91a7a6f412604ba0"
+    },
+    {
+      "id": "3200237",
+      "name": "멜피셔스",
+      "sourceAtlas": "card_common_0.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "f934ef4c568d9353201bd4c90b9cf4533fb013876d646c3f91a7a6f412604ba0"
+    },
+    {
+      "id": "3200238",
+      "name": "나루니",
+      "sourceAtlas": "card_common_0.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "f934ef4c568d9353201bd4c90b9cf4533fb013876d646c3f91a7a6f412604ba0"
+    },
+    {
+      "id": "3200239",
+      "name": "사자탈",
+      "sourceAtlas": "card_common_0.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "f934ef4c568d9353201bd4c90b9cf4533fb013876d646c3f91a7a6f412604ba0"
+    },
+    {
+      "id": "3200240",
+      "name": "고블린 장로 발루",
+      "sourceAtlas": "card_common_0.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "f934ef4c568d9353201bd4c90b9cf4533fb013876d646c3f91a7a6f412604ba0"
+    },
+    {
+      "id": "3200241",
+      "name": "테르나크",
+      "sourceAtlas": "card_common_0.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "f934ef4c568d9353201bd4c90b9cf4533fb013876d646c3f91a7a6f412604ba0"
+    },
+    {
+      "id": "3200242",
+      "name": "카드리",
+      "sourceAtlas": "card_common_1.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "18667345fc1d777ca9b6b2d766bbfbc038ba4b16c46dcff104cc2f35da8553ac"
+    },
+    {
+      "id": "3200243",
+      "name": "투란",
+      "sourceAtlas": "card_common_1.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "18667345fc1d777ca9b6b2d766bbfbc038ba4b16c46dcff104cc2f35da8553ac"
+    },
+    {
+      "id": "3200244",
+      "name": "참크리",
+      "sourceAtlas": "card_common_1.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "18667345fc1d777ca9b6b2d766bbfbc038ba4b16c46dcff104cc2f35da8553ac"
+    },
+    {
+      "id": "3200245",
+      "name": "몽환의 폰",
+      "sourceAtlas": "card_common_1.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "18667345fc1d777ca9b6b2d766bbfbc038ba4b16c46dcff104cc2f35da8553ac"
+    },
+    {
+      "id": "3200246",
+      "name": "텔파",
+      "sourceAtlas": "card_common_1.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "18667345fc1d777ca9b6b2d766bbfbc038ba4b16c46dcff104cc2f35da8553ac"
+    },
+    {
+      "id": "3200247",
+      "name": "이와르",
+      "sourceAtlas": "card_common_1.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "18667345fc1d777ca9b6b2d766bbfbc038ba4b16c46dcff104cc2f35da8553ac"
+    },
+    {
+      "id": "3200248",
+      "name": "첼라",
+      "sourceAtlas": "card_common_1.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "18667345fc1d777ca9b6b2d766bbfbc038ba4b16c46dcff104cc2f35da8553ac"
+    },
+    {
+      "id": "3200249",
+      "name": "나비",
+      "sourceAtlas": "card_common_1.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "18667345fc1d777ca9b6b2d766bbfbc038ba4b16c46dcff104cc2f35da8553ac"
+    },
+    {
+      "id": "3200250",
+      "name": "데메타르",
+      "sourceAtlas": "card_common_2.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "9befdc1346309218f0a1ba2c9ea61ba9607e7ffc876d5cf5381c5c3fc34da428"
+    },
+    {
+      "id": "3200251",
+      "name": "두키칼리버",
+      "sourceAtlas": "card_common_2.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "9befdc1346309218f0a1ba2c9ea61ba9607e7ffc876d5cf5381c5c3fc34da428"
+    },
+    {
+      "id": "3200252",
+      "name": "벨리타",
+      "sourceAtlas": "card_common_2.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "9befdc1346309218f0a1ba2c9ea61ba9607e7ffc876d5cf5381c5c3fc34da428"
+    },
+    {
+      "id": "3200253",
+      "name": "네스",
+      "sourceAtlas": "card_common_2.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "9befdc1346309218f0a1ba2c9ea61ba9607e7ffc876d5cf5381c5c3fc34da428"
+    },
+    {
+      "id": "3200254",
+      "name": "난민 파밀리아",
+      "sourceAtlas": "card_common_2.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "9befdc1346309218f0a1ba2c9ea61ba9607e7ffc876d5cf5381c5c3fc34da428"
+    },
+    {
+      "id": "3200255",
+      "name": "다람쥐 욤",
+      "sourceAtlas": "card_common_2.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "9befdc1346309218f0a1ba2c9ea61ba9607e7ffc876d5cf5381c5c3fc34da428"
+    },
+    {
+      "id": "3200256",
+      "name": "여우 사피아노",
+      "sourceAtlas": "card_common_2.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "9befdc1346309218f0a1ba2c9ea61ba9607e7ffc876d5cf5381c5c3fc34da428"
+    },
+    {
+      "id": "3200257",
+      "name": "기자 마티아스",
+      "sourceAtlas": "card_common_2.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "9befdc1346309218f0a1ba2c9ea61ba9607e7ffc876d5cf5381c5c3fc34da428"
+    },
+    {
+      "id": "3200300",
+      "name": "니아",
+      "sourceAtlas": "card_epic_8.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "f499016d04c5f0ceada56d54743892f8105df5a069002106500155bff07526ad"
+    },
+    {
+      "id": "3200301",
+      "name": "샤나",
+      "sourceAtlas": "card_epic_9.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "97d4552a995d839b8c0f730c75e68895c78fc1e6d7fb93fdf71c80c4e28cf574"
+    },
+    {
+      "id": "3200305",
+      "name": "알비온",
+      "sourceAtlas": "card_epic_9.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "97d4552a995d839b8c0f730c75e68895c78fc1e6d7fb93fdf71c80c4e28cf574"
+    },
+    {
+      "id": "3200311",
+      "name": "광기를 잃은 쿠크세이튼",
+      "sourceAtlas": "card_epic_9.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "97d4552a995d839b8c0f730c75e68895c78fc1e6d7fb93fdf71c80c4e28cf574"
+    },
+    {
+      "id": "3200312",
+      "name": "아르고스",
+      "sourceAtlas": "card_epic_9.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "97d4552a995d839b8c0f730c75e68895c78fc1e6d7fb93fdf71c80c4e28cf574"
+    },
+    {
+      "id": "3200302",
+      "name": "자하라",
+      "sourceAtlas": "card_rare_11.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a8e2d2d991bd4d17785046b5e888c6ca44cfdccddb8463325f5ed388d696ed02"
+    },
+    {
+      "id": "3200303",
+      "name": "리루",
+      "sourceAtlas": "card_rare_11.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a8e2d2d991bd4d17785046b5e888c6ca44cfdccddb8463325f5ed388d696ed02"
+    },
+    {
+      "id": "3200304",
+      "name": "나기",
+      "sourceAtlas": "card_rare_11.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a8e2d2d991bd4d17785046b5e888c6ca44cfdccddb8463325f5ed388d696ed02"
+    },
+    {
+      "id": "3200308",
+      "name": "세토",
+      "sourceAtlas": "card_rare_11.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a8e2d2d991bd4d17785046b5e888c6ca44cfdccddb8463325f5ed388d696ed02"
+    },
+    {
+      "id": "3200309",
+      "name": "키케라",
+      "sourceAtlas": "card_rare_11.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a8e2d2d991bd4d17785046b5e888c6ca44cfdccddb8463325f5ed388d696ed02"
+    },
+    {
+      "id": "3200310",
+      "name": "스텔라",
+      "sourceAtlas": "card_rare_11.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a8e2d2d991bd4d17785046b5e888c6ca44cfdccddb8463325f5ed388d696ed02"
+    },
+    {
+      "id": "3200307",
+      "name": "하리야",
+      "sourceAtlas": "card_uncommon_6.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "8fb1562b8ad263e260430b10e82ea8f0b00e62e376c252776065e606d58d2de8"
+    },
+    {
+      "id": "3200306",
+      "name": "베르베로",
+      "sourceAtlas": "card_common_3.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "dabdf85e07a4e383960729a2042512793703cc531b2c10a7ed98724757d08451"
+    },
+    {
+      "id": "3200400",
+      "name": "데스칼루다",
+      "sourceAtlas": "card_epic_9.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "97d4552a995d839b8c0f730c75e68895c78fc1e6d7fb93fdf71c80c4e28cf574"
+    },
+    {
+      "id": "3200401",
+      "name": "하이거",
+      "sourceAtlas": "card_rare_11.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a8e2d2d991bd4d17785046b5e888c6ca44cfdccddb8463325f5ed388d696ed02"
+    },
+    {
+      "id": "3200402",
+      "name": "루기네",
+      "sourceAtlas": "card_rare_11.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a8e2d2d991bd4d17785046b5e888c6ca44cfdccddb8463325f5ed388d696ed02"
+    },
+    {
+      "id": "3200403",
+      "name": "제레온",
+      "sourceAtlas": "card_rare_12.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a7462b12afdf9061b7f2f93b77d2db8fd82c102b4a75c9891336a1ce076f1239"
+    },
+    {
+      "id": "3200404",
+      "name": "베른 젠로드",
+      "sourceAtlas": "card_rare_12.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a7462b12afdf9061b7f2f93b77d2db8fd82c102b4a75c9891336a1ce076f1239"
+    },
+    {
+      "id": "3200405",
+      "name": "칸다리아 네리아",
+      "sourceAtlas": "card_rare_12.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a7462b12afdf9061b7f2f93b77d2db8fd82c102b4a75c9891336a1ce076f1239"
+    },
+    {
+      "id": "3200406",
+      "name": "신디",
+      "sourceAtlas": "card_rare_12.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "a7462b12afdf9061b7f2f93b77d2db8fd82c102b4a75c9891336a1ce076f1239"
+    },
+    {
+      "id": "3200407",
+      "name": "사트라",
+      "sourceAtlas": "card_uncommon_6.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "8fb1562b8ad263e260430b10e82ea8f0b00e62e376c252776065e606d58d2de8"
+    },
+    {
+      "id": "3200408",
+      "name": "킬리언",
+      "sourceAtlas": "card_uncommon_6.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "8fb1562b8ad263e260430b10e82ea8f0b00e62e376c252776065e606d58d2de8"
+    },
+    {
+      "id": "3200409",
+      "name": "오크 장로 질록",
+      "sourceAtlas": "card_uncommon_6.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "8fb1562b8ad263e260430b10e82ea8f0b00e62e376c252776065e606d58d2de8"
+    },
+    {
+      "id": "3200410",
+      "name": "루드벡",
+      "sourceAtlas": "card_uncommon_6.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "8fb1562b8ad263e260430b10e82ea8f0b00e62e376c252776065e606d58d2de8"
+    },
+    {
+      "id": "3200411",
+      "name": "알베르토",
+      "sourceAtlas": "card_common_3.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "dabdf85e07a4e383960729a2042512793703cc531b2c10a7ed98724757d08451"
+    },
+    {
+      "id": "3200412",
+      "name": "키에사",
+      "sourceAtlas": "card_common_3.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "dabdf85e07a4e383960729a2042512793703cc531b2c10a7ed98724757d08451"
+    },
+    {
+      "id": "3200413",
+      "name": "하템",
+      "sourceAtlas": "card_common_3.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "dabdf85e07a4e383960729a2042512793703cc531b2c10a7ed98724757d08451"
+    },
+    {
+      "id": "3200414",
+      "name": "쿤겔라니움",
+      "sourceAtlas": "card_epic_9.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "97d4552a995d839b8c0f730c75e68895c78fc1e6d7fb93fdf71c80c4e28cf574"
+    },
+    {
+      "id": "3200415",
+      "name": "파파",
+      "sourceAtlas": "card_uncommon_7.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "63bd55585b1214ca84c66967201d446cf008da6e56d0479158a1f108caec0930"
+    },
+    {
+      "id": "3200416",
+      "name": "하누마탄",
+      "sourceAtlas": "card_epic_9.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "97d4552a995d839b8c0f730c75e68895c78fc1e6d7fb93fdf71c80c4e28cf574"
+    },
+    {
+      "id": "3200500",
+      "name": "뮨 히다카",
+      "sourceAtlas": "card_epic_16.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "755cd73c136800964898dbe5330a8b12f602050fe0a9a4482823750d2fafd96c"
+    },
+    {
+      "id": "3200501",
+      "name": "오스피어",
+      "sourceAtlas": "card_epic_16.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "755cd73c136800964898dbe5330a8b12f602050fe0a9a4482823750d2fafd96c"
+    },
+    {
+      "id": "3200502",
+      "name": "다르시",
+      "sourceAtlas": "card_epic_16.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "755cd73c136800964898dbe5330a8b12f602050fe0a9a4482823750d2fafd96c"
+    },
+    {
+      "id": "3200503",
+      "name": "아르노",
+      "sourceAtlas": "card_rare_12.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a7462b12afdf9061b7f2f93b77d2db8fd82c102b4a75c9891336a1ce076f1239"
+    },
+    {
+      "id": "3200504",
+      "name": "바스키아",
+      "sourceAtlas": "card_rare_12.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a7462b12afdf9061b7f2f93b77d2db8fd82c102b4a75c9891336a1ce076f1239"
+    },
+    {
+      "id": "3200505",
+      "name": "사일러스",
+      "sourceAtlas": "card_rare_12.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a7462b12afdf9061b7f2f93b77d2db8fd82c102b4a75c9891336a1ce076f1239"
+    },
+    {
+      "id": "3200506",
+      "name": "로웬 젠로드",
+      "sourceAtlas": "card_uncommon_7.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "63bd55585b1214ca84c66967201d446cf008da6e56d0479158a1f108caec0930"
+    },
+    {
+      "id": "3200507",
+      "name": "앙케",
+      "sourceAtlas": "card_rare_12.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "a7462b12afdf9061b7f2f93b77d2db8fd82c102b4a75c9891336a1ce076f1239"
+    },
+    {
+      "id": "3200508",
+      "name": "피엘라",
+      "sourceAtlas": "card_rare_13.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "77ba1e8fb1a2478f5ac6f22ebd33765b6294ab6d1d8a0c67b65c6dc3d29b2fa6"
+    },
+    {
+      "id": "3200509",
+      "name": "빌헬름",
+      "sourceAtlas": "card_rare_13.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "77ba1e8fb1a2478f5ac6f22ebd33765b6294ab6d1d8a0c67b65c6dc3d29b2fa6"
+    },
+    {
+      "id": "3200510",
+      "name": "레퓌스",
+      "sourceAtlas": "card_uncommon_7.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "63bd55585b1214ca84c66967201d446cf008da6e56d0479158a1f108caec0930"
+    },
+    {
+      "id": "3200511",
+      "name": "하눈",
+      "sourceAtlas": "card_uncommon_7.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "63bd55585b1214ca84c66967201d446cf008da6e56d0479158a1f108caec0930"
+    },
+    {
+      "id": "3200512",
+      "name": "마리나",
+      "sourceAtlas": "card_uncommon_7.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "63bd55585b1214ca84c66967201d446cf008da6e56d0479158a1f108caec0930"
+    },
+    {
+      "id": "3200600",
+      "name": "라우리엘",
+      "sourceAtlas": "card_epic_11.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "fdd072545051ae4ac0933ca86aa1e4c62183eeae7e8edb68cce78cd3489426a3"
+    },
+    {
+      "id": "3200601",
+      "name": "아자키엘",
+      "sourceAtlas": "card_rare_13.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "77ba1e8fb1a2478f5ac6f22ebd33765b6294ab6d1d8a0c67b65c6dc3d29b2fa6"
+    },
+    {
+      "id": "3200602",
+      "name": "벨루마테",
+      "sourceAtlas": "card_rare_14.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "ee63078b520aae619103d79a054d2dd7a343ebb980494db2a1b0ce41467fa58b"
+    },
+    {
+      "id": "3200603",
+      "name": "디오게네스",
+      "sourceAtlas": "card_rare_14.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "ee63078b520aae619103d79a054d2dd7a343ebb980494db2a1b0ce41467fa58b"
+    },
+    {
+      "id": "3200604",
+      "name": "다이나웨일",
+      "sourceAtlas": "card_rare_14.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "ee63078b520aae619103d79a054d2dd7a343ebb980494db2a1b0ce41467fa58b"
+    },
+    {
+      "id": "3200605",
+      "name": "프리우나",
+      "sourceAtlas": "card_uncommon_7.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "63bd55585b1214ca84c66967201d446cf008da6e56d0479158a1f108caec0930"
+    },
+    {
+      "id": "3200606",
+      "name": "티엔",
+      "sourceAtlas": "card_uncommon_7.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "63bd55585b1214ca84c66967201d446cf008da6e56d0479158a1f108caec0930"
+    },
+    {
+      "id": "3200607",
+      "name": "유클리드",
+      "sourceAtlas": "card_uncommon_7.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "63bd55585b1214ca84c66967201d446cf008da6e56d0479158a1f108caec0930"
+    },
+    {
+      "id": "3200608",
+      "name": "키르케",
+      "sourceAtlas": "card_uncommon_8.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "0fb6206eca1e6ae78e03501310f83cfa5c30318eadd0e041f06b185576cff152"
+    },
+    {
+      "id": "3200609",
+      "name": "하늘 고래",
+      "sourceAtlas": "card_uncommon_8.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "0fb6206eca1e6ae78e03501310f83cfa5c30318eadd0e041f06b185576cff152"
+    },
+    {
+      "id": "3200610",
+      "name": "별자리 큰뱀",
+      "sourceAtlas": "card_uncommon_8.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "0fb6206eca1e6ae78e03501310f83cfa5c30318eadd0e041f06b185576cff152"
+    },
+    {
+      "id": "3200611",
+      "name": "코니",
+      "sourceAtlas": "card_uncommon_8.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "0fb6206eca1e6ae78e03501310f83cfa5c30318eadd0e041f06b185576cff152"
+    },
+    {
+      "id": "3200612",
+      "name": "영원의 아크 카양겔",
+      "sourceAtlas": "card_epic_11.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "fdd072545051ae4ac0933ca86aa1e4c62183eeae7e8edb68cce78cd3489426a3"
+    },
+    {
+      "id": "3200613",
+      "name": "에버그레이스",
+      "sourceAtlas": "card_legend_4.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "ca0472dd532535e4da029f4ee6dfb00c7f13173acf4cdcb3638660c0c26bb1fe"
+    },
+    {
+      "id": "3200620",
+      "name": "소나벨",
+      "sourceAtlas": "card_epic_16.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "755cd73c136800964898dbe5330a8b12f602050fe0a9a4482823750d2fafd96c"
+    },
+    {
+      "id": "3200621",
+      "name": "가르가디스",
+      "sourceAtlas": "card_epic_11.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "fdd072545051ae4ac0933ca86aa1e4c62183eeae7e8edb68cce78cd3489426a3"
+    },
+    {
+      "id": "3200700",
+      "name": "어린 아만",
+      "sourceAtlas": "card_epic_11.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "fdd072545051ae4ac0933ca86aa1e4c62183eeae7e8edb68cce78cd3489426a3"
+    },
+    {
+      "id": "3200701",
+      "name": "클라우디아",
+      "sourceAtlas": "card_rare_14.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "ee63078b520aae619103d79a054d2dd7a343ebb980494db2a1b0ce41467fa58b"
+    },
+    {
+      "id": "3200702",
+      "name": "알폰스 베디체",
+      "sourceAtlas": "card_rare_14.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "ee63078b520aae619103d79a054d2dd7a343ebb980494db2a1b0ce41467fa58b"
+    },
+    {
+      "id": "3200703",
+      "name": "자크라",
+      "sourceAtlas": "card_rare_14.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "ee63078b520aae619103d79a054d2dd7a343ebb980494db2a1b0ce41467fa58b"
+    },
+    {
+      "id": "3200704",
+      "name": "안토니오 주교",
+      "sourceAtlas": "card_rare_14.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "ee63078b520aae619103d79a054d2dd7a343ebb980494db2a1b0ce41467fa58b"
+    },
+    {
+      "id": "3200705",
+      "name": "로잘린 베디체",
+      "sourceAtlas": "card_uncommon_8.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "0fb6206eca1e6ae78e03501310f83cfa5c30318eadd0e041f06b185576cff152"
+    },
+    {
+      "id": "3200800",
+      "name": "바르칸",
+      "sourceAtlas": "card_legend_4.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "ca0472dd532535e4da029f4ee6dfb00c7f13173acf4cdcb3638660c0c26bb1fe"
+    },
+    {
+      "id": "3200801",
+      "name": "세헤라데",
+      "sourceAtlas": "card_epic_17.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "c413af366aa8d63bc1dfe59f00924af4994f45efd0e93fbd098a95c0bc50645d"
+    },
+    {
+      "id": "3200803",
+      "name": "베히모스",
+      "sourceAtlas": "card_epic_17.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "c413af366aa8d63bc1dfe59f00924af4994f45efd0e93fbd098a95c0bc50645d"
+    },
+    {
+      "id": "3200807",
+      "name": "라자람",
+      "sourceAtlas": "card_rare_15.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "77756791abb48845da9cd0e21854cccd888a7d441451ddc3a401d7ad2a62b280"
+    },
+    {
+      "id": "3200808",
+      "name": "라카이서스",
+      "sourceAtlas": "card_rare_17.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "e210ca6891d21f6ae1f0ecceb0b035b4c9b534f097f9e539a30e5dc2a89ccae2"
+    },
+    {
+      "id": "3200811",
+      "name": "칼테이야",
+      "sourceAtlas": "card_uncommon_8.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "0fb6206eca1e6ae78e03501310f83cfa5c30318eadd0e041f06b185576cff152"
+    },
+    {
+      "id": "3200812",
+      "name": "파이어혼",
+      "sourceAtlas": "card_uncommon_9.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "adb4f1bda328075addd2de6e63d002944dc1804d507c5bb6c48c6d64c1d15a89"
+    },
+    {
+      "id": "3200802",
+      "name": "마리우",
+      "sourceAtlas": "card_epic_17.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "c413af366aa8d63bc1dfe59f00924af4994f45efd0e93fbd098a95c0bc50645d"
+    },
+    {
+      "id": "3200804",
+      "name": "아이작",
+      "sourceAtlas": "card_rare_17.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "e210ca6891d21f6ae1f0ecceb0b035b4c9b534f097f9e539a30e5dc2a89ccae2"
+    },
+    {
+      "id": "3200805",
+      "name": "마레가",
+      "sourceAtlas": "card_rare_17.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "e210ca6891d21f6ae1f0ecceb0b035b4c9b534f097f9e539a30e5dc2a89ccae2"
+    },
+    {
+      "id": "3200806",
+      "name": "칼리나리 네리아",
+      "sourceAtlas": "card_rare_14.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "ee63078b520aae619103d79a054d2dd7a343ebb980494db2a1b0ce41467fa58b"
+    },
+    {
+      "id": "3200809",
+      "name": "베라드",
+      "sourceAtlas": "card_uncommon_8.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "0fb6206eca1e6ae78e03501310f83cfa5c30318eadd0e041f06b185576cff152"
+    },
+    {
+      "id": "3200810",
+      "name": "닐라이",
+      "sourceAtlas": "card_uncommon_8.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "0fb6206eca1e6ae78e03501310f83cfa5c30318eadd0e041f06b185576cff152"
+    },
+    {
+      "id": "3200813",
+      "name": "베스칼",
+      "sourceAtlas": "card_epic_12.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "2631a1cc28dd168e72dee7a80983c6f3c16ad0426341a709aaa885c59d37aabf"
+    },
+    {
+      "id": "3200900",
+      "name": "게메트",
+      "sourceAtlas": "card_uncommon_9.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "adb4f1bda328075addd2de6e63d002944dc1804d507c5bb6c48c6d64c1d15a89"
+    },
+    {
+      "id": "3200901",
+      "name": "네페르",
+      "sourceAtlas": "card_uncommon_9.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "adb4f1bda328075addd2de6e63d002944dc1804d507c5bb6c48c6d64c1d15a89"
+    },
+    {
+      "id": "3200902",
+      "name": "프타",
+      "sourceAtlas": "card_uncommon_9.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "adb4f1bda328075addd2de6e63d002944dc1804d507c5bb6c48c6d64c1d15a89"
+    },
+    {
+      "id": "3200903",
+      "name": "까미",
+      "sourceAtlas": "card_uncommon_9.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "adb4f1bda328075addd2de6e63d002944dc1804d507c5bb6c48c6d64c1d15a89"
+    },
+    {
+      "id": "3200904",
+      "name": "에키드나",
+      "sourceAtlas": "card_legend_4.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "ca0472dd532535e4da029f4ee6dfb00c7f13173acf4cdcb3638660c0c26bb1fe"
+    },
+    {
+      "id": "3200905",
+      "name": "다르키엘",
+      "sourceAtlas": "card_rare_15.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "77756791abb48845da9cd0e21854cccd888a7d441451ddc3a401d7ad2a62b280"
+    },
+    {
+      "id": "3200906",
+      "name": "폭풍의 베히모스",
+      "sourceAtlas": "card_legend_4.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "ca0472dd532535e4da029f4ee6dfb00c7f13173acf4cdcb3638660c0c26bb1fe"
+    },
+    {
+      "id": "3201000",
+      "name": "부활하는 카제로스",
+      "sourceAtlas": "card_legend_4.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "ca0472dd532535e4da029f4ee6dfb00c7f13173acf4cdcb3638660c0c26bb1fe"
+    },
+    {
+      "id": "3201002",
+      "name": "욕망의 비아키스",
+      "sourceAtlas": "card_legend_4.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "ca0472dd532535e4da029f4ee6dfb00c7f13173acf4cdcb3638660c0c26bb1fe"
+    },
+    {
+      "id": "3201003",
+      "name": "춤추는 쿠크세이튼",
+      "sourceAtlas": "card_legend_5.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "6660fc2fe3a123cdb184cd8074aaa7fd27eec961eb6d3d5ac35904348dc7d0bb"
+    },
+    {
+      "id": "3201004",
+      "name": "부패의 일리아칸",
+      "sourceAtlas": "card_legend_5.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "6660fc2fe3a123cdb184cd8074aaa7fd27eec961eb6d3d5ac35904348dc7d0bb"
+    },
+    {
+      "id": "3201005",
+      "name": "절망의 카멘",
+      "sourceAtlas": "card_legend_5.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "6660fc2fe3a123cdb184cd8074aaa7fd27eec961eb6d3d5ac35904348dc7d0bb"
+    },
+    {
+      "id": "3201006",
+      "name": "악몽의 아브렐슈드",
+      "sourceAtlas": "card_legend_5.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "6660fc2fe3a123cdb184cd8074aaa7fd27eec961eb6d3d5ac35904348dc7d0bb"
+    },
+    {
+      "id": "3201007",
+      "name": "교활한 카마인",
+      "sourceAtlas": "card_legend_5.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "6660fc2fe3a123cdb184cd8074aaa7fd27eec961eb6d3d5ac35904348dc7d0bb"
+    },
+    {
+      "id": "3201008",
+      "name": "심연의 방랑자",
+      "sourceAtlas": "card_legend_5.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "6660fc2fe3a123cdb184cd8074aaa7fd27eec961eb6d3d5ac35904348dc7d0bb"
+    },
+    {
+      "id": "3201009",
+      "name": "구스토",
+      "sourceAtlas": "card_legend_5.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "6660fc2fe3a123cdb184cd8074aaa7fd27eec961eb6d3d5ac35904348dc7d0bb"
+    },
+    {
+      "id": "3201010",
+      "name": "바실리오",
+      "sourceAtlas": "card_legend_5.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "6660fc2fe3a123cdb184cd8074aaa7fd27eec961eb6d3d5ac35904348dc7d0bb"
+    },
+    {
+      "id": "3201011",
+      "name": "각성한 진저웨일",
+      "sourceAtlas": "card_legend_6.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "54b368263a5c9c327d3c4ac2cc1721e6ad9685d2018619999971143beef4d08b"
+    },
+    {
+      "id": "3201012",
+      "name": "전장을 지배하는 아제나",
+      "sourceAtlas": "card_legend_6.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "54b368263a5c9c327d3c4ac2cc1721e6ad9685d2018619999971143beef4d08b"
+    },
+    {
+      "id": "3201013",
+      "name": "라제니스를 이끄는 니나브",
+      "sourceAtlas": "card_legend_6.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "54b368263a5c9c327d3c4ac2cc1721e6ad9685d2018619999971143beef4d08b"
+    },
+    {
+      "id": "3201014",
+      "name": "유적을 찾은 카단",
+      "sourceAtlas": "card_legend_6.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "54b368263a5c9c327d3c4ac2cc1721e6ad9685d2018619999971143beef4d08b"
+    },
+    {
+      "id": "3201015",
+      "name": "총사령관 실리안",
+      "sourceAtlas": "card_legend_6.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "54b368263a5c9c327d3c4ac2cc1721e6ad9685d2018619999971143beef4d08b"
+    },
+    {
+      "id": "3201016",
+      "name": "작전을 지휘하는 샨디",
+      "sourceAtlas": "card_legend_6.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "54b368263a5c9c327d3c4ac2cc1721e6ad9685d2018619999971143beef4d08b"
+    },
+    {
+      "id": "3201017",
+      "name": "피요르긴을 휘두르는 바훈투르",
+      "sourceAtlas": "card_legend_6.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "54b368263a5c9c327d3c4ac2cc1721e6ad9685d2018619999971143beef4d08b"
+    },
+    {
+      "id": "3201018",
+      "name": "도철을 다루는 웨이",
+      "sourceAtlas": "card_legend_6.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "54b368263a5c9c327d3c4ac2cc1721e6ad9685d2018619999971143beef4d08b"
+    },
+    {
+      "id": "3201019",
+      "name": "선택한 아만",
+      "sourceAtlas": "card_legend_7.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "522804f419df0a15a33609d92723365260df90817a762939a3f2b91ccb9e8d67"
+    },
+    {
+      "id": "3201020",
+      "name": "검은 산의 포식자",
+      "sourceAtlas": "card_epic_12.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "2631a1cc28dd168e72dee7a80983c6f3c16ad0426341a709aaa885c59d37aabf"
+    },
+    {
+      "id": "3201022",
+      "name": "조롱하는 쿠크",
+      "sourceAtlas": "card_epic_12.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "2631a1cc28dd168e72dee7a80983c6f3c16ad0426341a709aaa885c59d37aabf"
+    },
+    {
+      "id": "3201023",
+      "name": "비웃는 세이튼",
+      "sourceAtlas": "card_epic_12.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "2631a1cc28dd168e72dee7a80983c6f3c16ad0426341a709aaa885c59d37aabf"
+    },
+    {
+      "id": "3201026",
+      "name": "금기를 걷는 자 발리나크",
+      "sourceAtlas": "card_epic_13.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "fce5261de42077621305073a5ce78c0a5db16fc4f8308895632b6078054cfce4"
+    },
+    {
+      "id": "3201027",
+      "name": "칠흑의 숭배자 킬리네사",
+      "sourceAtlas": "card_epic_13.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "fce5261de42077621305073a5ce78c0a5db16fc4f8308895632b6078054cfce4"
+    },
+    {
+      "id": "3201028",
+      "name": "비통의 지배자 마우르그",
+      "sourceAtlas": "card_epic_13.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "fce5261de42077621305073a5ce78c0a5db16fc4f8308895632b6078054cfce4"
+    },
+    {
+      "id": "3201029",
+      "name": "렌",
+      "sourceAtlas": "card_epic_13.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "fce5261de42077621305073a5ce78c0a5db16fc4f8308895632b6078054cfce4"
+    },
+    {
+      "id": "3201030",
+      "name": "아게오로스",
+      "sourceAtlas": "card_epic_13.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "fce5261de42077621305073a5ce78c0a5db16fc4f8308895632b6078054cfce4"
+    },
+    {
+      "id": "3201031",
+      "name": "스콜라키아",
+      "sourceAtlas": "card_epic_13.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "fce5261de42077621305073a5ce78c0a5db16fc4f8308895632b6078054cfce4"
+    },
+    {
+      "id": "3201036",
+      "name": "세트",
+      "sourceAtlas": "card_rare_15.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "77756791abb48845da9cd0e21854cccd888a7d441451ddc3a401d7ad2a62b280"
+    },
+    {
+      "id": "3201037",
+      "name": "타무트",
+      "sourceAtlas": "card_rare_15.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "77756791abb48845da9cd0e21854cccd888a7d441451ddc3a401d7ad2a62b280"
+    },
+    {
+      "id": "3201038",
+      "name": "아그리스",
+      "sourceAtlas": "card_uncommon_9.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "adb4f1bda328075addd2de6e63d002944dc1804d507c5bb6c48c6d64c1d15a89"
+    },
+    {
+      "id": "3201039",
+      "name": "알키오네",
+      "sourceAtlas": "card_uncommon_9.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "adb4f1bda328075addd2de6e63d002944dc1804d507c5bb6c48c6d64c1d15a89"
+    },
+    {
+      "id": "3201100",
+      "name": "란게",
+      "sourceAtlas": "card_epic_14.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "93975810700f87145723c03e42d4c107cb4129517cb01939eb2bcc3a493927f6"
+    },
+    {
+      "id": "3201101",
+      "name": "헤아누",
+      "sourceAtlas": "card_epic_14.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "93975810700f87145723c03e42d4c107cb4129517cb01939eb2bcc3a493927f6"
+    },
+    {
+      "id": "3201102",
+      "name": "긴",
+      "sourceAtlas": "card_rare_16.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "b538021be7a9e596deec04f4ce3d68cc285a484ca2365d962a0a991377c00358"
+    },
+    {
+      "id": "3201103",
+      "name": "타라코룸",
+      "sourceAtlas": "card_rare_16.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "b538021be7a9e596deec04f4ce3d68cc285a484ca2365d962a0a991377c00358"
+    },
+    {
+      "id": "3201104",
+      "name": "린",
+      "sourceAtlas": "card_rare_16.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "b538021be7a9e596deec04f4ce3d68cc285a484ca2365d962a0a991377c00358"
+    },
+    {
+      "id": "3201105",
+      "name": "드렉탈라스",
+      "sourceAtlas": "card_epic_14.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "93975810700f87145723c03e42d4c107cb4129517cb01939eb2bcc3a493927f6"
+    },
+    {
+      "id": "3201106",
+      "name": "파후",
+      "sourceAtlas": "card_epic_14.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "93975810700f87145723c03e42d4c107cb4129517cb01939eb2bcc3a493927f6"
+    },
+    {
+      "id": "3201107",
+      "name": "유즈",
+      "sourceAtlas": "card_epic_14.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "93975810700f87145723c03e42d4c107cb4129517cb01939eb2bcc3a493927f6"
+    },
+    {
+      "id": "3201108",
+      "name": "크라티오스",
+      "sourceAtlas": "card_epic_14.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "93975810700f87145723c03e42d4c107cb4129517cb01939eb2bcc3a493927f6"
+    },
+    {
+      "id": "3201109",
+      "name": "심연의 군주 카제로스",
+      "sourceAtlas": "card_legend_7.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "522804f419df0a15a33609d92723365260df90817a762939a3f2b91ccb9e8d67"
+    },
+    {
+      "id": "3201110",
+      "name": "태초의 그림자 세이튼",
+      "sourceAtlas": "card_legend_7.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "522804f419df0a15a33609d92723365260df90817a762939a3f2b91ccb9e8d67"
+    },
+    {
+      "id": "3201114",
+      "name": "루멘칼리고",
+      "sourceAtlas": "card_epic_15.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "565f21b1624fe7f222363fb99010a0ca2aecb2504fd4325c08d6106b99005fd7"
+    },
+    {
+      "id": "3201115",
+      "name": "고통의 마녀, 세르카",
+      "sourceAtlas": "card_legend_7.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "522804f419df0a15a33609d92723365260df90817a762939a3f2b91ccb9e8d67"
+    },
+    {
+      "id": "3202030",
+      "name": "리비아의 게롤트",
+      "sourceAtlas": "card_epic_11.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "fdd072545051ae4ac0933ca86aa1e4c62183eeae7e8edb68cce78cd3489426a3"
+    },
+    {
+      "id": "3202031",
+      "name": "벤거버그의 예니퍼",
+      "sourceAtlas": "card_epic_16.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "755cd73c136800964898dbe5330a8b12f602050fe0a9a4482823750d2fafd96c"
+    },
+    {
+      "id": "3202032",
+      "name": "시릴라",
+      "sourceAtlas": "card_epic_16.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "755cd73c136800964898dbe5330a8b12f602050fe0a9a4482823750d2fafd96c"
+    },
+    {
+      "id": "3202033",
+      "name": "트리스 메리골드",
+      "sourceAtlas": "card_epic_11.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "fdd072545051ae4ac0933ca86aa1e4c62183eeae7e8edb68cce78cd3489426a3"
+    },
+    {
+      "id": "3202034",
+      "name": "단델라이온",
+      "sourceAtlas": "card_epic_12.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "2631a1cc28dd168e72dee7a80983c6f3c16ad0426341a709aaa885c59d37aabf"
+    },
+    {
+      "id": "9201404",
+      "name": "오픈을 축하하는 마리",
+      "sourceAtlas": "card_hero_2.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "cb1807baf8c859fa69a0497ab62e7566e01d5cd73250dca1f8f8018a47a60a86"
+    },
+    {
+      "id": "9201204",
+      "name": "도발하는 사샤",
+      "sourceAtlas": "card_hero_2.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "cb1807baf8c859fa69a0497ab62e7566e01d5cd73250dca1f8f8018a47a60a86"
+    },
+    {
+      "id": "9201804",
+      "name": "문학소녀 아나벨",
+      "sourceAtlas": "card_hero_2.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "cb1807baf8c859fa69a0497ab62e7566e01d5cd73250dca1f8f8018a47a60a86"
+    },
+    {
+      "id": "9200704",
+      "name": "제복 검은이빨",
+      "sourceAtlas": "card_hero_2.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "cb1807baf8c859fa69a0497ab62e7566e01d5cd73250dca1f8f8018a47a60a86"
+    },
+    {
+      "id": "9100105",
+      "name": "감사를 전하는 아만",
+      "sourceAtlas": "card_hero_2.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "cb1807baf8c859fa69a0497ab62e7566e01d5cd73250dca1f8f8018a47a60a86"
+    },
+    {
+      "id": "9100205",
+      "name": "감사를 전하는 실리안",
+      "sourceAtlas": "card_hero_2.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "cb1807baf8c859fa69a0497ab62e7566e01d5cd73250dca1f8f8018a47a60a86"
+    },
+    {
+      "id": "9400101",
+      "name": "크리스마스 눈꽃 사슴",
+      "sourceAtlas": "card_hero_2.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "cb1807baf8c859fa69a0497ab62e7566e01d5cd73250dca1f8f8018a47a60a86"
+    },
+    {
+      "id": "3202000",
+      "name": "축제를 즐기는 니나브",
+      "sourceAtlas": "card_hero_2.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "cb1807baf8c859fa69a0497ab62e7566e01d5cd73250dca1f8f8018a47a60a86"
+    },
+    {
+      "id": "3202001",
+      "name": "축제를 즐기는 에르제베트",
+      "sourceAtlas": "card_hero_3.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "aebdd1a85de010bdf8b76dcc62f2a532f7209f4de798c887aab45279969bcca5"
+    },
+    {
+      "id": "3202002",
+      "name": "축제를 즐기는 사샤",
+      "sourceAtlas": "card_hero_3.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "aebdd1a85de010bdf8b76dcc62f2a532f7209f4de798c887aab45279969bcca5"
+    },
+    {
+      "id": "3202040",
+      "name": "빛을 맞이하는 아제나",
+      "sourceAtlas": "card_epic_12.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "2631a1cc28dd168e72dee7a80983c6f3c16ad0426341a709aaa885c59d37aabf"
+    },
+    {
+      "id": "3202041",
+      "name": "빛을 맞이하는 바훈투르",
+      "sourceAtlas": "card_epic_16.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "sourceSha256": "755cd73c136800964898dbe5330a8b12f602050fe0a9a4482823750d2fafd96c"
+    },
+    {
+      "id": "3202042",
+      "name": "빛을 맞이하는 실리안",
+      "sourceAtlas": "card_epic_17.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "c413af366aa8d63bc1dfe59f00924af4994f45efd0e93fbd098a95c0bc50645d"
+    },
+    {
+      "id": "3202043",
+      "name": "빛을 맞이하는 카단",
+      "sourceAtlas": "card_epic_12.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "2631a1cc28dd168e72dee7a80983c6f3c16ad0426341a709aaa885c59d37aabf"
+    },
+    {
+      "id": "3202044",
+      "name": "빛을 맞이하는 샨디&진저웨일",
+      "sourceAtlas": "card_epic_17.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "sourceSha256": "c413af366aa8d63bc1dfe59f00924af4994f45efd0e93fbd098a95c0bc50645d"
+    }
+  ]
+}

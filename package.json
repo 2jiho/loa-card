@@ -1,0 +1,47 @@
+{
+  "name": "loa-card",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "predev": "npm run notices && node scripts/prepare-ocr-assets.mjs",
+    "prebuild": "npm run notices && npm run audit:data && node scripts/prepare-ocr-assets.mjs",
+    "dev": "vite",
+    "build": "tsc -b && vite build && node scripts/site-manifest.mjs",
+    "lint": "oxlint src dev vite.config.ts scripts",
+    "preview": "vite preview",
+    "fixture:prepare": "node scripts/prepare-fixture.mjs",
+    "fixture:frames": "node scripts/extract-frames.mjs",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "notices": "node scripts/prepare-third-party-notices.mjs",
+    "audit:distribution": "npm run notices && node scripts/audit-distribution.mjs",
+    "verify:site": "node scripts/verify-site.mjs",
+    "audit:data": "node scripts/audit-runtime-data.mjs"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.4.0",
+    "@mui/material": "^9.4.0",
+    "@techstark/opencv-js": "^5.0.0-release.1",
+    "mediabunny": "^1.61.1",
+    "onnxruntime-web": "1.30.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tesseract.js": "^6.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "fake-indexeddb": "6.2.5",
+    "ffmpeg-static": "^5.3.0",
+    "marked": "18.1.0",
+    "oxlint": "^1.81.0",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0"
+  },
+  "license": "MIT"
+}

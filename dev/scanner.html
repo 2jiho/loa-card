@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LoaCard 스캐너 개발 검사</title>
+    <style>
+      body { font: 15px/1.5 system-ui, sans-serif; max-width: 960px; margin: 32px auto; padding: 0 16px; }
+      form { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+      button, input { font: inherit; }
+      video { display: block; max-width: 360px; max-height: 220px; margin: 16px 0; }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f1f3f5; padding: 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>스캐너 개발 검사</h1>
+    <p>빈 목록에서 영상 하나 또는 이름순 이미지 묶음을 읽습니다. 오프라인 검사이며 실제 화면 공유 성능 검사는 아닙니다.</p>
+    <form>
+      <input id="files" type="file" accept="video/*,image/png,image/jpeg,image/webp" multiple aria-label="검사 입력" required />
+      <label><input id="capture-only" type="checkbox" />획득만 검사</label>
+      <button id="start" type="submit">검사 시작</button>
+      <button id="stop" type="button" disabled>중지</button>
+      <button id="save" type="button" disabled>결과 JSON 저장</button>
+    </form>
+    <video muted playsinline controls></video>
+    <p id="message" role="status">입력을 선택하세요.</p>
+    <pre id="result" aria-label="검사 요약"></pre>
+    <script type="module" src="/dev/scanner.ts"></script>
+  </body>
+</html>

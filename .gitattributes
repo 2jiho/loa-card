@@ -1,0 +1,5 @@
+# Audited upstream bytes must retain their checksums on every platform.
+# Preserve upstream whitespace in license texts as well.
+licenses/third-party/*.txt -text -whitespace
+public/scanner/paddle-characters.json -text
+public/scanner/paddle-v6-characters.json -text

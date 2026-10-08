@@ -1,0 +1,192 @@
+{
+  "reviewed": "2026-10-08",
+  "upstreamTesseractCommit": "9d9b666ad5d253451857f4085763e2a9586e984f",
+  "items": [
+    {
+      "component": "buffer",
+      "version": "6.0.3",
+      "license": "MIT",
+      "file": "buffer-6.0.3-LICENSE.txt",
+      "source": "https://registry.npmjs.org/buffer/-/buffer-6.0.3.tgz",
+      "integrity": "sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==",
+      "sha256": "06bafa45fdad2579ba0e43b0c9b2c6290287c99c4203c300254a462b38a307f6",
+      "bundledBy": "tesseract.js@6.0.1 worker.min.js",
+      "sourceMapPath": "webpack://tesseract.js/./node_modules/buffer/index.js",
+      "sourceSha256": "d061f8ce9526736839cf21cf192ae0f8941688881c9463e3c1520190f5ea770c"
+    },
+    {
+      "component": "base64-js",
+      "version": "1.5.1",
+      "license": "MIT",
+      "file": "base64-js-1.5.1-LICENSE.txt",
+      "source": "https://registry.npmjs.org/base64-js/-/base64-js-1.5.1.tgz",
+      "integrity": "sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==",
+      "sha256": "5b37224c080cdcc97c871ada971c224e9926370fe74f11b539aa1cf9f3b1aca1",
+      "bundledBy": "tesseract.js@6.0.1 worker.min.js",
+      "sourceMapPath": "webpack://tesseract.js/./node_modules/base64-js/index.js",
+      "sourceSha256": "8d6228275784338773131629c84b5fdaad8ff4d98c835c4a694b008183b6d3b1"
+    },
+    {
+      "component": "ieee754",
+      "version": "1.2.1",
+      "license": "BSD-3-Clause",
+      "file": "ieee754-1.2.1-LICENSE.txt",
+      "source": "https://registry.npmjs.org/ieee754/-/ieee754-1.2.1.tgz",
+      "integrity": "sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==",
+      "sha256": "18d45466ba3253deae04667e267a91ea8de8548f18c1125264d1c9db28194cc1",
+      "bundledBy": "tesseract.js@6.0.1 worker.min.js",
+      "sourceMapPath": "webpack://tesseract.js/./node_modules/ieee754/index.js",
+      "sourceSha256": "08661d7fe1ddc85df507150ac0c369efdb678bba0f73fd68e67d485d3a188829"
+    },
+    {
+      "component": "ONNX Runtime",
+      "version": "1.30.0",
+      "license": "upstream aggregate",
+      "file": "onnxruntime-1.30.0-ThirdPartyNotices.txt",
+      "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.30.0/ThirdPartyNotices.txt",
+      "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3"
+    },
+    {
+      "component": "tessdata_best",
+      "version": "4.1.0",
+      "license": "Apache-2.0",
+      "file": "tessdata_best-4.1.0-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/4.1.0/LICENSE",
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9"
+    },
+    {
+      "component": "tessdata_fast",
+      "version": "4.1.0",
+      "license": "Apache-2.0",
+      "file": "tessdata_fast-4.1.0-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/4.1.0/LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "component": "giflib",
+      "version": "fa37672085ce4b3d62c51627ab3c8cf2dda8009a",
+      "license": "see upstream license text",
+      "file": "core-giflib-COPYING.txt",
+      "source": "https://raw.githubusercontent.com/mirrorer/giflib/fa37672085ce4b3d62c51627ab3c8cf2dda8009a/COPYING",
+      "sha256": "0c9b7990ecdca88b676db232c226548ac408b279f550d424d996f0d83591dd8e",
+      "bundledBy": "tesseract.js-core@6.1.2 upstream third_party submodule"
+    },
+    {
+      "component": "libjpeg",
+      "version": "6c0fcb8ddee365e7abc4d332662b06900612e923",
+      "license": "see upstream license text",
+      "file": "core-libjpeg-README.txt",
+      "source": "https://raw.githubusercontent.com/LuaDist/libjpeg/6c0fcb8ddee365e7abc4d332662b06900612e923/README",
+      "sha256": "c791da525733040e622ed257c7b096b8f5191b332604ead0c6bc2b54cbd8e0d1",
+      "bundledBy": "tesseract.js-core@6.1.2 upstream third_party submodule"
+    },
+    {
+      "component": "libpng",
+      "version": "a37d4836519517bdce6cb9d956092321eca3e73b",
+      "license": "see upstream license text",
+      "file": "core-libpng-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pnggroup/libpng/a37d4836519517bdce6cb9d956092321eca3e73b/LICENSE",
+      "sha256": "33ba4e187d8b0c8d7ab2bc2e522bb095219e03089e9aa0122b4fb9eb2b7de82b",
+      "bundledBy": "tesseract.js-core@6.1.2 upstream third_party submodule"
+    },
+    {
+      "component": "libwebp",
+      "version": "20ef03ee351d4ff03fc5ff3ec4804a879d1b9d5c",
+      "license": "see upstream license text",
+      "file": "core-libwebp-COPYING.txt",
+      "source": "https://raw.githubusercontent.com/webmproject/libwebp/20ef03ee351d4ff03fc5ff3ec4804a879d1b9d5c/COPYING",
+      "sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf",
+      "bundledBy": "tesseract.js-core@6.1.2 upstream third_party submodule"
+    },
+    {
+      "component": "openlibm",
+      "version": "ae2d91698508701c83cab83714d42a1146dccf85",
+      "license": "see upstream license text",
+      "file": "core-openlibm-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/JuliaMath/openlibm/ae2d91698508701c83cab83714d42a1146dccf85/LICENSE.md",
+      "sha256": "b1843fbf5b03f519a5f0a44fce751bdd1022ae7148614923f9d6293e17a18b17",
+      "bundledBy": "tesseract.js-core@6.1.2 upstream third_party submodule"
+    },
+    {
+      "component": "tesseract",
+      "version": "5a21eebeacd77dd181eec17317de7e3a20b7b9fb",
+      "license": "see upstream license text",
+      "file": "core-tesseract-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/Balearica/tesseract/5a21eebeacd77dd181eec17317de7e3a20b7b9fb/LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "bundledBy": "tesseract.js-core@6.1.2 upstream third_party submodule"
+    },
+    {
+      "component": "leptonica",
+      "version": "4af068b56a9674da915debea4ed7e1b9885b17e8",
+      "license": "see upstream license text",
+      "file": "core-leptonica-leptonica-license.txt",
+      "source": "https://raw.githubusercontent.com/DanBloomberg/leptonica/4af068b56a9674da915debea4ed7e1b9885b17e8/leptonica-license.txt",
+      "sha256": "87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806",
+      "bundledBy": "tesseract.js-core@6.1.2 upstream third_party submodule"
+    },
+    {
+      "component": "zlib",
+      "version": "21767c654d31d2dccdde4330529775c6c5fd5389",
+      "license": "see upstream license text",
+      "file": "core-zlib-README.txt",
+      "source": "https://raw.githubusercontent.com/madler/zlib/21767c654d31d2dccdde4330529775c6c5fd5389/README",
+      "sha256": "fc2c3368901700f0acdeb1d8afeaca5923296768ec6824ecdf627aac396001fd",
+      "bundledBy": "tesseract.js-core@6.1.2 upstream third_party submodule"
+    },
+    {
+      "component": "libtiff",
+      "version": "b51bb157123264e26d34c09cc673d213aea61fc7",
+      "license": "see upstream license text",
+      "file": "core-libtiff-COPYRIGHT.txt",
+      "source": "https://gitlab.com/api/v4/projects/libtiff%2Flibtiff/repository/files/COPYRIGHT/raw?ref=b51bb157123264e26d34c09cc673d213aea61fc7",
+      "sha256": "fbd6fed7938541d2c809c0826225fc85e551fdbfa8732b10f0c87e0847acafd7",
+      "bundledBy": "tesseract.js-core@6.1.2 upstream third_party submodule"
+    },
+    {
+      "component": "protobuf",
+      "version": "OpenCV 5.0.0 vendored",
+      "license": "see upstream license text",
+      "file": "opencv-protobuf-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/opencv/opencv/5.0.0/3rdparty/protobuf/LICENSE",
+      "sha256": "6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d",
+      "bundledBy": "@techstark/opencv-js@5.0.0-release.1 build information"
+    },
+    {
+      "component": "zlib",
+      "version": "OpenCV 5.0.0 vendored",
+      "license": "see upstream license text",
+      "file": "opencv-zlib-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/opencv/opencv/5.0.0/3rdparty/zlib/LICENSE",
+      "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+      "bundledBy": "@techstark/opencv-js@5.0.0-release.1 build information"
+    },
+    {
+      "component": "flatbuffers",
+      "version": "OpenCV 5.0.0 vendored",
+      "license": "see upstream license text",
+      "file": "opencv-flatbuffers-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/opencv/opencv/5.0.0/3rdparty/flatbuffers/LICENSE.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "bundledBy": "@techstark/opencv-js@5.0.0-release.1 build information"
+    },
+    {
+      "component": "Google Material Icons",
+      "version": "737e3324305806514d7909874fa1818ae1808232",
+      "license": "Apache-2.0",
+      "file": "material-design-icons-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/737e3324305806514d7909874fa1818ae1808232/LICENSE",
+      "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
+      "bundledBy": "@mui/icons-material (SVG conversions; separate MIT package license)"
+    }
+  ],
+  "upstreamTesseractCoreCommit": "3d12e9b2d4e0e9e64bd0793e2c55b2d8f6404884",
+  "packageVersions": {
+    "tesseract.js": "6.0.1",
+    "tesseract.js-core": "6.1.2",
+    "onnxruntime-web": "1.30.0",
+    "@techstark/opencv-js": "5.0.0-release.1",
+    "@mui/icons-material": "9.4.0"
+  },
+  "opencvSha256": "b873c8211421da7b9bf41ae157a923f05a46a0b8d3e5904c44c6f3ad6d39a1bd"
+}

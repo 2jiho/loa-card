@@ -1,0 +1,7 @@
+[
+  { "name": "에버그레이스", "awakening": 1, "extraCopies": 2, "page": 6, "row": 2, "column": 2 },
+  { "name": "자크라와 사르타", "awakening": 0, "extraCopies": 0, "page": 7, "row": 2, "column": 4 },
+  { "name": "전설의 네 장로", "awakening": 0, "extraCopies": 0, "page": 7, "row": 2, "column": 7 },
+  { "name": "진멸의 창", "awakening": 0, "extraCopies": 15, "page": 7, "row": 3, "column": 9 },
+  { "name": "환영달", "awakening": 0, "extraCopies": 0, "page": 10, "row": 2, "column": 0 }
+]
