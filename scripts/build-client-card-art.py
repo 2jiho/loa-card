@@ -4,6 +4,7 @@ Requires Pillow, OpenCV and NumPy. Original atlases/DBs remain local; build/dev
 use the committed output, never require a game installation or external artwork.
 The reviewed crop map preserves its historical label provenance.
 """
+import argparse
 import base64
 import hashlib
 import json
@@ -15,7 +16,10 @@ import numpy as np
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCAL = ROOT / 'work/client-assets'
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--assets', type=Path, default=ROOT / 'work/client-assets',
+                    help='Local directory containing db/ and card-atlases/.')
+LOCAL = parser.parse_args().assets.resolve()
 OUT = ROOT / 'public/scanner'
 mapping = json.loads((ROOT / 'scripts/client-artwork-map.json').read_text(encoding='utf-8'))
 catalog = json.loads((OUT / 'cards.json').read_text(encoding='utf-8'))
@@ -47,6 +51,7 @@ for card in catalog['cards']:
     if not ref:
         continue  # Never retain a previous external reference as a fallback.
     assert ref['name'] == name
+    assert ref.get('usage', 'recognition-and-display') in ('recognition-and-display', 'display-only')
     source = LOCAL / 'card-atlases/EFUI_ICONATLAS_C/Texture2D' / ref['sourceAtlas']
     assert source.parent.resolve() == (LOCAL / 'card-atlases/EFUI_ICONATLAS_C/Texture2D').resolve()
     assert hashlib.sha256(source.read_bytes()).hexdigest() == ref['sourceSha256'], source
@@ -54,18 +59,23 @@ for card in catalog['cards']:
     x, y, w, h = ref['box']
     assert min(x, y) >= 0 and w > 0 and h > 0 and x + w <= raw.shape[1] and y + h <= raw.shape[0]
     crop = raw[y:y+h, x:x+w]
-    small = cv2.resize(crop, (24, 32), interpolation=cv2.INTER_AREA)
-    rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
-    vector = np.concatenate([rgb[6:13, 2:22].flatten(), rgb[19:24, 2:22].flatten()])
-    card['feature'] = base64.b64encode(vector.tobytes()).decode()
-    card['artSource'] = 'local-client-atlas'
-    gray = .114 * small[:, :, 0] + .587 * small[:, :, 1] + .299 * small[:, :, 2]
-    atlas[card['id']] = base64.b64encode(np.round(gray[9:19, 2:22]).astype(np.uint8).tobytes()).decode()
+    reference_hashes = {}
+    # A display association is not necessarily a unique card identity. Keep
+    # shared portraits and manually identified display additions out of matching.
+    if ref.get('usage') != 'display-only':
+        small = cv2.resize(crop, (24, 32), interpolation=cv2.INTER_AREA)
+        rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+        vector = np.concatenate([rgb[6:13, 2:22].flatten(), rgb[19:24, 2:22].flatten()])
+        card['feature'] = base64.b64encode(vector.tobytes()).decode()
+        card['artSource'] = 'local-client-atlas'
+        gray = .114 * small[:, :, 0] + .587 * small[:, :, 1] + .299 * small[:, :, 2]
+        atlas[card['id']] = base64.b64encode(np.round(gray[9:19, 2:22]).astype(np.uint8).tobytes()).decode()
+        reference_hashes = {'featureSha256': hashlib.sha256(vector.tobytes()).hexdigest(),
+                            'portraitSha256': hashlib.sha256(base64.b64decode(atlas[card['id']])).hexdigest()}
     filename = f"{key}.webp"
     card['artwork'] = filename
     images[filename] = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)).resize((160, 234), Image.Resampling.LANCZOS)
-    provenance.append({**ref, 'file': filename, 'featureSha256': hashlib.sha256(vector.tobytes()).hexdigest(),
-                       'portraitSha256': hashlib.sha256(base64.b64decode(atlas[card['id']])).hexdigest()})
+    provenance.append({**ref, 'file': filename, **reference_hashes})
 
 # Validate all input before writing any output.
 art_dir = OUT / 'artwork'
@@ -79,5 +89,6 @@ catalog['source'] = 'local-client:SeasonCard/GameMsg'
 catalog['sources'] = {'tables': {name: hashlib.sha256((LOCAL / f'db/{name}.db').read_bytes()).hexdigest() for name in ['SeasonCard', 'GameMsg']}, 'artwork': 'artwork-provenance.json', 'idCompatibility': 'Existing application IDs are preserved; clientId is the verified SeasonCard primary key.'}
 (OUT / 'cards.json').write_text(json.dumps(catalog, ensure_ascii=False, separators=(',', ':')) + '\n', encoding='utf-8')
 (OUT / 'artwork-details.json').write_text(json.dumps(atlas, separators=(',', ':')) + '\n', encoding='utf-8')
-(OUT / 'artwork-provenance.json').write_text(json.dumps({'version': 1, 'pixelSource': mapping['pixelSource'], 'labelMethod': mapping['labelMethod'], 'thumbnail': {'width': 160, 'height': 234, 'format': 'webp'}, 'cards': provenance}, ensure_ascii=False, separators=(',', ':')) + '\n', encoding='utf-8')
-print(json.dumps({'catalog': len(catalog['cards']), 'clientArt': len(atlas), 'withoutClientArt': len(catalog['cards'])-len(atlas)}))
+(OUT / 'artwork-provenance.json').write_text(json.dumps({'version': mapping['version'], 'pixelSource': mapping['pixelSource'], 'labelMethod': mapping['labelMethod'], 'thumbnail': {'width': 160, 'height': 234, 'format': 'webp'}, 'cards': provenance}, ensure_ascii=False, separators=(',', ':')) + '\n', encoding='utf-8')
+print(json.dumps({'catalog': len(catalog['cards']), 'recognitionReferences': len(atlas),
+                  'displayArt': len(provenance), 'withoutDisplayArt': len(catalog['cards'])-len(provenance)}))

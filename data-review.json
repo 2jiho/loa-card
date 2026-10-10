@@ -1,12 +1,12 @@
 {
-  "reviewedOn": "2026-10-08",
+  "reviewedOn": "2026-10-10",
   "scope": "Runtime metadata and cross references; not an exhaustive released-card audit.",
   "files": {
     "public/scanner/cards.json": {
-      "sha256": "67f4b8218256e3900c5403e21cb061ec78127caaa2f4ba242208aa5337fcea6b"
+      "sha256": "c85adc49025357fb6d2f7020862171a0b5781dcb981e81243603ba00c496b72a"
     },
     "public/scanner/artwork-provenance.json": {
-      "sha256": "b06d6f65363eb372be0699577a6f64c8c679a7f6edb2ddc7097aeedf8c80e843"
+      "sha256": "cf934d44eb60110e93382c6a5961a403323843d4dbd298a7d8d1c402599a8b37"
     },
     "public/growth/master.json": {
       "sha256": "02a61c9b1886379ee78c827d2a10a9830e51820c111ced535cd41ab1b9a2a5f5"

@@ -1,7 +1,7 @@
 {
-  "version": 1,
+  "version": 2,
   "pixelSource": "local-client-atlas",
-  "labelMethod": "Historical Inven/Codex reference images were used to select visually equivalent local crops (correlation >= 0.99, margin >= 0.05, mean RGB error <= 5). Names and rarity are verified against SeasonCard/GameMsg. This is not an authoritative DB-to-UV mapping. External reference pixels are not distributed.",
+  "labelMethod": "Historical Inven/Codex reference images were used to select visually equivalent local crops (correlation >= 0.99, margin >= 0.05, mean RGB error <= 5). Names and rarity are verified against SeasonCard/GameMsg. This is not an authoritative DB-to-UV mapping. External reference pixels are not distributed. Additional display-only entries carry individual visual identification evidence. Duplicate portraits are valid for display but are not promoted to recognition references.",
   "cards": [
     {
       "id": "3200000",
@@ -4658,6 +4658,635 @@
         362
       ],
       "sourceSha256": "c413af366aa8d63bc1dfe59f00924af4994f45efd0e93fbd098a95c0bc50645d"
+    },
+    {
+      "id": "3200012",
+      "name": "카멘",
+      "sourceAtlas": "card_legend_2.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9981772899627686,
+        "meanRgbError": 1.7024739980697632,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "59dac5ba0b665b7b99fd61564ab66482e1d5a11c49296e7b7c938349488a91dc"
+    },
+    {
+      "id": "3200005",
+      "name": "진저웨일",
+      "sourceAtlas": "card_legend_1.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9994187355041504,
+        "meanRgbError": 1.7326388359069824,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "665d0d376fbd8f40c27ca1bb44dd9c1aea91881fb2fc5e38ebbf077e63590044"
+    },
+    {
+      "id": "3200025",
+      "name": "슈헤리트",
+      "sourceAtlas": "card_epic_0.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9992698431015015,
+        "meanRgbError": 1.9631075859069824,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "b78dc04a4fa6481a10ff7980615f63a916665bf917da748629b9db198042618c"
+    },
+    {
+      "id": "3200043",
+      "name": "레바노스",
+      "sourceAtlas": "card_epic_2.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9989830255508423,
+        "meanRgbError": 2.063585042953491,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "0a0ad79535e81dac4b6e45da9c309682da6bcc2d80e3221d117d977aba1e8586"
+    },
+    {
+      "id": "3200118",
+      "name": "녹스",
+      "sourceAtlas": "card_rare_3.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9991815090179443,
+        "meanRgbError": 1.9731987714767456,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "1cc8e34b3ad8e47d000f0f32f8fbf5ac9d4ef1ce21466c8734cc4d16f92586bd"
+    },
+    {
+      "id": "3200119",
+      "name": "세티노",
+      "sourceAtlas": "card_rare_3.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9981074929237366,
+        "meanRgbError": 1.4226346015930176,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "1cc8e34b3ad8e47d000f0f32f8fbf5ac9d4ef1ce21466c8734cc4d16f92586bd"
+    },
+    {
+      "id": "3200121",
+      "name": "하이비 집행관",
+      "sourceAtlas": "card_lux_4.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9955365061759949,
+        "meanRgbError": 1.6661241054534912,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "9a3672cc3661e209ba2f5163949b823a1ae00685907dd69543aa790b2164ebb9"
+    },
+    {
+      "id": "3200128",
+      "name": "만포",
+      "sourceAtlas": "card_rare_4.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9991632699966431,
+        "meanRgbError": 1.6678602695465088,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "1301a56f1500e574ad1734d1ab3c6b640d65215535118270d3b1b92810902e3c"
+    },
+    {
+      "id": "3200138",
+      "name": "에스",
+      "sourceAtlas": "card_rare_5.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.999130129814148,
+        "meanRgbError": 1.6017794609069824,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "fd5612a41e1ed6c152c5d3cba1e02c71789034bddff3163069d68820a9075c38"
+    },
+    {
+      "id": "3200139",
+      "name": "제이",
+      "sourceAtlas": "card_rare_5.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9989537000656128,
+        "meanRgbError": 1.541015625,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "fd5612a41e1ed6c152c5d3cba1e02c71789034bddff3163069d68820a9075c38"
+    },
+    {
+      "id": "3200155",
+      "name": "수신 아포라스",
+      "sourceAtlas": "card_rare_7.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9990923404693604,
+        "meanRgbError": 2.033311605453491,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "8d04533e5bb8778e800c0557debd69a139bc6d435aa9c432e1a4d2b02b65e32a"
+    },
+    {
+      "id": "3200157",
+      "name": "솔 그랑데",
+      "sourceAtlas": "card_uncommon_3.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9977458715438843,
+        "meanRgbError": 1.7094184160232544,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "0902178fb65ed3a6d410c803fa924285dedc8adb95d0f93eadfbb8ea1022c69c"
+    },
+    {
+      "id": "3200185",
+      "name": "자이언트 웜",
+      "sourceAtlas": "card_uncommon_0.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9990729093551636,
+        "meanRgbError": 1.6488715410232544,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "a592dbfaa865a9283ec978e98af6f7724c1f496f055f6a3d380b746e84f946f7"
+    },
+    {
+      "id": "3200188",
+      "name": "카도건",
+      "sourceAtlas": "card_uncommon_0.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9992522597312927,
+        "meanRgbError": 1.7794053554534912,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "a592dbfaa865a9283ec978e98af6f7724c1f496f055f6a3d380b746e84f946f7"
+    },
+    {
+      "id": "3200192",
+      "name": "푸름 전사 브리뉴",
+      "sourceAtlas": "card_uncommon_1.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9979164004325867,
+        "meanRgbError": 1.7113715410232544,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "ee78752415c6d3016ee7a44fe09497577bb3ffe3e870694c22fef6337de0c553"
+    },
+    {
+      "id": "3200208",
+      "name": "지휘관 솔",
+      "sourceAtlas": "card_uncommon_3.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9978423714637756,
+        "meanRgbError": 1.6793619394302368,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "0902178fb65ed3a6d410c803fa924285dedc8adb95d0f93eadfbb8ea1022c69c"
+    },
+    {
+      "id": "3200213",
+      "name": "도륙자 아르르",
+      "sourceAtlas": "card_uncommon_3.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9992988705635071,
+        "meanRgbError": 1.6930338144302368,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "0902178fb65ed3a6d410c803fa924285dedc8adb95d0f93eadfbb8ea1022c69c"
+    },
+    {
+      "id": "3200214",
+      "name": "나베갈",
+      "sourceAtlas": "card_uncommon_3.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.997239351272583,
+        "meanRgbError": 1.4104818105697632,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "0902178fb65ed3a6d410c803fa924285dedc8adb95d0f93eadfbb8ea1022c69c"
+    },
+    {
+      "id": "3201001",
+      "name": "찢겨진 발탄",
+      "sourceAtlas": "card_legend_4.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9995359778404236,
+        "meanRgbError": 1.4175347089767456,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "ca0472dd532535e4da029f4ee6dfb00c7f13173acf4cdcb3638660c0c26bb1fe"
+    },
+    {
+      "id": "3201021",
+      "name": "모르페",
+      "sourceAtlas": "card_epic_12.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9991720914840698,
+        "meanRgbError": 1.2166883945465088,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "2631a1cc28dd168e72dee7a80983c6f3c16ad0426341a709aaa885c59d37aabf"
+    },
+    {
+      "id": "3201024",
+      "name": "태초의 악몽",
+      "sourceAtlas": "card_epic_13.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.997910737991333,
+        "meanRgbError": 1.3796658515930176,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "fce5261de42077621305073a5ce78c0a5db16fc4f8308895632b6078054cfce4"
+    },
+    {
+      "id": "3201025",
+      "name": "아슈타로테",
+      "sourceAtlas": "card_epic_13.png",
+      "box": [
+        248,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9992917776107788,
+        "meanRgbError": 1.1897786855697632,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "fce5261de42077621305073a5ce78c0a5db16fc4f8308895632b6078054cfce4"
+    },
+    {
+      "id": "3201032",
+      "name": "통솔자 루가루",
+      "sourceAtlas": "card_rare_15.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9982050657272339,
+        "meanRgbError": 1.3728299140930176,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "77756791abb48845da9cd0e21854cccd888a7d441451ddc3a401d7ad2a62b280"
+    },
+    {
+      "id": "3201033",
+      "name": "파괴자 루카스",
+      "sourceAtlas": "card_rare_15.png",
+      "box": [
+        744,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9990321397781372,
+        "meanRgbError": 1.2176649570465088,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "77756791abb48845da9cd0e21854cccd888a7d441451ddc3a401d7ad2a62b280"
+    },
+    {
+      "id": "3201034",
+      "name": "악몽의 게헤나",
+      "sourceAtlas": "card_rare_15.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.998272180557251,
+        "meanRgbError": 1.2758246660232544,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "77756791abb48845da9cd0e21854cccd888a7d441451ddc3a401d7ad2a62b280"
+    },
+    {
+      "id": "3201035",
+      "name": "악몽의 헬카서스",
+      "sourceAtlas": "card_rare_15.png",
+      "box": [
+        248,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "historical-reference-visual-match",
+        "correlation": 0.9979877471923828,
+        "meanRgbError": 1.3040364980697632,
+        "note": "Same or near-identical client artwork exists in multiple tiles. Display association only; insufficient separation for identity recognition."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "77756791abb48845da9cd0e21854cccd888a7d441451ddc3a401d7ad2a62b280"
+    },
+    {
+      "id": "3200093",
+      "name": "칼바서스",
+      "sourceAtlas": "card_epic_8.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "manual-visual-identification",
+        "note": "Historical reference is horizontally mirrored; client orientation retained. Named game capture independently matches this crop."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "f499016d04c5f0ceada56d54743892f8105df5a069002106500155bff07526ad"
+    },
+    {
+      "id": "3200152",
+      "name": "두키킹",
+      "sourceAtlas": "card_rare_7.png",
+      "box": [
+        496,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "manual-visual-identification",
+        "note": "Historical reference has watermark and tonal differences; visually checked against the client crop and named game capture."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "8d04533e5bb8778e800c0557debd69a139bc6d435aa9c432e1a4d2b02b65e32a"
+    },
+    {
+      "id": "catalog:zakra-sarta",
+      "name": "자크라와 사르타",
+      "sourceAtlas": "card_epic_14.png",
+      "box": [
+        496,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "manual-visual-identification",
+        "note": "Named game screenshot screenshots-1 page 7 row 3 column 5; visually checked both characters."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "93975810700f87145723c03e42d4c107cb4129517cb01939eb2bcc3a493927f6"
+    },
+    {
+      "id": "catalog:four-elders",
+      "name": "전설의 네 장로",
+      "sourceAtlas": "card_epic_14.png",
+      "box": [
+        744,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "manual-visual-identification",
+        "note": "Named game screenshot screenshots-1 page 7 row 3 column 8; visually checked four elders."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "93975810700f87145723c03e42d4c107cb4129517cb01939eb2bcc3a493927f6"
+    },
+    {
+      "id": "catalog:illusion-moon",
+      "name": "환영달",
+      "sourceAtlas": "card_epic_15.png",
+      "box": [
+        0,
+        0,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "manual-visual-identification",
+        "note": "Named game screenshot screenshots-1 page 10 row 3 column 1; visually checked the glowing crescent."
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "565f21b1624fe7f222363fb99010a0ca2aecb2504fd4325c08d6106b99005fd7"
+    },
+    {
+      "id": "3201116",
+      "name": "죽음의 계율자, 벨가르딘",
+      "sourceAtlas": "card_legend_7.png",
+      "box": [
+        0,
+        362,
+        248,
+        362
+      ],
+      "labelEvidence": {
+        "method": "manual-visual-identification",
+        "note": "Client portrait visually identified against the named official announcement: white hair, fur mantle, purple chest ornament and hands. No external pixels used.",
+        "sourceUrl": "https://newsroom.smilegate.com/news/1785913591"
+      },
+      "usage": "display-only",
+      "reviewedOn": "2026-10-10",
+      "sourceSha256": "522804f419df0a15a33609d92723365260df90817a762939a3f2b91ccb9e8d67"
     }
   ]
 }

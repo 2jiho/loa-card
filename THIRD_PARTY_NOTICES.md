@@ -41,7 +41,7 @@ Lost Ark의 카드 원화·게임 UI·명칭 및 관련 게임 자산의 권리�
 - `public/growth/master.json`, `public/raid/master.json`, `src/features/merchants/merchants.json`: 게임 데이터 기반 마스터.
 - `tests/fixtures/`: 게임 화면에서 자른 픽셀, 이름 마스크, 특징과 수동 라벨. 일부 JSON에서 이미지를 복원할 수 있다. 별도의 합성 테스트 자료도 있지만 실제 화면에서 얻은 표본의 권리가 바뀌는 것은 아니다.
 
-카드 이름·등급·성장 가능 여부는 클라이언트 SeasonCard/GameMsg로 검증한다. 원화 특징 388종과 `public/scanner/artwork/*.webp`는 클라이언트 atlas에서 생성한다. 나머지 카드에 외부 사이트 그림을 대체값으로 남기지 않는다. 기존 게임 화면 기반 보조 자료는 유지한다. 원화의 이름 연결 과정에서는 과거 [Lost Ark Codex](https://lostarkcodex.com/kr/cards/)·[인벤 카드 DB](https://lostark.inven.co.kr/dataninfo/card/) 그림과의 시각적 대응을 참고했으며 이 이력을 공식 UV 대응표로 표현하지 않는다. `artwork-provenance.json`과 scanner NOTICE에 출처와 해시를 보존한다. 표시용 이미지가 추가되어 게임 원화도 웹 배포에 포함된다.
+카드 이름·등급·성장 가능 여부는 클라이언트 SeasonCard/GameMsg로 검증한다. 원화 특징 388종과 표시용 썸네일 420종(`public/scanner/artwork/*.webp`)은 클라이언트 atlas에서 생성한다. 외부 사이트 그림을 대체값으로 남기지 않는다. 기존 게임 화면 기반 보조 자료는 유지한다. 원화의 이름 연결 과정에서는 과거 [Lost Ark Codex](https://lostarkcodex.com/kr/cards/)·[인벤 카드 DB](https://lostark.inven.co.kr/dataninfo/card/) 그림과의 시각적 대응을 참고했으며 이 이력을 공식 UV 대응표로 표현하지 않는다. 표시 전용으로 추가한 32종은 중복 그림, 반전·워터마크가 있는 비교 자료, 이름이 보이는 게임 캡처와 [공식 벨가르딘 소개](https://newsroom.smilegate.com/news/1785913591)를 대조했다. 해당 외부 이미지 픽셀은 배포하지 않는다. `artwork-provenance.json`과 scanner NOTICE에 출처와 해시를 보존한다. 표시용 이미지가 추가되어 게임 원화도 웹 배포에 포함된다.
 
 게임 원본 DB·폰트·아카이브·사용자 전체 영상은 커밋하지 않는다. 운영 방침상 개별 사전 문의는 진행하지 않고 기능에 필요한 가공 자료와 권리 고지를 유지한다. 이 선택과 고지는 배포 허가를 확인했다는 뜻이 아니다. 권리 요청이나 정책 변경으로 자료를 제외·대체하면 빌드와 인식·계산 검증을 다시 실행한다.
 

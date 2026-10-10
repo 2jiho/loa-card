@@ -5,13 +5,17 @@ Runtime distributed by @techstark/opencv-js. The audited npm runtime is copied t
 Card catalog: local client SeasonCard and GameMsg tables, verified 2026-10-08.
 Client DB SHA-256 hashes are in cards.json. Existing application IDs are preserved;
 clientId records the verified SeasonCard key.
-388 RGB/portrait references and display WebP thumbnails are generated only from
+388 RGB/portrait references and 420 display WebP thumbnails are generated only from
 local client atlas crops. See artwork-provenance.json and scripts/client-artwork-map.json
 for source hashes, crop bounds and label provenance. Historical Inven/Codex images
 were used to establish visual label correspondence, not an authoritative DB-to-UV map.
 No external website artwork pixels or fallback references are shipped.
-32 unverified crops are omitted; 28 have separate user-captured screen references,
-and 4 retain name OCR only. Artwork availability is not evidence of ownership.
+32 additional crops were reviewed for display only on 2026-10-10. Their individual
+visual identification evidence is recorded in the provenance map. Shared portraits,
+mirrored/watermarked historical references, named game captures and the official
+Belgardin announcement were reviewed without adding ambiguous recognition features.
+Of these 32, 28 retain separate user-captured screen references and 4 retain name OCR
+only. Artwork availability is not evidence of ownership or recognition coverage.
 
 Lost Ark game artwork and UI are owned by Smilegate RPG. This project is unofficial.
 Raw user recordings and frames are excluded from version control and production builds.
