@@ -10,6 +10,9 @@ import FileUploadOutlined from '@mui/icons-material/FileUploadOutlined';
 import RestartAltOutlined from '@mui/icons-material/RestartAltOutlined';
 import SearchOutlined from '@mui/icons-material/SearchOutlined';
 import HelpOutline from '@mui/icons-material/HelpOutlined';
+import GitHub from '@mui/icons-material/GitHub';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 import { ScanQuickStart, UsageGuide } from './ui/UsageGuide';
 import { ThemeToggle } from './ui/AppTheme';
 import { WorkspaceNavigation } from './ui/WorkspaceNavigation';
@@ -373,7 +376,8 @@ function App() {
         <div className="header-tools"><span className={`local-status ${busy||csvReading?'is-active':''}`} role="status" title="카드 인식은 현재 브라우저에서 실행됩니다.">
           {busy||csvReading ? <span className="scan-spinner" aria-hidden="true" /> : <span className="status-dot" aria-hidden="true" />}
           {csvReading ? 'CSV 확인 중' : busy ? engineReady ? '브라우저에서 분석 중' : '분석 준비 중' : '로컬 처리'}
-        </span><Button color="inherit" startIcon={<HelpOutline />} onClick={() => setGuideOpen(true)}>사용법</Button><ThemeToggle />
+        </span><Button color="inherit" startIcon={<HelpOutline />} onClick={() => setGuideOpen(true)}>사용법</Button>
+        <Tooltip title="GitHub 저장소 (새 탭)"><IconButton component="a" href="https://github.com/2jiho/loa-card" target="_blank" rel="noopener noreferrer" aria-label="GitHub 저장소 (새 탭)"><GitHub fontSize="small" /></IconButton></Tooltip><ThemeToggle />
         </div>
       </header>
       <div className="app-layout">
