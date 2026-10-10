@@ -46,6 +46,8 @@ import {AutoCompletionHold,canStopSharing,confirmedCaptureCount,stopCompletedSha
 const cardCollator = new Intl.Collator("ko");
 
 export interface ScannerState {
+  workPhase?: import('./read-progress').ScanWorkPhase;
+  recoveryPercent?: number;
   currentRunNames?: number;
   currentRunRead?: number;
   status: string;
@@ -849,9 +851,11 @@ export async function runScanner(
       let lastSnapshotTime = -Infinity;
       const stopped = () => {
         state.sharingEndedAt??=(performance.now()-recordingStart)/1000;
+        state.workPhase = 'reading';
         capturing = false;
         if(continuous&&recognizer)state.shareEndInventory=liveInventory.finish(recognizer.catalog);
         void continuous?.finish();
+        emit(true);
       };
       const failed = (error: unknown) => { captureError = error; stopped(); };
       const autoCompletion=new AutoCompletionHold();
@@ -941,6 +945,7 @@ export async function runScanner(
         33,
       );
       stopInput = () => { videoInput(); trackInput?.(); };
+      state.workPhase = 'capture';
       state.status = "화면 공유 실시간 수집·판독 중";
       emit();
       const consumers = [recognizer, ...extraRecognizers].map(async (reader, index) => {
@@ -980,6 +985,7 @@ export async function runScanner(
       if (captureError) throw captureError;
       signal.throwIfAborted();
       await liveCollection;
+      state.workPhase = 'verifying'; emit(true);
       await settleMetadata();
       while(metadata || metadataRead)await settleMetadata();
       const finalCards=recognizer ? confirmSortedNames([...cards.values()], [...evidence.values()].flat(), recognizer.catalog) : [];
@@ -1005,6 +1011,7 @@ export async function runScanner(
       const recording = await continuous?.finish();
       const snapshots = directOriginals && encoder ? () => encoder!.frames(signal) : debug.snapshots ?? originals?.frames;
       if(state.recoverySkipped) {
+        state.workPhase = 'cleanup';
         state.recoveryFrames=0;
         state.status='전체 카드 검증 완료 · 임시 기록 정리 중';emit(true);
         if(recording)debug.continuous?.(recording);
@@ -1020,6 +1027,7 @@ export async function runScanner(
         // Reuse the same identity/evidence map, but reacquire every recorded
         // interval. A live timer cannot recover frames blocked by card cropping.
         recovering = true;
+        state.workPhase = 'recovery'; state.recoveryPercent = 0;
         previous = []; previousVectors = []; lastMetadataTime = -Infinity;
         state.recoveryFrames = 0;
         state.status = "연속 기록에서 누락 카드 보완 중"; emit(true);
@@ -1054,11 +1062,17 @@ export async function runScanner(
             }));
           } else while (queue.length) await drainOne();
           state.recoveryFrames++;
+          // Merged sources have different frame totals. Use their common capture
+          // timeline, and reserve 100% until both iterators have been exhausted.
+          state.recoveryPercent = state.sharingEndedAt && state.sharingEndedAt > 0
+            ? Math.max(state.recoveryPercent ?? 0, Math.min(99, input.time / state.sharingEndedAt * 100)) : undefined;
           state.status = `연속 기록 보완 중 · ${state.recoveryFrames}프레임 검사`;
           emit();
         }
+        state.recoveryPercent = 100;
       }
     }
+    state.workPhase = 'reading'; emit(true);
     if (debug.parallelRecovery !== false && recovering && recognizer) {
       await runJoinedWorkers([recognizer, ...extraRecognizers].map(reader => async stopped => {
         while (!stopped() && (deferred.length || fullRetries.length)) {
@@ -1069,6 +1083,7 @@ export async function runScanner(
     } else while (deferred.length || fullRetries.length) await drainOne(true);
     if (metadata) await drainOne();
     if (captureError) throw captureError;
+    state.workPhase = 'verifying'; emit(true);
     refreshCards();
     if (recognizer) state.cards = confirmSortedNames([...cards.values()], [...evidence.values()].flat(), recognizer.catalog).sort((a,b) => cardCollator.compare(a.name,b.name));
     if(continuous)state.identifiedAfterSharing=state.cards.filter(card=>identifiedThisRun.has(card.id)&&!liveIdentities.has(card.id)).map(({id,name})=>({id,name}));
@@ -1078,6 +1093,7 @@ export async function runScanner(
     emit(true);
   } finally {
     try {
+      state.workPhase = 'cleanup'; emit(true);
       stopInput?.();
       if(finalHeader)finalHeader.width=0;
       acquisition?.dispose();

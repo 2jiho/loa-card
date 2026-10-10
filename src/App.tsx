@@ -22,6 +22,7 @@ import { runScanner } from "./features/card-scanner/scanner";
 import { prepareScanner } from './features/card-scanner/scanner-preparation';
 import type { PreparedScanner } from './features/card-scanner/scanner-preparation';
 import { createPreparedSlot } from './features/card-scanner/prepared-slot';
+import { createPreparationFeedback } from './features/card-scanner/preparation-feedback';
 import { ScanReadProgress } from './features/card-scanner/ScanReadProgress';
 import { scrollGuidance } from './features/card-scanner/scroll-guidance';
 import type { ScannerState } from "./features/card-scanner/scanner";
@@ -88,23 +89,26 @@ function App() {
   const [busy, setBusy] = useState(false);
   const preparation = useRef<ReturnType<typeof createPreparedSlot<PreparedScanner>> | null>(null);
   const [preparationState, setPreparationState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [preparationMessage, setPreparationMessage] = useState('인식 엔진 준비 중');
+  const [preparationMessage, setPreparationMessage] = useState('');
   const [preparationAttempt, setPreparationAttempt] = useState(0);
   useEffect(() => {
     if (busy) return;
     let active = true;
     let slot: ReturnType<typeof createPreparedSlot<PreparedScanner>> | undefined;
+    const feedback = createPreparationFeedback(message => {
+      if (active) setPreparationMessage(message);
+    });
     // Allow the first page paint, and avoid duplicate work in StrictMode.
     const timer = window.setTimeout(() => {
       setPreparationState('loading');
-      setPreparationMessage('인식 엔진 준비 중');
-      slot = createPreparedSlot(signal => prepareScanner(message => {
-        if (active) setPreparationMessage(message);
-      }, signal));
+      setPreparationMessage('');
+      slot = createPreparedSlot(signal => prepareScanner(feedback.update, signal));
       preparation.current = slot;
       void slot.ready.then(() => {
+        feedback.dispose();
         if (active) { setPreparationState('ready'); setPreparationMessage('스캔 준비 완료'); }
       }).catch(error => {
+        feedback.dispose();
         if (active) {
           setPreparationState('error');
           setPreparationMessage(error instanceof Error ? error.message : '인식 엔진 준비 실패');
@@ -113,12 +117,14 @@ function App() {
     }, 100);
     return () => {
       active = false;
+      feedback.dispose();
       window.clearTimeout(timer);
       if (preparation.current === slot) preparation.current = null;
       void slot?.dispose();
     };
   }, [busy, preparationAttempt]);
   const [engineReady, setEngineReady] = useState(false);
+  const [scanStartedAt, setScanStartedAt] = useState(0);
   const engineReadyRef = useRef(false);
   const [sharing, setSharing] = useState(false);
   const [error, setError] = useState("");
@@ -254,7 +260,7 @@ function App() {
           }
         },
         inventory.current,
-        () => { if (controller.current === abort) { engineReadyRef.current = true; setEngineReady(true); } },
+        () => { if (controller.current === abort) { setScanStartedAt(performance.now()); engineReadyRef.current = true; setEngineReady(true); } },
         "all",
         undefined,
         false,
@@ -383,9 +389,13 @@ function App() {
     expected:state?.expected ?? null,collected:state?.currentRunNames ?? cards.length,
     autoStopped:state?.autoStopped,recoverySkipped:state?.recoverySkipped});
   const finalizing = busy && state?.recoverySkipped;
-  const statusTitle = error ? "입력을 확인해 주세요" : busy && !engineReady ? "스캔 준비 중" : sharing ? "화면 공유 중" : finalizing ? "카드 검증 완료" : busy ? "카드를 읽고 있어요" : stopped ? "스캔 중지됨" : state?.autoStopped ? "전체 카드 수집 완료" : state?.status === "CSV 불러오기 완료" ? "CSV 불러오기 완료" : cards.length ? "카드 목록 준비됨" : "화면을 공유해 시작하세요";
+  const workPhase = sharing ? 'capture' : state?.workPhase ?? 'reading';
+  const statusTitle = error ? "입력을 확인해 주세요" : busy && !engineReady ? "스캔 준비 중" : sharing ? "화면 공유 중" : busy && workPhase==='cleanup' ? "스캔을 마무리하고 있어요" : busy && workPhase==='verifying' ? "판독 결과를 검증하고 있어요" : busy && workPhase==='recovery' ? "저장된 화면을 다시 확인하고 있어요" : finalizing ? "카드 검증 완료" : busy ? "카드를 읽고 있어요" : stopped ? "스캔 중지됨" : state?.autoStopped ? "전체 카드 수집 완료" : state?.status === "CSV 불러오기 완료" ? "CSV 불러오기 완료" : cards.length ? "카드 목록 준비됨" : "화면을 공유해 시작하세요";
   const statusDescription = busy && !engineReady ? `${state?.status ?? "화면 검출 모듈 준비 중"} · 준비가 끝나면 스크롤해 주세요.`
     : sharing ? (state?.located ? "성장 탭을 천천히 스크롤해 주세요. 읽은 카드는 아래에 쌓입니다." : "카드 보관함의 성장 탭을 찾고 있어요. 카드 화면을 보여 주세요.")
+    : busy && workPhase==='cleanup' ? "판독 작업을 종료하고 임시 기록을 정리하고 있습니다."
+    : busy && workPhase==='verifying' ? "보관함 수량과 카드별 판독 근거를 대조하고 있습니다."
+    : busy && workPhase==='recovery' ? "빠뜨리거나 가려진 카드가 있는지 저장된 화면을 재검사하고 있습니다."
     : finalizing ? "모든 카드의 이름·각성·장수 확인을 마쳤어요. 임시 화면을 정리하고 있습니다."
     : state?.autoStopped&&!busy ? "전체 카드 이름과 보관함 수량이 확인되어 화면 공유를 자동으로 종료했어요. 판독 결과는 아래 목록에서 확인하세요."
     : state?.autoStopped&&busy ? "전체 카드 화면을 확보해 공유를 종료했어요. 저장한 이미지로 남은 장수·각성을 확인하고 있습니다."
@@ -451,7 +461,7 @@ function App() {
             {busy && !sharing && <button className="text-button" onClick={() => controller.current?.abort()}>스캔 중지</button>}
           </div>
           {!busy && <div role="status" className="scan-preparation">
-            {preparationState==='loading' && <span className="scan-spinner" aria-hidden="true" />}
+            {preparationState==='loading' && preparationMessage && <span className="scan-spinner" aria-hidden="true" />}
             <span>{preparationMessage}</span>
             {preparationState==='error' && <Button size="small" onClick={() => setPreparationAttempt(value => value + 1)}>준비 다시 시도</Button>}
           </div>}
@@ -475,7 +485,8 @@ function App() {
               : !error && !stopped && cards.length ? <span className="scan-complete" aria-hidden="true">✓</span>
               : <span className={`status-dot ${sharing ? "active" : ""}`} aria-hidden="true" />}{statusTitle}</strong>
             {(busy || stopped || error || !cards.length) && <p>{statusDescription}</p>}
-            {busy && engineReady && <ScanReadProgress completed={state?.currentRunRead ?? 0} expected={state?.expected ?? null} />}
+            {busy && engineReady && <ScanReadProgress completed={state?.currentRunRead ?? 0} expected={state?.expected ?? null}
+              collected={state?.currentRunNames ?? 0} phase={workPhase} recoveryPercent={state?.recoveryPercent} startedAt={scanStartedAt} />}
             {sharing && state?.expected != null && <p>화면 수집 {state.currentRunNames ?? 0} / {state.expected}종 · 수집 완료 시 자동 종료</p>}
             {sharing && (state?.livePerformance?.lagMs ?? 0) > 1500 && (state?.queued ?? 0) > 0 &&
               <p className="warning">카드 목록이 따라올 때까지 잠시 스크롤을 멈춰 주세요.</p>}

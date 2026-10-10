@@ -30,19 +30,20 @@ function ready(model: "korean" | "digits") {
       self.location.href,
     );
     const label = model === 'korean' ? '이름 모델' : '숫자 모델';
+    self.postMessage({ progress: `${label} 불러오는 중` });
     const modelResponse = await fetch(`${base}${filename}`);
-    if (!modelResponse.ok) throw new Error(`${label} 다운로드 실패 (${modelResponse.status})`);
+    if (!modelResponse.ok) throw new Error(`${label} 불러오기 실패 (${modelResponse.status})`);
     const total = Number(modelResponse.headers.get('Content-Length')) || undefined;
     const chunks: Uint8Array[] = [];
     let loaded = 0, lastReport = 0;
     const stream = modelResponse.body?.getReader();
-    if (!stream) throw new Error(`${label} 다운로드 응답이 없습니다.`);
+    if (!stream) throw new Error(`${label} 파일 응답이 없습니다.`);
     for (;;) {
       const { value, done } = await stream.read();
       if (done) break;
       chunks.push(value); loaded += value.length;
       if (performance.now() - lastReport > 250) {
-        self.postMessage({ progress: `${label} 다운로드 ${(loaded / 1048576).toFixed(1)}${total ? ` / ${(total / 1048576).toFixed(1)}` : ''} MB` });
+        self.postMessage({ progress: `${label} 불러오는 중 ${(loaded / 1048576).toFixed(1)}${total ? ` / ${(total / 1048576).toFixed(1)}` : ''} MB` });
         lastReport = performance.now();
       }
     }
@@ -51,7 +52,7 @@ function ready(model: "korean" | "digits") {
     let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
     chunks.length = 0;
-    self.postMessage({ progress: `${label} 준비 중` });
+    self.postMessage({ progress: `${label} 인식 엔진 준비 중` });
     const [session, response] = await Promise.all([
       ort.InferenceSession.create(bytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' }),
       fetch(url),

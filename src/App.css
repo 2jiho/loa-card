@@ -42,6 +42,8 @@ button.text-button:hover:not(:disabled) { background:var(--hover); color:var(--t
 .scan-read-progress progress::-webkit-progress-value { background:var(--accent); border-radius:4px; }
 .scan-read-progress progress::-moz-progress-bar { background:var(--accent); border-radius:4px; }
 .scan-read-progress small { color:var(--muted); }
+.scan-read-heading { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; }
+.scan-read-heading b { font-weight:600; color:var(--accent); }
 .scan-progress.processing strong { color:var(--accent); }
 .scan-progress p.warning { color:var(--accent); }
 .scan-complete { color:var(--success); }
