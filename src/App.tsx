@@ -9,6 +9,8 @@ import FileDownloadOutlined from '@mui/icons-material/FileDownloadOutlined';
 import FileUploadOutlined from '@mui/icons-material/FileUploadOutlined';
 import RestartAltOutlined from '@mui/icons-material/RestartAltOutlined';
 import SearchOutlined from '@mui/icons-material/SearchOutlined';
+import HelpOutline from '@mui/icons-material/HelpOutlined';
+import { ScanQuickStart, UsageGuide } from './ui/UsageGuide';
 import { ThemeToggle } from './ui/AppTheme';
 import { WorkspaceNavigation } from './ui/WorkspaceNavigation';
 import { memo, startTransition, useEffect, useMemo, useRef, useState } from "react";
@@ -72,6 +74,7 @@ function UnownedCardTile({card}:{card:CsvCatalogCard}) {
 }
 
 function App() {
+  const [guideOpen, setGuideOpen] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const controller = useRef<AbortController | null>(null);
@@ -369,7 +372,7 @@ function App() {
         <div className="header-tools"><span className={`local-status ${busy||csvReading?'is-active':''}`} role="status" title="카드 인식은 현재 브라우저에서 실행됩니다.">
           {busy||csvReading ? <span className="scan-spinner" aria-hidden="true" /> : <span className="status-dot" aria-hidden="true" />}
           {csvReading ? 'CSV 확인 중' : busy ? engineReady ? '브라우저에서 분석 중' : '분석 준비 중' : '로컬 처리'}
-        </span><ThemeToggle />
+        </span><Button color="inherit" startIcon={<HelpOutline />} onClick={() => setGuideOpen(true)}>사용법</Button><ThemeToggle />
         </div>
       </header>
       <div className="app-layout">
@@ -382,6 +385,7 @@ function App() {
         <button className="text-button" disabled={busy} onClick={undoLastGrowth}>성장 실행 취소</button>
       </div>}
       <section id="panel-cards" role="tabpanel" aria-labelledby="view-cards" hidden={activeView!=='cards'}>
+      {backupReady && !cards.length && !busy && !sharing && !csvReading && <ScanQuickStart onHelp={() => setGuideOpen(true)} />}
       <section className="scanner panel" aria-label="카드 스캔">
         <div className="scanner-main">
           <h1>카드 스캔</h1>
@@ -499,6 +503,7 @@ function App() {
         {catalogVersion && <p>카드 데이터 {catalogVersion.replace("client-", "")} 기준</p>}
       </footer>
       </main></div>
+      <UsageGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
     </div>
   );
 }

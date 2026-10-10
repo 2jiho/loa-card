@@ -17,8 +17,9 @@ Check와 Pages는 Ubuntu 24.04 / Node.js 22에서 실행한다. 액션 자체는
 ```powershell
 $env:PAGES_BASE_PATH = '/loa-card/'
 npm run build
-Remove-Item Env:PAGES_BASE_PATH
 npm run preview
+# 미리보기 종료 후
+Remove-Item Env:PAGES_BASE_PATH
 ```
 
 사용자 지정 도메인이나 `사용자.github.io` 루트 사이트는 워크플로의 base를 `/`로 변경한다. 빌드 시 결정된 base와 실제 호스팅 경로가 같아야 한다. `dist` 전체를 배포하며 `public/ocr` 자산을 임의로 빼지 않는다. 현재 WASM은 단일 스레드 설정이며 별도 COOP/COEP 격리 헤더를 전제하지 않는다.
