@@ -50,12 +50,12 @@ function reviewMessage(reasons: string[]) {
   ].join(" · ");
 }
 
-type CardTileProps = {card:ScannedCard;rarity?:number};
+type CardTileProps = {card:ScannedCard;rarity?:number;artwork?:string};
 
 // Preserve each untouched tile while live progress and other cards change.
-const CardTile = memo(function CardTile({card,rarity}:CardTileProps) {
+const CardTile = memo(function CardTile({card,rarity,artwork}:CardTileProps) {
   return <div className={`inventory-card ${card.review.length?'has-issue':''}`} data-identity-source={card.identitySource}>
-    <CardThumbnail src={card.image} alt={card.name} width={80} height={120} />
+    <CardThumbnail src={card.image || (artwork ? `${import.meta.env.BASE_URL}scanner/artwork/${artwork}` : '')} alt={card.name} width={80} height={120} />
     <CardName name={card.name} rarity={rarity} />
     <div className="tile-counts">
       <span title={card.maxAwakening===0?'성장·각성이 없는 카드':'각성 단계'} aria-label={`${card.name} 각성 ${card.awakening??'미판독'}`}><b>{card.awakening??'?'}</b><small>각</small></span>
@@ -106,6 +106,7 @@ function App() {
   const inventory = useRef<ScannedCard[]>([]);
   const [catalog, setCatalog] = useState<CsvCatalogCard[]>([]);
   const rarityById=useMemo(()=>new Map(catalog.map(card=>[card.id,card.rarity])),[catalog]);
+  const artworkById=useMemo(()=>new Map(catalog.map(card=>[card.id,card.artwork])),[catalog]);
   useEffect(() => {
     let cancelled = false;
     void loadScanBackup().then(saved => {
@@ -472,7 +473,7 @@ function App() {
           <ul>{filteredMissing.map(card=><li key={card.id}><span className={cardRarityClass(rarityById.get(card.id))}>{card.name}</span> · 보유 여부 미확인</li>)}</ul>
         </section>}
         <div className="inventory-grid" aria-label="카드 그리드">
-          {onlyUnowned ? pageUnowned.map(card=><UnownedCardTile key={card.id} card={card} />) : pageCards.map(card=><CardTile key={card.id} card={card} rarity={rarityById.get(card.id)} />)}
+          {onlyUnowned ? pageUnowned.map(card=><UnownedCardTile key={card.id} card={card} />) : pageCards.map(card=><CardTile key={card.id} card={card} rarity={rarityById.get(card.id)} artwork={artworkById.get(card.id)} />)}
           {pageCardCount > 0 && Array.from({length:CARDS_PER_PAGE-pageCardCount},(_,index)=><div key={`empty-${index}`} className={`inventory-card inventory-card-empty${onlyUnowned?' is-unowned':''}`} aria-hidden="true">
             {!onlyUnowned && <span className="card-thumbnail" />}
             <span className="tile-name">&nbsp;</span>
