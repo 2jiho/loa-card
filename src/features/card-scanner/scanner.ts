@@ -1,4 +1,5 @@
 import { initializeWithin } from './initialization';
+import type { PreparedScanner } from './scanner-preparation';
 import { createVisualClient } from './visual-client';
 import type { VisualResult } from './visual-client';
 import { decodedFrames } from "./decoded-frames";
@@ -108,6 +109,7 @@ export async function runScanner(
     continuous?: (recording: ContinuousRecording) => void;
     snapshots?: () => AsyncIterable<{ element: HTMLImageElement; image: string; time: number; percent: number }>;
     preview?: (image: string) => void; recording?: () => boolean; recordingError?: (message: string) => void } = {},
+  prepared?: PreparedScanner,
 ) {
   const isStill = !!stillImages || debug.replay?.source === "images";
   const state: ScannerState = {
@@ -140,8 +142,8 @@ export async function runScanner(
   };
   emit();
   state.status = '화면 검출 모듈 준비 중'; emit(true);
-  const detector = await initializeWithin(createDetector(), signal, value => value.dispose());
-  let recognizer: Awaited<ReturnType<typeof createRecognizer>> | undefined,
+  const detector = prepared?.detector ?? await initializeWithin(createDetector(), signal, value => value.dispose());
+  let recognizer: Awaited<ReturnType<typeof createRecognizer>> | undefined = prepared?.readers[0],
     stopInput: (() => void) | undefined;
   let encoder: ReturnType<typeof createDebugEncoder> | undefined;
   let originals: ReturnType<typeof createCaptureOriginals> | undefined;
@@ -149,30 +151,33 @@ export async function runScanner(
   let continuous: ReturnType<typeof recordContinuous> | undefined;
   let recovering = false;
   let releasePending: (() => void) | undefined;
-  let acquisition: ReturnType<typeof createAcquisitionClient> | undefined;
+  let acquisition: ReturnType<typeof createAcquisitionClient> | undefined = prepared?.acquisition;
   let finalHeader: HTMLCanvasElement | undefined;
   let lastLocatedTime = -Infinity;
   let checkingCompletion=false;
   let liveCollection: Promise<void> | undefined;
-  const visuals: ReturnType<typeof createVisualClient>[] = [];
+  const visuals: ReturnType<typeof createVisualClient>[] = prepared?.visuals ?? [];
   const lanePlan=liveLanePlan(navigator.hardwareConcurrency);
-  const extraRecognizers: Awaited<ReturnType<typeof createRecognizer>>[] = [];
+  const extraRecognizers: Awaited<ReturnType<typeof createRecognizer>>[] = prepared?.readers.slice(1) ?? [];
+  const abortPrepared = () => { prepared?.cancel(); };
+  if (prepared) signal.addEventListener('abort', abortPrepared, { once: true });
   try {
-    if (source === 'screen' && !debug.replay) acquisition = createAcquisitionClient(signal);
-    if (!captureOnly) recognizer = await createRecognizer((message) => {
+    signal.throwIfAborted();
+    if (!prepared && source === 'screen' && !debug.replay) acquisition = createAcquisitionClient(signal);
+    if (!prepared && !captureOnly) recognizer = await createRecognizer((message) => {
       state.status = message;
       emit();
     }, signal);
     // Each consumer owns its OCR session: multi-line CTC and adaptive caches
     // cannot safely interleave requests from different cards in one reader.
-    if (recognizer && source === 'screen' && !debug.replay)
+    if (!prepared && recognizer && source === 'screen' && !debug.replay)
       for(let i=1;i<lanePlan.readers;i++) {
         signal.throwIfAborted();
         state.status = `병렬 인식 준비 ${i + 1} / ${lanePlan.readers}`; emit(true);
         extraRecognizers.push(await createRecognizer(() => {}, signal));
       }
-    if (recognizer && acquisition) for(let i=0;i<lanePlan.fast;i++) visuals.push(createVisualClient(signal));
-    await Promise.all([acquisition?.ready(),...visuals.map(worker=>worker?.ready())]);
+    if (!prepared && recognizer && acquisition) for(let i=0;i<lanePlan.fast;i++) visuals.push(createVisualClient(signal));
+    if (!prepared) await Promise.all([acquisition?.ready(),...visuals.map(worker=>worker?.ready())]);
     signal.throwIfAborted();
     if (source === "screen" && !debug.replay && video.srcObject) {
       try { continuous = recordContinuous(new MediaStream((video.srcObject as MediaStream).getVideoTracks()), message => {
@@ -1072,32 +1077,39 @@ export async function runScanner(
       : scanCompletion(state.expected, state.cards.length, state.cards.filter(card => card.review.length).length);
     emit(true);
   } finally {
-    stopInput?.();
-    if(finalHeader)finalHeader.width=0;
-    acquisition?.dispose();
-    for(const visual of visuals) visual?.dispose();
-    await liveCollection;
-    releasePending?.();
-    auditComplete = true;
-    const finalRecording = await continuous?.finish();
-    if (finalRecording) debug.continuous?.(finalRecording);
-    const finalStatus = state.status;
-    // Internal backups have no consumers left, including when recovery failed
-    // before its raw iterator started. Never launch an unused PNG export here.
-    if(encoder&&!debug.record)await encoder.discard();
-    else if(encoder) {
-      if(!signal.aborted) { state.status = `카드 판독 종료 · ${encoder.captured}개 캡처 원본 준비 중`; emit(true); }
-      await encoder.finish();
+    try {
+      stopInput?.();
+      if(finalHeader)finalHeader.width=0;
+      acquisition?.dispose();
+      for(const visual of visuals) visual?.dispose();
+      await liveCollection;
+      releasePending?.();
+      auditComplete = true;
+      const finalRecording = await continuous?.finish();
+      if (finalRecording) debug.continuous?.(finalRecording);
+      const finalStatus = state.status;
+      // Internal backups have no consumers left, including when recovery failed
+      // before its raw iterator started. Never launch an unused PNG export here.
+      if(encoder&&!debug.record)await encoder.discard();
+      else if(encoder) {
+        if(!signal.aborted) { state.status = `카드 판독 종료 · ${encoder.captured}개 캡처 원본 준비 중`; emit(true); }
+        await encoder.finish();
+      }
+      if (originals) {
+        try { await originals.dispose(); }
+        catch { state.captureWarning = "임시 원본 캡처 정리에 실패했습니다."; }
+      }
+      state.status = finalStatus;
+      if (recordingFailure) debug.recordingError?.(recordingFailure);
+      emit(true);
+    } finally {
+      signal.removeEventListener('abort', abortPrepared);
+      if (prepared) await prepared.dispose();
+      else {
+        detector.dispose();
+        if (recognizer) await recognizer.dispose();
+        await Promise.all(extraRecognizers.map(reader => reader.dispose()));
+      }
     }
-    if (originals) {
-      try { await originals.dispose(); }
-      catch { state.captureWarning = "임시 원본 캡처 정리에 실패했습니다."; }
-    }
-    state.status = finalStatus;
-    if (recordingFailure) debug.recordingError?.(recordingFailure);
-    emit(true);
-    detector.dispose();
-    if (recognizer) await recognizer.dispose();
-    await Promise.all(extraRecognizers.map(reader => reader.dispose()));
   }
 }

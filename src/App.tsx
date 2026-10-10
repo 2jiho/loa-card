@@ -19,6 +19,9 @@ import { WorkspaceNavigation } from './ui/WorkspaceNavigation';
 import { memo, startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { createLatestPublisher } from './latest-publisher';
 import { runScanner } from "./features/card-scanner/scanner";
+import { prepareScanner } from './features/card-scanner/scanner-preparation';
+import type { PreparedScanner } from './features/card-scanner/scanner-preparation';
+import { createPreparedSlot } from './features/card-scanner/prepared-slot';
 import { ScanReadProgress } from './features/card-scanner/ScanReadProgress';
 import { scrollGuidance } from './features/card-scanner/scroll-guidance';
 import type { ScannerState } from "./features/card-scanner/scanner";
@@ -83,6 +86,38 @@ function App() {
   const controller = useRef<AbortController | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  const preparation = useRef<ReturnType<typeof createPreparedSlot<PreparedScanner>> | null>(null);
+  const [preparationState, setPreparationState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [preparationMessage, setPreparationMessage] = useState('인식 엔진 준비 중');
+  const [preparationAttempt, setPreparationAttempt] = useState(0);
+  useEffect(() => {
+    if (busy) return;
+    let active = true;
+    let slot: ReturnType<typeof createPreparedSlot<PreparedScanner>> | undefined;
+    // Allow the first page paint, and avoid duplicate work in StrictMode.
+    const timer = window.setTimeout(() => {
+      setPreparationState('loading');
+      setPreparationMessage('인식 엔진 준비 중');
+      slot = createPreparedSlot(signal => prepareScanner(message => {
+        if (active) setPreparationMessage(message);
+      }, signal));
+      preparation.current = slot;
+      void slot.ready.then(() => {
+        if (active) { setPreparationState('ready'); setPreparationMessage('스캔 준비 완료'); }
+      }).catch(error => {
+        if (active) {
+          setPreparationState('error');
+          setPreparationMessage(error instanceof Error ? error.message : '인식 엔진 준비 실패');
+        }
+      });
+    }, 100);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+      if (preparation.current === slot) preparation.current = null;
+      void slot?.dispose();
+    };
+  }, [busy, preparationAttempt]);
   const [engineReady, setEngineReady] = useState(false);
   const engineReadyRef = useRef(false);
   const [sharing, setSharing] = useState(false);
@@ -189,6 +224,8 @@ function App() {
     [],
   );
   async function start() {
+    const prepared = preparation.current?.take();
+    setPreparationState('loading');
     controller.current?.abort();
     const abort = new AbortController();
     controller.current = abort;
@@ -221,6 +258,8 @@ function App() {
         "all",
         undefined,
         false,
+        {},
+        prepared,
       );
       presentation.flush();
     } catch (e) {
@@ -401,7 +440,7 @@ function App() {
           <h1>카드 스캔</h1>
           <div className="toolbar">
             {sharing ? <Button variant="contained" startIcon={<StopCircleOutlined />} onClick={stopSharing}>화면 공유 종료</Button>
-              : <Button variant="contained" startIcon={<ScreenShareOutlined />} disabled={busy || csvReading || !backupReady || !catalog.length} onClick={() => void share()}>화면 공유 시작</Button>}
+              : <Button variant="contained" startIcon={<ScreenShareOutlined />} disabled={busy || csvReading || !backupReady || !catalog.length || preparationState!=='ready'} onClick={() => void share()}>{!busy && preparationState==='loading' ? '스캔 준비 중' : '화면 공유 시작'}</Button>}
             <Button color="inherit" startIcon={<RestartAltOutlined />} disabled={busy || !backupReady || !cards.length} aria-expanded={resetPending} onClick={() => {setResetPending(!resetPending);setCsvPending(null);}}>목록 초기화</Button>
             <Button variant="outlined" startIcon={<FileDownloadOutlined />} disabled={busy || !cards.length} title="전체 카드의 이름·각수·카드수 저장 · 행이 있으면 보유" onClick={()=>downloadInventory(new Blob([inventoryCsv(cards)],{type:'text/csv;charset=utf-8'}),'loacard-cards.csv')}>CSV 저장</Button>
             <Button component="label" role={undefined} tabIndex={-1} variant="outlined" startIcon={<FileUploadOutlined />} disabled={busy||csvReading||!backupReady||!catalog.length} sx={{ '&:focus-within': { outline: '2px solid var(--accent)', outlineOffset: 2 } }}>
@@ -411,6 +450,11 @@ function App() {
             </Button>
             {busy && !sharing && <button className="text-button" onClick={() => controller.current?.abort()}>스캔 중지</button>}
           </div>
+          {!busy && <div role="status" className="scan-preparation">
+            {preparationState==='loading' && <span className="scan-spinner" aria-hidden="true" />}
+            <span>{preparationMessage}</span>
+            {preparationState==='error' && <Button size="small" onClick={() => setPreparationAttempt(value => value + 1)}>준비 다시 시도</Button>}
+          </div>}
           {csvPending && <div className="import-confirm" role="group" aria-label="CSV 불러오기 확인">
             <div><strong>{csvPending.name} · {csvPending.cards.length}종</strong>
               <p>{cards.length ? `현재 ${cards.length}종 목록을 이 파일의 목록으로 교체합니다.` : '파일에 있는 카드를 목록에 불러옵니다.'} 기존 목록은 CSV로 저장할 수 있습니다.</p>
