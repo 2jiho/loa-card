@@ -1,4 +1,22 @@
 import type {ScannedCard} from './features/card-scanner/recognizer';
+import type {ScannerState} from './features/card-scanner/scanner';
+
+/** Blank means unknown, distinct from an explicitly entered zero. */
+export function parseCsvExperience(input:string):number|null {
+  const text=input.trim();
+  if(!text)return null;
+  const value=Number(text.replaceAll(',',''));
+  if(!/^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(text)||!Number.isSafeInteger(value))
+    throw new Error('0 이상의 정수를 입력해 주세요. 예: 1,234,567');
+  return value;
+}
+
+export function csvInventoryState(cards:ScannedCard[],experience:string):ScannerState {
+  const current=parseCsvExperience(experience);
+  return {status:'CSV 불러오기 완료',percent:100,sampled:0,stable:0,expected:null,capacity:null,cards,
+    located:false,unreadable:0,queued:0,droppedFrames:0,unidentified:[],
+    growthPoints:current===null?null:{current,maximum:null}};
+}
 
 function cell(value: string | number | null) {
   let text=value === null ? '' : String(value);

@@ -34,7 +34,7 @@ import type { GrowthMaster } from './features/growth/optimizer';
 import type { GrowthSequenceStep } from './features/growth/growth-sequence';
 import { merchantCardIssues } from './features/merchants/merchant-progress';
 import {cardRarityClass} from './card-rarity';
-import {inventoryCsv,parseInventoryCsv} from './inventory-csv';
+import {inventoryCsv,parseInventoryCsv,parseCsvExperience,csvInventoryState} from './inventory-csv';
 import type {CsvCatalogCard} from './inventory-csv';
 import { unownedInventory } from './inventory-unowned';
 import { loadScanBackup, saveScanBackup, clearScanBackup, LegacyBackupChoice } from "./features/card-scanner/scan-backup";
@@ -106,6 +106,11 @@ function App() {
   const [resetPending, setResetPending] = useState(false);
   const [csvPending,setCsvPending]=useState<{name:string;cards:ScannedCard[]}|null>(null);
   const [csvReading,setCsvReading]=useState(false);
+  const [csvExperience,setCsvExperience]=useState('');
+  const csvExperienceError=useMemo(()=>{
+    try {parseCsvExperience(csvExperience);return '';}
+    catch(e) {return e instanceof Error?e.message:'경험치를 확인해 주세요.';}
+  },[csvExperience]);
   const inventory = useRef<ScannedCard[]>([]);
   const [catalog, setCatalog] = useState<CsvCatalogCard[]>([]);
   const rarityById=useMemo(()=>new Map(catalog.map(card=>[card.id,card.rarity])),[catalog]);
@@ -265,7 +270,7 @@ function App() {
     }
   }
   async function readCsv(file:File) {
-    setCsvReading(true);setCsvPending(null);setError('');setResetPending(false);
+    setCsvReading(true);setCsvPending(null);setCsvExperience('');setError('');setResetPending(false);
     try {
       if(file.size>1_048_576)throw new Error('CSV 파일은 1MB 이내로 선택해 주세요.');
       const source=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());
@@ -275,11 +280,11 @@ function App() {
     } finally {setCsvReading(false);}
   }
   function applyCsv() {
-    if(!csvPending||busy)return;
+    if(!csvPending||busy||csvExperienceError)return;
     const imported=csvPending.cards;
+    const next=csvInventoryState(imported,csvExperience);
     release();inventory.current=imported;
-    setState({status:'CSV 불러오기 완료',percent:100,sampled:0,stable:0,expected:null,capacity:null,cards:imported,
-      located:false,unreadable:0,queued:0,droppedFrames:0,unidentified:[]});
+    setState(next);
     setCsvPending(null);setQuery('');setInventoryFilter('owned');setPage(1);setResultView('cards');setError('');
   }
   function downloadInventory(blob:Blob,filename:string) {
@@ -408,9 +413,14 @@ function App() {
           </div>
           {csvPending && <div className="import-confirm" role="group" aria-label="CSV 불러오기 확인">
             <div><strong>{csvPending.name} · {csvPending.cards.length}종</strong>
-              <p>{cards.length ? `현재 ${cards.length}종 목록을 이 파일의 목록으로 교체합니다.` : '파일에 있는 카드를 목록에 불러옵니다.'} 기존 목록은 CSV로 저장할 수 있습니다.</p></div>
+              <p>{cards.length ? `현재 ${cards.length}종 목록을 이 파일의 목록으로 교체합니다.` : '파일에 있는 카드를 목록에 불러옵니다.'} 기존 목록은 CSV로 저장할 수 있습니다.</p>
+              <TextField className="csv-experience" label="보유 카드 경험치 (선택)" size="small" value={csvExperience}
+                onChange={event=>setCsvExperience(event.target.value)} placeholder="예: 1,234,567"
+                error={!!csvExperienceError} helperText={csvExperienceError||'비워 두면 경험치 미확인으로 불러옵니다.'}
+                slotProps={{htmlInput:{inputMode:'numeric',maxLength:32}}} />
+            </div>
             <button className="text-button" onClick={()=>setCsvPending(null)}>취소</button>
-            <button className="secondary" disabled={busy} onClick={applyCsv}>불러오기</button>
+            <button className="secondary" disabled={busy||!!csvExperienceError} onClick={applyCsv}>불러오기</button>
           </div>}
           {resetPending && <div className="reset-confirm" role="group" aria-label="목록 초기화 확인"><span>현재 카드 목록을 비우고 새로 시작할까요?</span>
             <button className="secondary" onClick={() => setResetPending(false)}>취소</button>

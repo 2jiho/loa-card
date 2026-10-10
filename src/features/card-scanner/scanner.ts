@@ -55,7 +55,7 @@ export interface ScannerState {
   capacity: number | null;
   cards: ScannedCard[];
   seededCards?: number;
-  growthPoints?: { current: number; maximum: number } | null;
+  growthPoints?: { current: number; maximum: number | null } | null;
   growthPointsEstimated?: boolean;
   growthHistory?: import('../growth/complete-growth').GrowthCompletion[];
   sort?: CardSort | null;

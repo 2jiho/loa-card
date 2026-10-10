@@ -28,8 +28,8 @@ function isState(value: unknown): value is ScannerState {
     ids.add(card.id);
   }
   return state.growthPoints == null || (Number.isFinite(state.growthPoints.current) &&
-    Number.isFinite(state.growthPoints.maximum) && state.growthPoints.current >= 0 &&
-    state.growthPoints.maximum >= state.growthPoints.current);
+    state.growthPoints.current >= 0 && (state.growthPoints.maximum === null ||
+    (Number.isFinite(state.growthPoints.maximum) && state.growthPoints.maximum >= state.growthPoints.current)));
 }
 /** Shared per origin; atomic revisions prevent stale tabs from overwriting a
  * newer scan or resurrecting a cleared inventory. */

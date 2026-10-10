@@ -154,6 +154,7 @@ button.card-thumbnail { display:inline-flex; flex:0 0 auto; padding:0; border:0;
 .import-confirm>div { flex:1; min-width:180px; }
 .import-confirm strong { overflow-wrap:anywhere; }
 .import-confirm p { margin:4px 0 0; color:var(--muted); font-size:11px; }
+.import-confirm .csv-experience { margin-top:14px; width:100%; max-width:300px; }
 .thumbnail-placeholder { display:flex; align-items:center; justify-content:center; color:var(--line-strong); background:var(--surface-alt); border:1px solid var(--line); cursor:default; }
 .error>button { flex-shrink:0; white-space:nowrap; }
 

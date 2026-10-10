@@ -52,7 +52,8 @@ export function UsageGuide({ open, onClose }: { open: boolean; onClose: () => vo
       </section>
       <section aria-labelledby="guide-save"><h3 id="guide-save">목록 보관·다른 계정</h3>
         <p>완료 목록은 같은 주소·브라우저에 자동 저장됩니다. 다른 기기로 옮기거나 별도로 보관하려면 <strong>CSV 저장</strong>을 사용하세요.</p>
-        <p>CSV 불러오기는 현재 목록을 교체하며 경험치와 캡처 사진은 포함하지 않습니다. 다른 계정을 스캔할 때는 필요한 CSV를 저장하고 <strong>목록 초기화</strong> 후 시작하세요.</p>
+        <p>CSV에는 경험치와 캡처 사진이 없습니다. 불러오기 확인 화면에서 <strong>보유 카드 경험치</strong>를 입력하면 도감작 계산에 반영됩니다. 비워 두면 경험치는 미확인으로 처리합니다.</p>
+        <p>CSV 불러오기는 현재 목록을 교체합니다. 다른 계정을 스캔할 때는 필요한 CSV를 저장하고 <strong>목록 초기화</strong> 후 시작하세요.</p>
         <p>CSV로 불러온 카드에는 DB에 연결된 원화를 표시합니다. 원화가 없는 카드는 대체 아이콘이 나오며, 이름·각성·장수는 그대로 사용할 수 있습니다.</p>
       </section>
     </DialogContent>
