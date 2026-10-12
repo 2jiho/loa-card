@@ -1,5 +1,5 @@
 import { ALL_FORMATS, BlobSource, CanvasSink, Input, UrlSource } from "mediabunny";
-import { waitForInput } from "./input-source";
+import { yieldForCapture } from "./input-source";
 
 /** Sequential decoded samples, not a synthetic fixed-rate seek schedule.
  * The consumer must copy pixels before advancing this bounded canvas pool. */
@@ -26,7 +26,7 @@ export async function* decodedFrames(source: Blob | string, signal: AbortSignal)
         still: false };
       // A decoder's prefetched samples may all resolve as microtasks. Yield
       // between frames so acquisition-only scans can process stop/UI events.
-      await waitForInput(signal, 0);
+      await yieldForCapture(signal);
     }
     if (!count) throw new Error("영상에서 읽을 수 있는 프레임이 없습니다.");
   } catch (error) {

@@ -1,0 +1,18 @@
+{
+  "version": "local-experiment-2026-10-12",
+  "sources": [
+    {
+      "file": "ui-textures/EFUI_CARDGAMESEASON2/Texture2D/cardstorageseason2_i2.png",
+      "sha256": "a5d4c966d80ee2b0776af379a1a904f7e8fd8ab429a5a2682364bd6a0987ce9a"
+    },
+    {
+      "file": "ui-textures/EFUI_CARDGAMESEASON2/Texture2D/cardstorageseason2_i4e.png",
+      "sha256": "5c2da7597e793f9cde86015dc42c7196c91b7195c16776d5dbde094a15856977"
+    },
+    {
+      "file": "Binaries/Fonts/HANYoonGothic760.ttf",
+      "sha256": "9be48130d3964bc7b71c2027dc67eace371cc9909da12e18029fa2d504c38518"
+    }
+  ],
+  "placement": "Fixed coordinates in build-composed-card-templates.py, calibrated against screenshot fixtures; no runtime transform extraction."
+}

@@ -19,11 +19,10 @@ export function MerchantAlerts({cards,busy,rarityById,onReview}:{cards:ScannedCa
   const now=useMerchantClock();
   const [filter,setFilter]=useState<'needed'|'complete'>('needed');
   const [copyMessage,setCopyMessage]=useState('');
-  const groups=useMemo(()=>merchantProgress(cards,busy),[cards,busy]);
+  const groups=useMemo(()=>merchantProgress(cards),[cards]);
   const selected=groups.filter(group=>group.status===filter);
   const held=groups.filter(group=>group.status==='unknown');
-  // Includes post-share recovery: recommendations belong to a finished result.
-  if(busy || !cards.length)return null;
+  if(!cards.length)return null;
   return <section className="panel merchant-panel" aria-label="떠돌이 상인">
     <div className="merchant-heading"><div><h2>지역별 수집 현황</h2>
       <p>5각 재료 기준</p></div>
@@ -37,11 +36,11 @@ export function MerchantAlerts({cards,busy,rarityById,onReview}:{cards:ScannedCa
         {(['needed','complete'] as const).map(status=><ToggleButton key={status} value={status}>{merchantStatusLabel[status]} · {groups.filter(g=>g.status===status).length}</ToggleButton>)}
       </ToggleButtonGroup>
       {groups.some(group=>group.unknown.length>0)&&<p className="merchant-guidance">{held.length ? `${held.length}개 지역 확인 필요` : '일부 카드 미확인'} · <a href="#card-results" onClick={onReview}>카드 확인</a></p>}
-      <p className="merchant-guidance">{filter==='needed' ? '게임에서 아래 지역의 카드 알림을 켜 주세요.' : '수집 완료 · 카드 알림을 꺼도 됩니다.'}</p>
+      <p className="merchant-guidance">{busy ? '확인된 카드 기준 · 스캔이 끝나면 알림 설정을 결정해 주세요.' : filter==='needed' ? '게임에서 아래 지역의 카드 알림을 켜 주세요.' : '수집 완료 · 카드 알림을 꺼도 됩니다.'}</p>
       <div className="merchant-grid" key={filter}>{[selected.slice(0,Math.ceil(selected.length/2)),selected.slice(Math.ceil(selected.length/2))].map((column,index)=><div className="merchant-column" key={index}>
         {column.map(group=><MerchantRegion key={group.id} group={group} rarityById={rarityById} now={now} />)}
       </div>)}</div>
-      {!selected.length&&<p className="merchant-empty">{filter==='complete'?'수집 완료 지역 없음':groups.every(g=>g.status==='complete')?'모든 지역 수집 완료':'부족한 카드 없음 · 미확인 카드는 내 카드에서 확인'}</p>}
+      {!selected.length&&<p className="merchant-empty">{busy ? '아직 해당하는 지역이 확인되지 않았어요.' : filter==='complete'?'수집 완료 지역 없음':groups.every(g=>g.status==='complete')?'모든 지역 수집 완료':'부족한 카드 없음 · 미확인 카드는 내 카드에서 확인'}</p>}
       <p role="status" className="merchant-copy-status">{copyMessage}</p>
     <p className="merchant-footnote">각성에 사용한 카드 + 추가 장수 기준 · 알림은 게임에서 직접 설정</p>
   </section>;

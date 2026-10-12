@@ -21,14 +21,14 @@ export function merchantCardIssues(cards:readonly ScannedCard[]) {
     .filter(card=>remainingMerchantCopies(inventory.get(card.id))===null)
     .map(card=>({...card,missing:!inventory.has(card.id)}));
 }
-export function merchantProgress(cards:readonly ScannedCard[],busy=false) {
+export function merchantProgress(cards:readonly ScannedCard[]) {
   const inventory=new Map(cards.map(card=>[card.id,card]));
   return merchants.map(merchant=>{
     const items=merchant.cards.map(card=>({...card,remaining:remainingMerchantCopies(inventory.get(card.id))}));
     const needed=items.filter(card=>card.remaining!==null&&card.remaining>0);
     const unknown=items.filter(card=>card.remaining===null);
     const complete=items.length-needed.length-unknown.length;
-    const status:MerchantStatus=needed.length ? 'needed' : unknown.length||busy ? 'unknown' : 'complete';
+    const status:MerchantStatus=needed.length ? 'needed' : unknown.length ? 'unknown' : 'complete';
     return {...merchant,items,needed,unknown,complete,status,remaining:needed.reduce((sum,card)=>sum+card.remaining!,0)};
   });
 }

@@ -33,6 +33,7 @@ import { CardName } from './CardName';
 import { MerchantAlerts } from './features/merchants/MerchantAlerts';
 import { GrowthPlanner } from './features/growth/GrowthPlanner';
 import { RaidCards } from './features/raid/RaidCards';
+import { useLiveResults } from './features/use-live-results';
 import { completeGrowth, undoGrowth } from './features/growth/complete-growth';
 import type { GrowthMaster } from './features/growth/optimizer';
 import type { GrowthSequenceStep } from './features/growth/growth-sequence';
@@ -359,6 +360,7 @@ function App() {
     setError('');
   }
   const cards = state?.cards ?? [];
+  const liveResults = useLiveResults(cards, state?.growthPoints?.current, busy);
   const merchantIssues = busy ? [] : merchantCardIssues(cards);
   const missingCards = merchantIssues.filter(card=>card.missing);
   const uncertainIds = new Set(merchantIssues.filter(card=>!card.missing).map(card=>card.id));
@@ -375,8 +377,8 @@ function App() {
   const filteredUnowned = (unowned ?? []).filter(card=>card.name.includes(query));
   const visibleCount = onlyUnowned ? filteredUnowned.length : filtered.length;
   const match = state?.expected !== null && state?.expected === cards.length;
-  const stopped = state?.status === "스캔 중지";
-  const resultsReady=!busy&&!csvReading&&!stopped&&!error&&cards.length>0;
+  const stopped = state?.status === "스캔 중지" || !!state?.interrupted;
+  const resultsReady=!csvReading&&!stopped&&!error&&cards.length>0;
   const activeView=resultsReady?resultView:'cards';
   const pageCount=Math.max(1,Math.ceil(visibleCount/CARDS_PER_PAGE));
   const currentPage=Math.min(page,pageCount);
@@ -390,7 +392,7 @@ function App() {
     autoStopped:state?.autoStopped,recoverySkipped:state?.recoverySkipped});
   const finalizing = busy && state?.recoverySkipped;
   const workPhase = sharing ? 'capture' : state?.workPhase ?? 'reading';
-  const statusTitle = error ? "입력을 확인해 주세요" : busy && !engineReady ? "스캔 준비 중" : sharing ? "화면 공유 중" : busy && workPhase==='cleanup' ? "스캔을 마무리하고 있어요" : busy && workPhase==='verifying' ? "판독 결과를 검증하고 있어요" : busy && workPhase==='recovery' ? "저장된 화면을 다시 확인하고 있어요" : finalizing ? "카드 검증 완료" : busy ? "카드를 읽고 있어요" : stopped ? "스캔 중지됨" : state?.autoStopped ? "전체 카드 수집 완료" : state?.status === "CSV 불러오기 완료" ? "CSV 불러오기 완료" : cards.length ? "카드 목록 준비됨" : "화면을 공유해 시작하세요";
+  const statusTitle = state?.interrupted === "stalled" ? "스캔 미완료" : error ? "입력을 확인해 주세요" : busy && !engineReady ? "스캔 준비 중" : sharing ? "화면 공유 중" : busy && workPhase==='cleanup' ? "스캔을 마무리하고 있어요" : busy && workPhase==='verifying' ? "판독 결과를 검증하고 있어요" : busy && workPhase==='recovery' ? "저장된 화면을 다시 확인하고 있어요" : finalizing ? "카드 검증 완료" : busy ? "카드를 읽고 있어요" : stopped ? "스캔 중지됨" : state?.autoStopped ? "전체 카드 수집 완료" : state?.status === "CSV 불러오기 완료" ? "CSV 불러오기 완료" : cards.length ? "카드 목록 준비됨" : "화면을 공유해 시작하세요";
   const statusDescription = busy && !engineReady ? `${state?.status ?? "화면 검출 모듈 준비 중"} · 준비가 끝나면 스크롤해 주세요.`
     : sharing ? (state?.located ? "성장 탭을 천천히 스크롤해 주세요. 읽은 카드는 아래에 쌓입니다." : "카드 보관함의 성장 탭을 찾고 있어요. 카드 화면을 보여 주세요.")
     : busy && workPhase==='cleanup' ? "판독 작업을 종료하고 임시 기록을 정리하고 있습니다."
@@ -436,8 +438,13 @@ function App() {
       </header>
       <div className="app-layout">
       <WorkspaceNavigation value={activeView} onChange={setResultView} ready={resultsReady} count={cards.length}
-        hint={busy ? '판독 완료 후 모든 메뉴를 사용할 수 있어요.' : review > 0 || nameIssues.length > 0 ? '강조된 카드를 다시 보여 주세요.' : !cards.length ? '스캔하거나 CSV를 불러오면 시작할 수 있어요.' : undefined} />
+        hint={busy ? '읽은 카드부터 각 메뉴에 반영합니다.' : review > 0 || nameIssues.length > 0 ? '강조된 카드를 다시 보여 주세요.' : !cards.length ? '스캔하거나 CSV를 불러오면 시작할 수 있어요.' : undefined} />
       <main className="workspace">
+      {busy && activeView!=='cards' && <div className="notice" role="status">
+        <span className="scan-spinner" aria-hidden="true" /> 스캔 중 · {state?.currentRunRead ?? 0} / {state?.expected ?? '—'}종 판독 · 결과 갱신 중
+        <p>현재까지 확인한 목록 기준입니다. 재스캔은 기존 목록을 갱신하며, 미스캔 카드는 미등록으로 확정하지 않습니다.</p>
+        <button className="text-button" onClick={()=>setResultView('cards')}>스캔 진행 보기</button>
+      </div>}
       {activeView!=='cards' && scanSummary}
       {!!state?.growthHistory?.length && <div className="growth-completion-notice" role="status">
         <span>{state.growthHistory.at(-1)!.label} · 성장 반영됨 <small>경험치는 다음 스캔에서 갱신</small></span>
@@ -507,6 +514,7 @@ function App() {
       {backupError && <div className="notice" role="alert"><p>{backupError}</p>{!!state && <button className="text-button" disabled={busy || !backupReady} onClick={() => setBackupAttempt(n => n + 1)}>저장 다시 시도</button>}<button className="text-button" disabled={busy || !backupReady} onClick={() => void restoreBackup()}>현재 목록 대신 저장 목록 불러오기</button><span> · 현재 목록은 먼저 CSV로 보관해 주세요.</span></div>}
       {error && <p className="error" role="alert">{error}<button className="text-button" onClick={() => setError("")}>닫기</button></p>}
       {state?.captureWarning && <p className="notice" role="alert">{state.captureWarning}</p>}
+      {busy && state?.processingWarning && <p className="notice" role="status">{state.processingWarning}</p>}
       {!!state?.droppedFrames && <p className="notice" role="alert">일부 화면을 처리하지 못했습니다. 빠르게 지나간 구간을 다시 공유해 주세요.</p>}
       {scanSummary}
       {scrollNotice && !!state?.scrollGaps?.length && <section className="notice" aria-label={scrollNotice==='collecting'?'수집 구간 참고':'다시 보여줄 스크롤 구간'}>
@@ -563,9 +571,9 @@ function App() {
           <span>보관함 용량 <b>{state?.capacity ?? "—"}</b></span></div>}
       </section>
       </section>
-      <section id="panel-merchants" role="tabpanel" aria-labelledby="view-merchants" hidden={activeView!=='merchants'}>{activeView==='merchants' && <MerchantAlerts cards={cards} busy={busy} rarityById={rarityById} onReview={showReview} />}</section>
-      <section id="panel-growth" role="tabpanel" aria-labelledby="view-growth" hidden={activeView!=='growth'}>{activeView==='growth' && <GrowthPlanner cards={cards} growthPoints={state?.growthPoints?.current} onComplete={markGrowthComplete} />}</section>
-      <section id="panel-raid" role="tabpanel" aria-labelledby="view-raid" hidden={activeView!=='raid'}>{activeView==='raid' && <RaidCards cards={cards} complete={unowned!==null} xp={state?.growthPoints?.current} />}</section>
+      <section id="panel-merchants" role="tabpanel" aria-labelledby="view-merchants" hidden={activeView!=='merchants'}>{activeView==='merchants' && <MerchantAlerts cards={liveResults.cards} busy={busy} rarityById={rarityById} onReview={showReview} />}</section>
+      <section id="panel-growth" role="tabpanel" aria-labelledby="view-growth" hidden={activeView!=='growth'}>{activeView==='growth' && <GrowthPlanner cards={liveResults.cards} growthPoints={liveResults.xp} busy={busy} complete={unowned!==null} onComplete={markGrowthComplete} />}</section>
+      <section id="panel-raid" role="tabpanel" aria-labelledby="view-raid" hidden={activeView!=='raid'}>{activeView==='raid' && <RaidCards cards={liveResults.cards} complete={unowned!==null} xp={liveResults.xp} />}</section>
       <footer className="app-footer">
         <div className="footer-links"><span>LoaCard · 무료·비상업 팬 도구</span><a href={`${import.meta.env.BASE_URL}licenses/index.html`} target="_blank" rel="noopener noreferrer">라이선스 및 권리 안내</a></div>
         <p>스마일게이트의 공식 서비스가 아니며 제휴·보증을 받지 않습니다.<br />로스트아크 이미지·게임 데이터의 권리는 스마일게이트 등 각 권리자에게 있습니다.</p>

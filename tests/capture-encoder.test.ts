@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createCaptureEncoder } from "../src/features/card-scanner/capture-encoder.ts";
+import type { SavedAcquisition } from '../src/features/card-scanner/saved-acquisition';
 
 test('discard cancels unfinished copies and waits for raw-frame cleanup without PNG encoding',async()=>{
  const requests:unknown[]=[],copies:((bitmap:ImageBitmap)=>void)[]=[];
@@ -60,4 +61,35 @@ test("live snapshots never read main-thread pixels and flush only after ordered 
   }
   worker.onmessage!({ data: { done: true } } as MessageEvent);
   await finishing; assert.equal(worker.terminated, true);
+});
+
+test('original replay keeps exact receipt IDs and stops only when completion and all remaining receipts agree',async()=>{
+ const oldDocument=globalThis.document,oldImageData=globalThis.ImageData;
+ Object.assign(globalThis,{document:{createElement:()=>({width:0,height:0,getContext:()=>({putImageData(){}})})},
+  ImageData:class {constructor(public data:Uint8ClampedArray,public width:number,public height:number){}}});
+ try {
+  for(const mode of ['complete','not-ready','missing','changed-size']) {
+   const requests:number[]=[],seen:(SavedAcquisition|undefined)[]=[],skipped:number[]=[];
+   const worker={onmessage:null as ((event:MessageEvent)=>void)|null,onerror:null,
+    postMessage(message:unknown){const request=message as {id?:number;read?:number;discard?:boolean};queueMicrotask(()=>{
+     if(request.id)worker.onmessage!({data:{id:request.id,stored:true}} as MessageEvent);
+     if(request.read){requests.push(request.read);worker.onmessage!({data:{id:request.read,raw:{width:1,height:1,time:request.read,pixels:new Uint8ClampedArray(4)}}} as MessageEvent);}
+     if(request.discard)worker.onmessage!({data:{done:true}} as MessageEvent);
+    });},terminate(){}};
+   const encoder=createCaptureEncoder(()=>assert.fail('not PNG'),assert.fail,worker,1000,async()=>({close(){}} as ImageBitmap));
+   const first=encoder.submit({displayWidth:1,displayHeight:1} as VideoFrame,1,1000)!;
+   const second=encoder.submit({displayWidth:1,displayHeight:1} as VideoFrame,2,2000)!;
+   const a={width:mode==='changed-size'?2:1,height:1,layout:null,cells:[],observations:[]} as SavedAcquisition;
+   encoder.attachAnalysis(first,a);
+   if(mode!=='missing')encoder.attachAnalysis(second,{...a});
+   for await(const frame of encoder.frames(new AbortController().signal,{
+    ready:()=>mode==='complete'||mode==='missing',covered:value=>!!value,skipped:count=>skipped.push(count),
+   }))seen.push(frame.analysis);
+   if(mode==='complete'){assert.deepEqual(requests,[]);assert.deepEqual(skipped,[2]);}
+   else {assert.deepEqual(requests,[1,2]);assert.deepEqual(skipped,[]);
+    if(mode==='missing'){assert.equal(seen[0],a);assert.equal(seen[1],undefined);}
+    if(mode==='changed-size')assert.deepEqual(seen,[undefined,undefined]);
+   }
+  }
+ } finally {Object.assign(globalThis,{document:oldDocument,ImageData:oldImageData});}
 });

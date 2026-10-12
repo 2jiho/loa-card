@@ -55,7 +55,6 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
     const image=new Image();image.src=`${import.meta.env.BASE_URL}scanner/${name}`;
     await image.decode();return cv.imread(image);
   });
-  const readCanvas = (canvas:Raster) => cv.matFromImageData(rasterContext(canvas).getImageData(0,0,canvas.width,canvas.height));
   const original = await anchor('header-anchor.png');
   let growthOriginal: OpenCV.Mat;
   try { growthOriginal = await anchor('growth-tab.png'); }
@@ -73,6 +72,7 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
   rasterContext(canvas);
   let previous: { x: number; y: number; scale: number } | null = null;
   const trackedCache = new ExactPixelCache<{score:number;x:number;y:number;scale:number}>(1);
+  const refinementCache = new ExactPixelCache<{score:number;x:number;y:number;scale:number}>(1);
   const growthCache = new ExactPixelCache<{score:number;gold:number}>(1);
   return {
     detect(video: HTMLVideoElement | HTMLImageElement | Raster): Layout | null {
@@ -105,7 +105,7 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
           canvas.height,
         );
       const trackedPixels = rasterContext(canvas).getImageData(0,0,canvas.width,canvas.height);
-      const trackedKey = JSON.stringify([tracked,mediaWidth,mediaHeight,offsetX,offsetY,width,height,canvas.width,canvas.height]);
+      const trackedKey = JSON.stringify([tracked?.x,tracked?.y,tracked?.scale,mediaWidth,mediaHeight,offsetX,offsetY,width,height,canvas.width,canvas.height]);
       const cached = reuseExact && tracked ? trackedCache.get(0,trackedKey,trackedPixels.data) : undefined;
       let best = cached ? {...cached} : { score: 0, x: 0, y: 0, scale: 1 };
       if (!cached) {
@@ -191,50 +191,59 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
             canvas.width,
             canvas.height,
           );
-        const native = readCanvas(canvas),
-          gray = new cv.Mat();
-        cv.cvtColor(native, gray, cv.COLOR_RGBA2GRAY);
-        native.delete();
-        let refined = { ...best, score: 0 };
-        try {
-          for (let step = -8; step <= 8; step++) {
-            const scale = Math.round((best.scale + step * 0.01) * 100) / 100;
-            const template = new cv.Mat(),
-              result = new cv.Mat();
-            try {
-              cv.resize(
-                grayAnchor,
-                template,
-                new cv.Size(
-                  Math.round(grayAnchor.cols * scale),
-                  Math.round(grayAnchor.rows * scale),
-                ),
-                0,
-                0,
-                cv.INTER_AREA,
-              );
-              if (template.cols >= gray.cols || template.rows >= gray.rows)
-                continue;
-              cv.matchTemplate(gray, template, result, cv.TM_CCOEFF_NORMED);
-              const match = (
-                cv.minMaxLoc as (source: OpenCV.Mat) => OpenCV.MinMaxLoc
-              )(result);
-              if (match.maxVal > refined.score)
-                refined = {
-                  score: match.maxVal,
-                  x: left + match.maxLoc.x,
-                  y: top + match.maxLoc.y,
-                  scale,
-                };
-            } finally {
-              template.delete();
-              result.delete();
+        const nativePixels=rasterContext(canvas).getImageData(0,0,canvas.width,canvas.height);
+        const refinementKey=JSON.stringify([best.x,best.y,best.scale,left,top,canvas.width,canvas.height,mediaWidth,mediaHeight]);
+        const cachedRefinement=reuseExact?refinementCache.get(0,refinementKey,nativePixels.data):undefined;
+        if(cachedRefinement)best={...cachedRefinement};
+        else {
+          const native = cv.matFromImageData(nativePixels),
+            gray = new cv.Mat();
+          cv.cvtColor(native, gray, cv.COLOR_RGBA2GRAY);
+          native.delete();
+          let refined = { ...best, score: 0 };
+          try {
+            for (let step = -8; step <= 8; step++) {
+              const scale = Math.round((best.scale + step * 0.01) * 100) / 100;
+              const template = new cv.Mat(),
+                result = new cv.Mat();
+              try {
+                cv.resize(
+                  grayAnchor,
+                  template,
+                  new cv.Size(
+                    Math.round(grayAnchor.cols * scale),
+                    Math.round(grayAnchor.rows * scale),
+                  ),
+                  0,
+                  0,
+                  cv.INTER_AREA,
+                );
+                if (template.cols >= gray.cols || template.rows >= gray.rows)
+                  continue;
+                cv.matchTemplate(gray, template, result, cv.TM_CCOEFF_NORMED);
+                const match = (
+                  cv.minMaxLoc as (source: OpenCV.Mat) => OpenCV.MinMaxLoc
+                )(result);
+                if (match.maxVal > refined.score)
+                  refined = {
+                    score: match.maxVal,
+                    x: left + match.maxLoc.x,
+                    y: top + match.maxLoc.y,
+                    scale,
+                  };
+              } finally {
+                template.delete();
+                result.delete();
+              }
             }
+          } finally {
+            gray.delete();
           }
-        } finally {
-          gray.delete();
+          if (refined.score >= 0.75) {
+            best = refined;
+            if(reuseExact)refinementCache.setOwned(0,refinementKey,nativePixels.data,{...best});
+          }
         }
-        if (refined.score >= 0.75) best = refined;
       }
       if (best.score < 0.75) return null;
       // The inventory title also appears outside Growth. Validate the selected tab.

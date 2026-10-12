@@ -19,10 +19,17 @@ ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--assets', type=Path, default=ROOT / 'work/client-assets',
                     help='Local directory containing db/ and card-atlases/.')
-LOCAL = parser.parse_args().assets.resolve()
-OUT = ROOT / 'public/scanner'
+parser.add_argument('--output', type=Path, default=ROOT / 'public/scanner',
+                    help='Output directory; experiments must use a separate local directory.')
+parser.add_argument('--experimental-all', action='store_true',
+                    help='Generate recognition features for display-only mappings for local evaluation.')
+args = parser.parse_args()
+LOCAL = args.assets.resolve()
+OUT = args.output.resolve()
+if args.experimental_all and (not OUT.is_relative_to(ROOT / 'work') or OUT == ROOT / 'work'):
+    parser.error('--experimental-all requires an output subdirectory of work/')
 mapping = json.loads((ROOT / 'scripts/client-artwork-map.json').read_text(encoding='utf-8'))
-catalog = json.loads((OUT / 'cards.json').read_text(encoding='utf-8'))
+catalog = json.loads((ROOT / 'public/scanner/cards.json').read_text(encoding='utf-8'))
 aliases = {'catalog:zakra-sarta': 3201111, 'catalog:four-elders': 3201112, 'catalog:illusion-moon': 3201113}
 db = sqlite3.connect((LOCAL / 'db/SeasonCard.db').as_uri() + '?mode=ro', uri=True)
 db.row_factory = sqlite3.Row
@@ -60,9 +67,9 @@ for card in catalog['cards']:
     assert min(x, y) >= 0 and w > 0 and h > 0 and x + w <= raw.shape[1] and y + h <= raw.shape[0]
     crop = raw[y:y+h, x:x+w]
     reference_hashes = {}
-    # A display association is not necessarily a unique card identity. Keep
-    # shared portraits and manually identified display additions out of matching.
-    if ref.get('usage') != 'display-only':
+    # A display association is not necessarily a unique card identity. Only
+    # isolated experiments may include unvalidated display additions in matching.
+    if ref.get('usage') != 'display-only' or args.experimental_all:
         small = cv2.resize(crop, (24, 32), interpolation=cv2.INTER_AREA)
         rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
         vector = np.concatenate([rgb[6:13, 2:22].flatten(), rgb[19:24, 2:22].flatten()])
@@ -75,11 +82,13 @@ for card in catalog['cards']:
     filename = f"{key}.webp"
     card['artwork'] = filename
     images[filename] = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)).resize((160, 234), Image.Resampling.LANCZOS)
-    provenance.append({**ref, 'file': filename, **reference_hashes})
+    provenance.append({**ref, **({'usage': 'experimental-recognition-and-display'}
+                       if args.experimental_all and ref.get('usage') == 'display-only' else {}),
+                       'file': filename, **reference_hashes})
 
 # Validate all input before writing any output.
 art_dir = OUT / 'artwork'
-art_dir.mkdir(exist_ok=True)
+art_dir.mkdir(parents=True, exist_ok=True)
 for ref in provenance:
     image_path = art_dir / ref['file']
     images[ref['file']].save(image_path, 'WEBP', quality=82, method=6)

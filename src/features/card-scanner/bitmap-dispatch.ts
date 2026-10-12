@@ -1,6 +1,6 @@
 /** Start each source snapshot immediately, then transfer in capture order.
  * Pixel readback happens in the Worker instead of blocking video playback. */
-export type SnapshotSource = HTMLCanvasElement | HTMLVideoElement;
+export type SnapshotSource = HTMLCanvasElement | HTMLVideoElement | VideoFrame;
 export function createBitmapDispatch(make: (canvas: SnapshotSource) => Promise<ImageBitmap>,
   send: (bitmap: ImageBitmap, metadata: { id: number; width: number; height: number; time: number; elapsed: number }) => void,
   report: (error: unknown) => void) {

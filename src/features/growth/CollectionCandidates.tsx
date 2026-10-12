@@ -2,8 +2,8 @@ import type { GrowthSequenceStep } from './growth-sequence';
 import { cardRarityClass } from '../../card-rarity';
 
 const number = (n: number) => n.toLocaleString('ko-KR');
-export function CollectionCandidates({ candidates, targetName, onComplete }: {
-  candidates: GrowthSequenceStep[]; targetName: string; onComplete: (step: GrowthSequenceStep) => void;
+export function CollectionCandidates({ candidates, targetName, onComplete, disabled = false }: {
+  candidates: GrowthSequenceStep[]; targetName: string; onComplete: (step: GrowthSequenceStep) => void; disabled?: boolean;
 }) {
   const ready = candidates.filter(c => c.status === 'ready');
   const lastReady = ready.at(-1);
@@ -51,7 +51,7 @@ export function CollectionCandidates({ candidates, targetName, onComplete }: {
         {a.conditional && <p className="growth-collection-note">미등록 가정 · 부족 장수에 등록용 1장 포함</p>}
       </div>
     </details>
-    {c.status === 'ready' && <button className="secondary growth-complete-button" disabled={c !== ready[0]}
+    {c.status === 'ready' && <button className="secondary growth-complete-button" disabled={disabled || c !== ready[0]}
       aria-label={`${c.books[0]} 성장 완료`}
       title={c === ready[0] ? '게임에서 이 단계의 성장을 마친 뒤 눌러 주세요.' : '앞의 금색 단계를 먼저 완료해 주세요.'}
       onClick={() => onComplete(c)}>성장 완료</button>}

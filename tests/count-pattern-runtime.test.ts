@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { matchCountPattern, prepareContrastPattern } from "../src/features/card-scanner/count-pattern.ts";
 import { countReliability } from "../src/features/card-scanner/count-confidence.ts";
+import { readFullAwakening } from "../src/features/card-scanner/visual-fields.ts";
+import type { Raster, RasterContext } from "../src/features/card-scanner/acquisition-raster.ts";
 
 const atlas = JSON.parse(await readFile("public/scanner/counter-patterns.json", "utf8"));
 const patterns = atlas.patterns.map(prepareContrastPattern);
@@ -12,6 +14,21 @@ function pixels(sample: { rgba: string }, offset = 0) {
   for (let y = 0; y < 25; y++) image.set(strip.subarray(y * 86 * 4, (y + 1) * 86 * 4), ((141 + offset + y) * 140 + 54) * 4);
   return image;
 }
+
+test('full-awakening shortcut rejects visible labelled counters but accepts an icon without digits',()=>{
+  let data=new Uint8Array(140*210*4);
+  const context={drawImage(){},getImageData(){return {data};}} as unknown as RasterContext;
+  const fields={awakening:5,hasIcon:true,offsetY:0,labelPixels:100,blankName:false,hasNameBand:true};
+  for(const sample of samples){
+    data=pixels(sample);
+    const value=readFullAwakening({} as Raster,context,fields,patterns);
+    assert.equal(value?.awakening,null,sample.name);
+    assert.equal(value?.extraCopies,sample.value,sample.name);
+  }
+  data=new Uint8Array(140*210*4);
+  for(let y=144;y<164;y++)for(let x=60;x<82;x++)data.set([40,190,200,255],(y*140+x)*4);
+  assert.deepEqual(readFullAwakening({} as Raster,context,fields,patterns),{awakening:5,extraCopies:0});
+});
 
 test("runtime font atlas reads manually labelled counters with compensated vertical movement", () => {
   for (const sample of samples) for (const offset of [-2, 0, 3]) {

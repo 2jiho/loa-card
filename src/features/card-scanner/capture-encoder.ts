@@ -1,6 +1,8 @@
 import type { DebugFrame } from "./debug-capture";
 import { createBitmapDispatch } from "./bitmap-dispatch";
 import type { SnapshotSource } from "./bitmap-dispatch";
+import { SavedAcquisitions } from './saved-acquisition';
+import type { SavedAcquisition } from './saved-acquisition';
 
 interface EncoderWorker {
   onmessage: ((event: MessageEvent<CaptureReply>) => void) | null;
@@ -18,6 +20,7 @@ export function createCaptureEncoder(record: (frame: DebugFrame) => void, report
   bitmapFactory: ((source: SnapshotSource) => Promise<ImageBitmap>) | undefined =
     typeof createImageBitmap === "function" ? source => createImageBitmap(source) : undefined) {
   const pending = new Map<number, { bytes: number; timer: ReturnType<typeof setTimeout> }>();
+  const analyses=new SavedAcquisitions();
   let nextId = 0, nextOutput = 1, bytes = 0, stopped = false, failed = false;
   let finished: (() => void) | undefined, flushTimer: ReturnType<typeof setTimeout> | undefined;
   let finishing: Promise<void> | undefined;
@@ -33,7 +36,7 @@ export function createCaptureEncoder(record: (frame: DebugFrame) => void, report
     error => fail(`원본 캡처 전송 실패: ${error instanceof Error ? error.message : "비트맵 복사 실패"}`)) : undefined;
   function fail(message: string) {
     if (failed) return;
-    failed = stopped = true; copies?.cancel();
+    failed = stopped = true; copies?.cancel();analyses.clear();
     for (const item of pending.values()) clearTimeout(item.timer);
     pending.clear(); bytes = 0; clearTimeout(flushTimer);
     cancelRead(new Error(message));
@@ -78,15 +81,15 @@ export function createCaptureEncoder(record: (frame: DebugFrame) => void, report
         try { worker.postMessage(discard ? {discard:true} : {finish:true}, []); }
         catch { fail("원본 캡처 종료 요청 실패"); }
       });
-      worker.terminate();
+      worker.terminate();analyses.clear();
     })();
     return finishing;
   };
   return {
     submit(source: SnapshotSource, time: number, elapsed: number) {
       if (stopped) return;
-      const width = "videoWidth" in source ? source.videoWidth : source.width;
-      const height = "videoHeight" in source ? source.videoHeight : source.height;
+      const width = 'displayWidth' in source ? source.displayWidth : "videoWidth" in source ? source.videoWidth : source.width;
+      const height = 'displayHeight' in source ? source.displayHeight : "videoHeight" in source ? source.videoHeight : source.height;
       const size = width * height * 4;
       if (!width || !height) return;
       if (bytes + size > byteLimit) {
@@ -98,10 +101,10 @@ export function createCaptureEncoder(record: (frame: DebugFrame) => void, report
         const id = ++nextId, metadata = { id, width, height, time, elapsed };
         pending.set(id, { bytes: size, timer: setTimeout(() => fail("원본 임시 저장 시간 초과"), 30000) });
         bytes += size;
-        if (copies) { copies.submit(source, metadata); return; }
+        if (copies) { copies.submit(source, metadata); return id; }
         // Compatibility path for browsers without ImageBitmap and test doubles.
         let canvas: HTMLCanvasElement, temporary = false;
-        if ("videoWidth" in source) {
+        if ("videoWidth" in source || 'displayWidth' in source) {
           canvas = document.createElement("canvas"); temporary = true;
           canvas.width = width; canvas.height = height;
           canvas.getContext("2d")!.drawImage(source, 0, 0);
@@ -111,14 +114,23 @@ export function createCaptureEncoder(record: (frame: DebugFrame) => void, report
             .getImageData(0, 0, width, height).data;
           worker.postMessage({ ...metadata, pixels }, [pixels.buffer]);
         } finally { if (temporary) canvas.width = canvas.height = 0; }
+        return id;
       } catch (error) { fail(`원본 캡처 실패: ${error instanceof Error ? error.message : "픽셀 전송 실패"}`); }
     },
+    attachAnalysis(id:number,analysis:SavedAcquisition) {
+      if(!failed&&!finishing&&id>0&&id<=nextId)analyses.set(id,analysis);
+    },
     finish: () => finish(),
+    cancel: () => fail('스캔 중지로 원본 캡처를 종료했습니다.'),
     /** Only for internal backups no longer needed after validated completion. */
     discard: () => finish(true),
     /** Internal recovery reads one lossless frame on demand. PNG/base64 and a
      * second IndexedDB recording are only needed for explicit debug exports. */
-    async *frames(signal: AbortSignal) {
+    async *frames(signal: AbortSignal, completion?: {
+      ready:()=>boolean;
+      covered:(analysis:SavedAcquisition|undefined)=>boolean;
+      skipped:(count:number)=>void;
+    }) {
       if (rawMode || finishing) throw new Error("원본 읽기는 한 번만 시작할 수 있습니다.");
       rawMode = stopped = true;
       const abort = () => { void finish(true); };
@@ -134,6 +146,11 @@ export function createCaptureEncoder(record: (frame: DebugFrame) => void, report
         for (let id = 1; id <= nextId; id++) {
           signal.throwIfAborted();
           if (failed) throw new Error("원본 캡처 읽기 실패");
+          // All future originals must already be accounted for. An absent or
+          // evicted analysis always keeps replay alive, even at matching totals.
+          if(completion?.ready()&&analyses.coveredFrom(id,nextId,completion.covered)) {
+            completion.skipped(nextId-id+1);break;
+          }
           const value = await new Promise<RawCapture>((resolve, reject) => {
             read = { id, resolve, reject, timer: setTimeout(() => fail("원본 픽셀 읽기 시간 초과"), 30000) };
             try { worker.postMessage({ read: id }, []); }
@@ -145,7 +162,10 @@ export function createCaptureEncoder(record: (frame: DebugFrame) => void, report
           }
           context.putImageData(new ImageData(value.pixels, value.width, value.height), 0, 0);
           // The caller must copy the frame before advancing this iterator.
-          yield { element: canvas, time: value.time, percent: id / nextId * 100 };
+          const analysis=analyses.get(id);
+          analyses.delete(id);
+          yield { element: canvas, time: value.time, percent: id / nextId * 100,
+            analysis:analysis?.width===value.width&&analysis.height===value.height?analysis:undefined };
         }
       } finally {
         signal.removeEventListener("abort", abort);

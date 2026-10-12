@@ -43,7 +43,8 @@ export function UsageGuide({ open, onClose }: { open: boolean; onClose: () => vo
           <dt>공유 화면이 검게 보여요</dt><dd>공유를 종료하고 게임이 보이는 다른 창이나 화면을 선택하세요.</dd>
         </dl>
       </section>
-      <section aria-labelledby="guide-results"><h3 id="guide-results">스캔 다음에는</h3>
+      <section aria-labelledby="guide-results"><h3 id="guide-results">인식된 카드 활용</h3>
+        <p>스캔 중에도 각 메뉴가 갱신됩니다. 미스캔 카드는 미확인으로 남으며, 성장 완료는 스캔 종료 후 사용할 수 있습니다.</p>
         <dl>
           <dt>떠돌이 상인</dt><dd>더 모아야 할 카드의 지역과 등장 시간을 확인하세요. 게임 안의 알림은 직접 설정합니다.</dd>
           <dt>도감작</dt><dd>수집 효과를 선택하면 성장 효율 순서를 계산합니다. 게임에서 실제로 성장시킨 뒤 성장 완료를 눌러 목록에 반영하세요.</dd>

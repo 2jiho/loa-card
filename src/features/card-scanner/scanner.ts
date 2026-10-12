@@ -1,4 +1,5 @@
 import { initializeWithin } from './initialization';
+import {guardScan} from './scan-watchdog';
 import type { PreparedScanner } from './scanner-preparation';
 import { createVisualClient } from './visual-client';
 import type { VisualResult } from './visual-client';
@@ -42,10 +43,14 @@ import type {LiveInventorySnapshot} from './live-inventory';
 import { runJoinedWorkers } from './joined-workers';
 import { fieldRetryIdentity, obsoleteFieldRetry, pruneFieldRetries } from './field-retry';
 import { canSkipRecovery, confirmedReadingCount } from './recovery-completion';
+import { saveAcquisition, resolvedSavedObservation, coveredSavedAcquisition } from './saved-acquisition';
+import type { SavedAcquisition, SavedObservation } from './saved-acquisition';
 import {AutoCompletionHold,canStopSharing,confirmedCaptureCount,stopCompletedShare} from './auto-completion';
 const cardCollator = new Intl.Collator("ko");
 
 export interface ScannerState {
+  interrupted?: 'stalled' | 'cancelled' | 'failed';
+  processingWarning?: string;
   workPhase?: import('./read-progress').ScanWorkPhase;
   recoveryPercent?: number;
   currentRunNames?: number;
@@ -74,7 +79,9 @@ export interface ScannerState {
   captureWarning?: string;
   ledger?: LedgerSnapshot;
   recoveryFrames?: number;
+  recoveryPerformance?: {frames:number;acquisitionMs:number;copyMs:number;detectMs:number;cropMs:number;readings:number;readMs:number};
   recoverySkipped?: boolean;
+  recoveryReuse?: { frames:number; observations:number; skippedOriginals:number };
   autoStopped?: boolean;
   resultPresentation?: { observations: number; updates: number; milliseconds: number };
   liveOcrStarted?: { short: number; full: number };
@@ -97,7 +104,24 @@ export interface ScannerState {
   scrollStartSeen?: boolean;
   scrollEndSeen?: boolean;
 }
-export async function runScanner(
+export async function runScanner(...args:Parameters<typeof runScannerInternal>) {
+  const [video,source,signal,update,seed,onReady,rowMode,stillImages,captureOnly,debug,prepared]=args;
+  let started=false;
+  await guardScan({signal,update,
+    sharing:()=>source==='screen'&&!!(video.srcObject as MediaStream|null)?.getVideoTracks().some(t=>t.readyState==='live'),
+    cancelResources:()=>{
+      prepared?.cancel();
+      // Before ownership reaches the scanner there is no inner finally to dispose it.
+      if(!started)void prepared?.dispose().catch(()=>{});
+      if(source==='screen')(video.srcObject as MediaStream|null)?.getTracks().forEach(t=>t.stop());
+    },
+    run:(guardSignal,publish,ready)=>{started=true;return runScannerInternal(video,source,guardSignal,publish,seed,()=>{
+      if(guardSignal.aborted)return;ready();onReady?.();
+    },rowMode,stillImages,captureOnly,debug,prepared);},
+  });
+}
+
+async function runScannerInternal(
   video: HTMLVideoElement,
   source: "video" | "screen",
   signal: AbortSignal,
@@ -161,8 +185,8 @@ export async function runScanner(
   const visuals: ReturnType<typeof createVisualClient>[] = prepared?.visuals ?? [];
   const lanePlan=liveLanePlan(navigator.hardwareConcurrency);
   const extraRecognizers: Awaited<ReturnType<typeof createRecognizer>>[] = prepared?.readers.slice(1) ?? [];
-  const abortPrepared = () => { prepared?.cancel(); };
-  if (prepared) signal.addEventListener('abort', abortPrepared, { once: true });
+  const abortPrepared = () => { prepared?.cancel(); encoder?.cancel(); void continuous?.finish(); };
+  signal.addEventListener('abort', abortPrepared, { once: true });
   try {
     signal.throwIfAborted();
     if (!prepared && source === 'screen' && !debug.replay) acquisition = createAcquisitionClient(signal);
@@ -204,6 +228,7 @@ export async function runScanner(
       lastMetadataTime = -Infinity;
     let lastMetadataFrame: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement | OffscreenCanvas | undefined;
     type Candidate = {
+      savedObservation?:SavedObservation;
       needsIdentity?: boolean;
       fieldTarget?: {id:string;order:number};
       knownIdentity?: NonNullable<Awaited<ReturnType<NonNullable<typeof recognizer>['identify']>>>;
@@ -239,6 +264,7 @@ export async function runScanner(
     const confirmedFieldOrder = new Map<string,number>();
     const confirmedNameOrder = new Map<string,number>();
     const latestIdentityOrder = new Map<string,number>();
+    const exactObservations=new Map<string,SavedObservation>();
     const discardObsoleteRetry = (item:Candidate) => {
       ledger.finish(item.trace,'superseded',{group:item.group,reason:'더 최신 화면에서 이름·각성·장수 확정'});
       releaseCandidate(item);
@@ -324,6 +350,9 @@ export async function runScanner(
     };
     let inputFrame: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement | OffscreenCanvas = video;
     let frameTime = 0;
+    let replayAnalysis:SavedAcquisition|undefined;
+    let lastOriginalAt=-Infinity;
+    let readingJobs=0;
     const recordingStart = continuous?.startedAt ?? performance.now();
     const directOriginals = !!continuous && !debug.record && !debug.snapshots;
     if (continuous && !debug.snapshots && !directOriginals) originals = createCaptureOriginals({ rowMode, captureOnly }, signal);
@@ -340,9 +369,10 @@ export async function runScanner(
       if (!acquire) {
         if (!encoder?.active || debug.recording?.() === false || originals?.active === false) return;
         const elapsed = performance.now() - recordingStart;
+        if(elapsed-lastOriginalAt<250)return;
         // Freeze the video frame directly. Full-screen pixel readback and raw
         // storage belong to the Worker, independently of source playback.
-        encoder.submit(video, elapsed / 1000, elapsed);
+        if(encoder.submit(video, elapsed / 1000, elapsed)!==undefined)lastOriginalAt=elapsed;
         return;
       }
       if (!debug.replay && !recovering && inputFrame === video) frameTime = deliveredTime ?? video.currentTime;
@@ -364,9 +394,25 @@ export async function runScanner(
       // Detector, metadata and crops must use the exact pixels saved to PNG,
       // rather than reading a video element again after its decoder advances.
       const currentFrame = frame;
-      const remote = acquisition && !recovering ? nativeAcquisition
-        ? await acquisition.detectNative(nativeFrame??video,currentFrame)
-        : await acquisition.detectAndAcquire(currentFrame) : undefined;
+      // Both consumers freeze the same source, not two reads of a moving video.
+      const ownedNative=nativeAcquisition&&!nativeFrame?new VideoFrame(video):undefined;
+      const frozenNative=nativeFrame??ownedNative;
+      let savedId:number|undefined;
+      const elapsed=performance.now()-recordingStart;
+      if(continuous&&!recovering&&encoder?.active&&debug.recording?.()!==false&&elapsed-lastOriginalAt>=250) {
+        savedId=encoder.submit(nativeAcquisition?frozenNative!:currentFrame,frameTime,elapsed);
+        if(savedId!==undefined)lastOriginalAt=elapsed;
+      }
+      const cached=recovering&&replayAnalysis?.width===width&&replayAnalysis.height===height?replayAnalysis:undefined;
+      let remote:Awaited<ReturnType<NonNullable<typeof acquisition>['detectAndAcquire']>>|undefined;
+      try {
+        remote = cached ? {layout:cached.layout,cells:cached.cells.map((cell,index)=>({...cell,
+          image:resolvedSavedObservation(cached.observations[index],confirmedFieldOrder)?document.createElement('canvas'):crop(currentFrame,cell.content)}))} :
+          acquisition && !recovering ? nativeAcquisition
+          ? await acquisition.detectNative(frozenNative!,currentFrame)
+          : await acquisition.detectAndAcquire(currentFrame) : undefined;
+      } finally {ownedNative?.close();}
+      if(cached){state.recoveryReuse??={frames:0,observations:0,skippedOriginals:0};state.recoveryReuse.frames++;}
       if(continuous&&!recovering&&remote?.timing) {
         state.livePerformance??={acquisitionMs:0,recognized:0,uniqueCards:0,firstResultMs:null,lagMs:0};
         const old=state.livePerformance.stages,samples=(old?.samples??0)+1;
@@ -383,6 +429,12 @@ export async function runScanner(
         groups[locationKind]=groupStage;
       }
       const layout = remote ? remote.layout : detector.detect(frame);
+      let saved:SavedAcquisition|undefined=cached;
+      if(savedId!==undefined&&!layout)encoder?.attachAnalysis(savedId,saveAcquisition(width,height,null,[]));
+      if(recovering&&remote?.timing){
+        const p=state.recoveryPerformance??={frames:0,acquisitionMs:0,copyMs:0,detectMs:0,cropMs:0,readings:0,readMs:0};
+        p.frames++;p.acquisitionMs+=remote.timing.roundTripMs;p.copyMs+=copyMs;p.detectMs+=remote.timing.detectMs;p.cropMs+=remote.timing.cropMs;
+      }
       state.sampled++;
       ledger.frame(!!layout);
       state.located = !!layout;
@@ -461,6 +513,7 @@ export async function runScanner(
         }
       } else state.scrollPosition = null;
       const acquired: (ReturnType<typeof acquireCards>[number]&{previewImage?:HTMLCanvasElement})[] = remote?.cells ?? acquireFrame(frame, layout);
+      if(savedId!==undefined){saved=saveAcquisition(width,height,layout,acquired);encoder?.attachAnalysis(savedId,saved);}
       const coverageSlots=acquired.map(cell=>cell.quality.reason==='미보유 카드 뒷면 · 빈 슬롯');
       if (signal.aborted) { acquired.forEach(cell => { cell.image.width = 0;if(cell.previewImage)cell.previewImage.width=0; }); signal.throwIfAborted(); }
       const images = acquired.map(cell => cell.image), vectors = acquired.map(cell => cell.art),
@@ -500,11 +553,21 @@ export async function runScanner(
       for (let i = 0; i < images.length; i++) {
         diagnostics.acquired++;
         const box = alignedCells[i].content;
-        const stable = isStill || settledFields(observations[i], i, previous);
+        const stable = cached?.observations[i]?.stable ?? (isStill || settledFields(observations[i], i, previous));
         const trace = ledger.acquire({ frame: state.sampled, time: frameTime, slot: i, box, phase: recovering ? "recording" : "input" });
         // The acquisition Worker has already inspected the same uncompressed
         // pixels. Do not read every returned crop back again on the UI thread.
         const quality = acquired[i].quality;
+        const savedObservation=cached?.observations[i];
+        // A duplicate live crop can borrow an observation only when acquisition
+        // proved every source pixel and its geometry identical.
+        const exactObservation=exactObservations.get(acquired[i].pixelKey);
+        if(saved&&!saved.observations[i]&&exactObservation)saved.observations[i]=exactObservation;
+        if(recovering&&resolvedSavedObservation(savedObservation,confirmedFieldOrder)) {
+          coverageSlots[i]=true;ledger.finish(trace,'duplicate',{reason:'같은 원본의 최신 확정 관측 재사용'});
+          state.recoveryReuse??={frames:0,observations:0,skippedOriginals:0};state.recoveryReuse.observations++;
+          images[i].width=0;continue;
+        }
         if (!quality.usable) {
           ledger.finish(trace, "rejected", { reason: quality.reason });
           diagnostics.rejected++;
@@ -524,21 +587,26 @@ export async function runScanner(
         // Briefly visible complete names can survive a fast scroll. Keep their
         // evidence separate so rejecting one frame cannot suppress a stable pair.
         const group = captures.offerDetailed(observations[i], i % 10, quality.sharpness, stable);
-        const offered = group.decision;
+        const offered = savedObservation ? 'better' : group.decision;
         if (offered !== "duplicate") {
           collectedThisFrame++;
           if (offered === "better") diagnostics.improved++;
           record(images[i], i, offered === "better" ? "더 좋은 관측으로 갱신" : "판독 후보", true, quality.sharpness);
           state.collectedCrops = (state.collectedCrops ?? 0) + 1;
-          const order = continuous ? timedCaptureOrder(initialCaptureOrder, frameTime, i) : ++captureOrder;
+          const order = savedObservation?.order ?? (continuous ? timedCaptureOrder(initialCaptureOrder, frameTime, i) : ++captureOrder);
+          const observation=savedObservation??{order,stable,frame:`${captureSession}/${state.sampled}`};
+          if(saved) saved.observations[i]=observation;
+          exactObservations.set(acquired[i].pixelKey,observation);
+          while(exactObservations.size>2048)exactObservations.delete(exactObservations.keys().next().value!);
           ledger.finish(trace, captureOnly ? "selected" : "queued", { group: group.id });
           if (captureOnly) { coverageSlots[i]=true;images[i].width = 0; continue; }
           const cell=acquired[i];
           const preview = cell.previewImage ?? crop(currentFrame, alignedCells[i].preview);
           cell.previewImage=undefined;
           const enqueued = queue.push({
+            savedObservation:observation,
             group: group.id, trace,
-            priorityGroup: continuous && !recovering ? livePriority.group(observations[i],i%10) : -1,
+            priorityGroup: continuous ? livePriority.group(observations[i],i%10) : -1,
             preview: "", previewCanvas: preview,
             image: images[i],
             feature: observations[i],
@@ -546,7 +614,7 @@ export async function runScanner(
             stable,
             borderAlignment: alignedCells[i].alignment,
             order,
-            position: { frame: `${captureSession}/${state.sampled}`, slot: i, stable,
+            position: { frame: observation?.frame ?? `${captureSession}/${state.sampled}`, slot: i, stable,
               sort: null },
             sortReading: frameMetadata,
           });
@@ -614,7 +682,7 @@ export async function runScanner(
       if (!fast) await settleMetadata();
       else void settleMetadata().catch(error => { captureError=error; capturing=false; });
       const queued = deferredOnly || fullOnly ? undefined : queue.shift(fast ? item=>livePriority.priority(item.priorityGroup) : undefined);
-      const retryPriority=continuous&&!recovering ? (item:Candidate)=>
+      const retryPriority=continuous ? (item:Candidate)=>
         retryWorkPriority(item,livePriority.retryPriority(item.priorityGroup),confirmedFieldOrder) : undefined;
       const takeRetry=(work:Candidate[])=>{
         pruneFieldRetries(work,confirmedFieldOrder,discardObsoleteRetry);
@@ -626,6 +694,12 @@ export async function runScanner(
       const item = queued ?? (includeDeferred ? fullOnly ? takeRetry(fullRetries) : takeRetry(deferred) ?? (!quick ? takeRetry(fullRetries) : undefined) : undefined);
       state.queued = queue.length + deferred.length + fullRetries.length;
       if (!item) return;
+      if(recovering&&resolvedSavedObservation(item.savedObservation,confirmedFieldOrder)) {
+        discardObsoleteRetry(item);
+        state.recoveryReuse??={frames:0,observations:0,skippedOriginals:0};state.recoveryReuse.observations++;
+        return;
+      }
+      const recoveryReadStart=recovering?performance.now():undefined;
       const finishReading=continuous&&!recovering
         ? ledger.beginRead(item.trace,fast?'visual':quick?'short':'full',(performance.now()-recordingStart)/1000,
           {priorityGroup:item.priorityGroup,priorReads:livePriority.priority(item.priorityGroup),priorOcrAttempts:livePriority.attempts(item.priorityGroup)})
@@ -692,6 +766,7 @@ export async function runScanner(
         }
         return retained;
       };
+      readingJobs++;
       try {
         // Full retries use the best retained crop and an independent reader;
         // they can run during sharing without serializing source acquisition.
@@ -729,11 +804,12 @@ export async function runScanner(
           if (!item.stable && identity.confidence < .9) { reject(); return; }
         }
         acceptedIdentity=identity;
+        if(item.savedObservation)item.savedObservation.identity=identity;
         latestIdentityOrder.set(identity.id,Math.max(item.order,latestIdentityOrder.get(identity.id)??-Infinity));
         // A failed visual attempt must not make a still-unknown portrait wait
         // behind known cards. Count service only after an identity is accepted,
         // including identities recovered by the independent OCR reader.
-        if (continuous && !recovering) livePriority.serviced(item.priorityGroup);
+        if (continuous) livePriority.serviced(item.priorityGroup);
         ledger.finish(item.trace, "identified", { group: item.group, cardId: identity.id, name: identity.name });
         let values = visualResult?.values ?? await reader!.read(item.image, identity.id, false, !fast);
         const identified = item.feature;
@@ -826,6 +902,8 @@ export async function runScanner(
         ledger.finish(item.trace, "dropped", { group: item.group, reason: "판독 처리 오류" });
         throw error;
       } finally {
+        readingJobs--;
+        if(recoveryReadStart!==undefined&&state.recoveryPerformance){state.recoveryPerformance.readings++;state.recoveryPerformance.readMs+=performance.now()-recoveryReadStart;}
         finishReading?.((performance.now()-recordingStart)/1000);
         // Release the cropped backing store after the Worker and thumbnail read.
         if (!retained) {
@@ -926,8 +1004,7 @@ export async function runScanner(
         signal,
         stamp => {
           const time = stamp?.mediaTime ?? video.currentTime;
-          recordSnapshot(time);
-          if (trackInput) return;
+          if (trackInput) {recordSnapshot(time);return;}
           state.liveMissedFrames = (state.liveMissedFrames ?? 0) + (stamp?.missedFrames ?? 0);
           // The encoder records every delivered source frame independently.
           // A four-row page can pass within one second during fast scrolling.
@@ -939,6 +1016,7 @@ export async function runScanner(
             liveCollection = collect(true, time).catch(error => { captureError = error; capturing = false; })
               .finally(() => { liveCollection = undefined; });
           }
+          recordSnapshot(time);
         },
         () => { if (!trackInput) stopped(); },
         failed,
@@ -996,12 +1074,14 @@ export async function runScanner(
           lastLocatedTime>=state.sharingEndedAt-1&&lastLocatedTime<=state.sharingEndedAt};
       // Check the final acquired header again, after OCR sessions are idle.
       // This prevents an initial total or a restored list from certifying completion.
+      let verifiedFinalExpected:number|null=state.autoStopped?state.expected:null;
       if(state.autoStopped&&canSkipRecovery(completionInput))state.recoverySkipped=true;
-      else if(recognizer&&finalHeader&&canSkipRecovery(completionInput)) {
+      else if(recognizer&&finalHeader&&completionInput.tailFresh) {
         try {
           const total=await recognizer.total(finalHeader,{x:0,y:0,width:finalHeader.width,height:finalHeader.height});
           signal.throwIfAborted();
-          state.recoverySkipped=canSkipRecovery({...completionInput,finalExpected:total?.owned??null});
+          verifiedFinalExpected=total?.owned??null;
+          state.recoverySkipped=canSkipRecovery({...completionInput,finalExpected:verifiedFinalExpected});
         } catch {
           signal.throwIfAborted();
           // A failed optional completion check must retain the recovery path.
@@ -1009,7 +1089,17 @@ export async function runScanner(
         }
       }
       const recording = await continuous?.finish();
-      const snapshots = directOriginals && encoder ? () => encoder!.frames(signal) : debug.snapshots ?? originals?.frames;
+      const canFinishOriginals=()=>!readingJobs&&!queue.length&&!deferred.length&&!fullRetries.length&&
+        !metadata&&!metadataRead&&!!recognizer&&canSkipRecovery({
+        ...completionInput,expected:state.expected,finalExpected:verifiedFinalExpected,
+        cards:confirmSortedNames([...cards.values()],[...evidence.values()].flat(),recognizer.catalog),
+        pending:queue.length+deferred.length+fullRetries.length,
+        unresolved:Math.max(state.unidentified.length,ledger.snapshot().unresolvedGroups),dropped:state.droppedFrames,
+      });
+      const snapshots = directOriginals && encoder ? () => encoder!.frames(signal,{
+        ready:canFinishOriginals,covered:analysis=>coveredSavedAcquisition(analysis,confirmedFieldOrder),
+        skipped:count=>{state.recoveryReuse??={frames:0,observations:0,skippedOriginals:0};state.recoveryReuse.skippedOriginals+=count;},
+      }) : debug.snapshots ?? originals?.frames;
       if(state.recoverySkipped) {
         state.workPhase = 'cleanup';
         state.recoveryFrames=0;
@@ -1024,8 +1114,8 @@ export async function runScanner(
           state.status = `공유 종료 · ${encoder.captured}개 원본 캡처 준비 중`; emit(true);
           await encoder.finish();
         }
-        // Reuse the same identity/evidence map, but reacquire every recorded
-        // interval. A live timer cannot recover frames blocked by card cropping.
+        // Unknown encoded intervals are still acquired. Exact lossless originals
+        // carry their own acquisition receipts; no timestamp-nearest reuse.
         recovering = true;
         state.workPhase = 'recovery'; state.recoveryPercent = 0;
         previous = []; previousVectors = []; lastMetadataTime = -Infinity;
@@ -1047,6 +1137,7 @@ export async function runScanner(
           : snapshotsSafely();
         for await (const input of recovery) {
           inputFrame = input.element; frameTime = input.time;
+          replayAnalysis='analysis' in input?input.analysis as SavedAcquisition|undefined:undefined;
           state.percent = input.percent;
           await collect();
           // Reuse independent live readers for recovery. All candidates still

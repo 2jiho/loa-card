@@ -1,32 +1,38 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ScannedCard } from '../card-scanner/recognizer';
-import type { GrowthMaster, GrowthComparisonRequest, GrowthComparison } from './optimizer';
+import type { GrowthMaster, GrowthComparisonRequest, GrowthComparison, OwnedCard } from './optimizer';
+import { growthInput } from '../live-results';
 import { BookOverview } from './BookOverview';
 import { CollectionCandidates } from './CollectionCandidates';
 import { StatCollection } from './StatCollection';
 import type { GrowthSequenceStep } from './growth-sequence';
 import './growth.css';
 
-export function GrowthPlanner({ cards, growthPoints, onComplete }: {
+export function GrowthPlanner({ cards: observations, growthPoints, onComplete, busy = false, complete = true }: {
   cards: ScannedCard[]; growthPoints?: number; onComplete: (master: GrowthMaster, step: GrowthSequenceStep) => void;
+  busy?: boolean; complete?: boolean;
 }) {
   const [master, setMaster] = useState<GrowthMaster | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const cards = useMemo(() => growthInput(observations, master?.cards ?? [], complete), [observations, master, complete]);
   const xp = growthPoints !== undefined && Number.isSafeInteger(growthPoints) && growthPoints >= 0 ? growthPoints : null;
   const [target, setTarget] = useState('stat:3');
   const selectedStat = target.startsWith('stat:') ? target.slice(5) : null;
   const [calculationAttempt, setCalculationAttempt] = useState(0);
   const [completed, setCompleted] = useState<{
-    cards: ScannedCard[]; master: GrowthMaster; xp: number; target: string; attempt: number;
+    cards: OwnedCard[]; master: GrowthMaster; xp: number; target: string; attempt: number;
     result?: GrowthComparison; error?: string;
   } | null>(null);
   const [loadError, setLoadError] = useState('');
   const current = completed?.cards === cards && completed.master === master && completed.xp === xp &&
     completed.target === target && completed.attempt === calculationAttempt ? completed : null;
   const canCalculate = !!master && !selectedStat && cards.length > 0 && xp !== null;
-  const result = canCalculate ? current?.result : null;
+  const previous = busy && completed?.master === master && completed.target === target && completed.attempt === calculationAttempt ? completed.result : null;
+  const result = canCalculate ? current?.result ?? previous : null;
   const running = canCalculate && !current;
   const error = loadError || (!selectedStat ? current?.error : '') || '';
+  const latest = useRef({ cards, xp });
+  useEffect(() => { latest.current = { cards, xp }; }, [cards, xp]);
   useEffect(() => {
     const abort = new AbortController();
     void fetch(`${import.meta.env.BASE_URL}growth/master.json`, { signal: abort.signal })
@@ -35,15 +41,21 @@ export function GrowthPlanner({ cards, growthPoints, onComplete }: {
     return () => abort.abort();
   }, [loadAttempt]);
   useEffect(() => {
-    if (!master || selectedStat || !cards.length || xp === null) return;
+    if (!master || selectedStat) return;
     let cancelled = false, worker: Worker | null = null;
-    const finish = (data: { result?: GrowthComparison; error?: string }) => {
-      if (cancelled) return;
-      worker?.terminate();
-      setCompleted({ cards, master, xp, target, attempt: calculationAttempt, ...data });
-    };
-    // Coalesce rapid target/scan updates; cancel queued and in-flight work.
-    const timer = setTimeout(() => {
+    let processed: typeof latest.current | undefined;
+    // One calculation at a time. Continuous scan updates replace the pending input,
+    // never terminate useful in-flight work or build an unbounded worker queue.
+    const calculate = () => {
+      const input = latest.current;
+      if (cancelled || worker || processed === input || !input.cards.length || input.xp === null) return;
+      processed = input;
+      const { cards, xp } = input;
+      const finish = (data: { result?: GrowthComparison; error?: string }) => {
+        if (cancelled) return;
+        worker?.terminate(); worker = null;
+        setCompleted({ cards, master, xp, target, attempt: calculationAttempt, ...data });
+      };
       try {
         const request: GrowthComparisonRequest = { master,
           cards: cards.map(({ id, awakening, extraCopies, review, countReliable }) => ({ id, awakening, extraCopies, review, countReliable })),
@@ -54,9 +66,11 @@ export function GrowthPlanner({ cards, growthPoints, onComplete }: {
         worker.onerror = () => finish({ error: '계산을 완료하지 못했습니다. 다시 시도해 주세요.' });
         worker.postMessage(request);
       } catch (e) { finish({ error: e instanceof Error ? e.message : '계산을 시작하지 못했습니다.' }); }
-    }, 300);
-    return () => { cancelled = true; clearTimeout(timer); worker?.terminate(); };
-  }, [master, cards, xp, target, selectedStat, calculationAttempt]);
+    };
+    const initial = setTimeout(calculate, 300);
+    const timer = setInterval(calculate, 1000);
+    return () => { cancelled = true; clearTimeout(initial); clearInterval(timer); worker?.terminate(); };
+  }, [master, target, selectedStat, calculationAttempt]);
   const targetName = master?.targets.find(t => t.id === target)?.name ?? '악마';
   return <section className="panel growth-planner" aria-label="도감작 성장 계산">
     <div className="growth-heading"><h2>도감작</h2><details className="growth-help"><summary>계산 기준</summary>
@@ -76,7 +90,7 @@ export function GrowthPlanner({ cards, growthPoints, onComplete }: {
       {current?.error && !selectedStat && <button onClick={() => setCalculationAttempt(n => n + 1)}>다시 계산</button>}</p>}
     {running && <p role="status" className="growth-working"><span className="growth-spinner" />성장 순서 계산 중…</p>}
     {result && <div className="growth-result">
-      <CollectionCandidates candidates={result.collectionCandidates} targetName={targetName} onComplete={step => onComplete(master!, step)} />
+      <CollectionCandidates candidates={result.collectionCandidates} targetName={targetName} disabled={busy || !current} onComplete={step => onComplete(master!, step)} />
     </div>}
   </section>;
 }

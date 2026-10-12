@@ -47,10 +47,12 @@ test('all material secured releases a merchant, one short card keeps it enabled'
  cards.pop();group=merchantProgress(cards)[0];assert.equal(group.status,'needed');assert.equal(group.unknown.length,1);
  cards[0].extraCopies=5;assert.equal(merchantProgress(cards)[0].status,'unknown');
 });
-test('in-progress scan never recommends disabling even when materials currently match',()=>{
+test('a fully read region is available before other regions, but missing or uncertain cards stay unknown',()=>{
  const cards=merchants[0].cards.map(c=>make(c.id));
- assert.equal(merchantProgress(cards,true)[0].status,'unknown');
- assert.equal(merchantProgress(cards,false)[0].status,'complete');
+ assert.equal(merchantProgress(cards)[0].status,'complete');
+ assert.equal(merchantProgress(cards)[1].status,'unknown');
+ cards[0].countReliable=false;
+ assert.equal(merchantProgress(cards)[0].status,'unknown');
 });
 test('similar card names and edited display names cannot cross-match IDs',()=>{
  const merchant=merchants.find(m=>m.region==='파푸니카')!;

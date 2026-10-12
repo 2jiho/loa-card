@@ -12,8 +12,9 @@ import { hasNamePixels } from './name-pattern';
 /** Geometry/pixels only. No names, OCR, counts, inventory or duplicate decisions. */
 export function createCardAcquirer<T extends Raster>(make: (width:number,height:number)=>T, reuseExact = false, reusePixels = true) {
  const raster=createAcquisitionRaster(make);
+ const pixelNamespace=crypto.randomUUID();let pixelSequence=0;
  type Cell = { slot:number; content:Box; preview:Box; alignment:number; intact:boolean;
-   borderSides:number[]; image:T; labelVisible:boolean; quality:CaptureQuality } & ReturnType<typeof raster.features>;
+   borderSides:number[]; image:T; labelVisible:boolean; quality:CaptureQuality; pixelKey:string } & ReturnType<typeof raster.features>;
  const cache = new ExactPixelCache<Omit<Cell,'image'>>();
  let label: ReturnType<typeof createLabelReader<T>> | undefined;
  return (frame:T, layout:Layout) => {
@@ -57,7 +58,10 @@ export function createCardAcquirer<T extends Raster>(make: (width:number,height:
       const sides=['왼쪽','오른쪽','위','아래'].filter((_,side)=>borderSides[side]<.85);
       quality.reason='카드 테두리 불완전 · '+sides.join('/')+' · 재관측 대기';
     }
-    const result:Cell = { slot, content, preview, alignment, intact, borderSides, image, labelVisible, quality, ...raster.features(image,pixels) };
+    // This key survives only the exact RGBA/geometry cache above, never fuzzy
+    // portrait deduplication. A changed byte or crop creates a different key.
+    const result:Cell = { slot, content, preview, alignment, intact, borderSides, image, labelVisible, quality,
+      pixelKey:`${pixelNamespace}/${++pixelSequence}`, ...raster.features(image,pixels) };
     if (sourcePixels && content.x >= left+1 && content.y >= top+1 &&
         content.x+content.width <= left+width-1 && content.y+content.height <= top+height-1) {
       const {image: _image,...fields}=result;

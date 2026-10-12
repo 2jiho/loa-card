@@ -1,4 +1,4 @@
-import { inspectVisual, portraitIdentity, readVisual } from './visual-fields';
+import { inspectVisual, portraitIdentity, readVisual, readFullAwakening } from './visual-fields';
 import { observationPixels } from "./observation-pixels";
 import { confirmName, confirmCatalogName } from "./name-confidence";
 import { normalizeName } from "./card-dictionary";
@@ -324,7 +324,8 @@ export async function createRecognizer(status: (message: string) => void, signal
         return { awakening: 0, extraCopies: 0 };
       const fields = inspect(canvas),
         level = fields.awakening;
-      if (level === 5) return { awakening: level, extraCopies: 0 };
+      const full = readFullAwakening(canvas, context, fields, countPatterns);
+      if (full) return full;
       if (!fields.hasIcon)
         return { awakening: level, extraCopies: level === null ? null : 0,
           countDiagnostics: { maximum: level === null ? 15 : 15 - level * (level + 1) / 2,

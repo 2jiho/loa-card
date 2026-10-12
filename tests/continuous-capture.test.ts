@@ -22,6 +22,20 @@ class FakeRecorder extends EventTarget {
   }
 }
 const Recorder = FakeRecorder as unknown as typeof MediaRecorder;
+test('missing recorder stop event has a deadline and ignores late chunks', {timeout:2000},async()=>{
+  class StuckRecorder extends FakeRecorder {stop(){this.state='inactive';this.stopCalls++;}}
+  const warnings:string[]=[];
+  const capture=recordContinuous({} as MediaStream,m=>warnings.push(m),StuckRecorder as unknown as typeof MediaRecorder,1024,15);
+  FakeRecorder.instance.data('initial');const pending=capture.finish();
+  assert.equal(capture.finish(),pending);assert.equal(await pending,undefined);
+  FakeRecorder.instance.data('late');FakeRecorder.instance.dispatchEvent(new Event('stop'));
+  assert.equal(await capture.finish(),undefined);assert.equal(warnings.length,1);assert.match(warnings[0],/시간 초과/);
+});
+test('throwing recorder stop settles without waiting for a nonexistent event',async()=>{
+  class BrokenRecorder extends FakeRecorder {stop(){throw Error('broken');}}
+  const capture=recordContinuous({} as MediaStream,()=>{},BrokenRecorder as unknown as typeof MediaRecorder);
+  assert.equal(await capture.finish(),undefined);
+});
 test("screen recording requests text detail and a resolution-aware bitrate on the actual encoder", async () => {
   const track = { contentHint: "", getSettings: () => ({ width: 2560, height: 1440, frameRate: 60 }) };
   const before = performance.now();

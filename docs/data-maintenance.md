@@ -86,6 +86,36 @@ npm test
 
 누락됐던 32종만 담은 임시 CSV를 빈 로컬 목록에 불러와 32개 이미지 모두 브라우저 디코딩에 성공한 것을 확인했다. 미등록 카멘 표시, 확대 보기·키보드 닫기, 밝은/어두운 모드와 390px 화면도 확인했다. 테스트 395개·lint·Pages 경로 빌드·배포 파일 585개 HTTP 검사·외부 코드 고지 검사가 통과했다. 이번 변경은 표시 자료만 추가하며 영상/화면 공유 인식 검사는 다시 실행하지 않았다.
 
+### 인식용 승격의 로컬 비교
+
+`build-client-card-art.py --output <directory>`로 배포 자료를 덮어쓰지 않고 생성할 수 있다. `--experimental-all`을 추가하면 표시 전용 매핑에서도 특징을 추출한다. 이 옵션은 저장소의 `work/` 하위 출력만 허용하며, 기본 생성 정책은 바꾸지 않는다.
+
+```sh
+python -X utf8 scripts/build-client-card-art.py --assets work/client-assets --output work/art-candidate --experimental-all
+```
+
+비교할 구성은 현재 자료, 전체 원화 특징과 화면 보조 자료, 전체 원화 특징만의 세 가지다. 같은 원화의 서로 다른 카드 ID는 유지하고, 이름·등급·독립 영역·차순위 격차 조건을 완화하지 않는다. 그림 단독 판독과 OCR을 포함한 최종 결과를 구분해 비교한다. 영상과 사진은 매번 빈 목록에서 검사하며 입력 해시와 실행 구성을 기록한다. 실제 화면 공유를 실행하지 않았다면 오프라인 영상 결과를 실시간 성능으로 보고하지 않는다. 비교가 끝나기 전에는 후보를 `public/scanner`로 복사하거나 배포하지 않는다.
+
+### UI 에셋을 합성한 기준 카드 실험
+
+`build-composed-card-templates.py`는 클라이언트 원화에 이름 배경, 등급 테두리, 장착 테두리·배너와 클라이언트 폰트의 `장착중` 글자를 배치한다. 일반/장착 기준 이미지와 각각의 원화 판독 특징을 만든다. 이름은 미리보기에만 표시하고 각성·장수는 고정 정답으로 생성하지 않는다. 판독 특징은 이름·각성·장수 영역을 제외한다.
+
+```sh
+python -X utf8 scripts/build-composed-card-templates.py --assets work/client-assets --output work/composed-card-templates
+```
+
+출력은 `work/` 하위로 제한된다. `normal/`, `equipped/`는 합성 PNG, `normal-details.json`, `equipped-details.json`은 각각의 특징, `provenance.json`은 사용한 좌표·배율·폰트·해시를 기록한다. 원본 에셋·폰트·생성 이미지를 공개 파일에 자동 복사하지 않는다. `scripts/client-card-ui-map.json`의 SHA-256으로 UI 에셋과 폰트를 확인하고 원화는 기존 매핑의 해시를 검증한다.
+
+배치 값은 기존 캡처에 맞춘 실험값이며 게임 UI의 런타임 변환을 그대로 추출한 값은 아니다. 배율·렌더링·호버 효과가 다른 화면에서는 별도 검증이 필요하다. 배너는 모든 카드에 공통이므로 배너가 있는 빈 그림/잡음, 같은 원화의 다른 ID도 거부하는지 검사한다. 최종 이름·각성·장수 비교와 그림 단독 판독 수를 구분하며, 보정에 사용한 캡처를 독립 검증 자료로 설명하지 않는다. 생성 명령만으로 런타임 매칭이나 배포 자료는 바뀌지 않는다.
+
+### 영역 마스크·부분 수집 실험
+
+합성 생성기는 `masked-details.json`도 만든다. 모든 등급/장착 테두리의 알파와
+글자·배너·하단 필드 위치를 이용해 공통으로 드러나는 원화 영역을 선택한다.
+이 자료와 실험 코드는 일반 빌드에 포함하지 않는다.
+[실험 실행·검증 안내](../dev/recognition-experiment/README.md)에 따라 로컬에서
+기존 경로와 비교한다. 기본 개발 서버나 배포의 인식 정책은 바꾸지 않는다.
+
 ## OCR 모델과 외부 코드
 
 `public/ocr/opencv.js`는 npm lockfile로 설치한 `@techstark/opencv-js`에서 복사하는 생성물이다. 저장소에 실행 파일을 중복 보관하지 않는다. 준비 단계와 라이선스 생성기가 `licenses/third-party/manifest.json`의 SHA-256 및 패키지 버전을 검사한다. 런타임과 관련 고지를 함께 갱신한다.
