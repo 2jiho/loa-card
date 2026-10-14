@@ -34,6 +34,6 @@ export function merchantProgress(cards:readonly ScannedCard[]) {
 }
 export function merchantListText(groups:ReturnType<typeof merchantProgress>,status:MerchantStatus) {
   const selected=groups.filter(group=>group.status===status);
-  return [`떠돌이 상인 ${merchantStatusLabel[status]} · 5각 재료 확보 기준`,...selected.map(group=>
+  return [`떠돌이 상인 ${merchantStatusLabel[status]} · 5각에 필요한 카드 수 기준`,...selected.map(group=>
     `${group.region} (${group.merchant})${status==='complete'?'':`: ${[...group.needed.map(card=>`${card.name} ${card.remaining}장 부족`),...group.unknown.map(card=>`${card.name} 확인 필요`)].join(', ')}`}`)].join('\n');
 }

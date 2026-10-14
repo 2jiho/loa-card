@@ -25,7 +25,7 @@ export function MerchantAlerts({cards,busy,rarityById,onReview}:{cards:ScannedCa
   if(!cards.length)return null;
   return <section className="panel merchant-panel" aria-label="떠돌이 상인">
     <div className="merchant-heading"><div><h2>지역별 수집 현황</h2>
-      <p>5각 재료 기준</p></div>
+      <p>5각에 필요한 카드 수 기준</p></div>
       <Button variant="outlined" startIcon={<ContentCopyOutlined />} disabled={!selected.length} onClick={async()=>{
         try{await navigator.clipboard.writeText(merchantListText(groups,filter));setCopyMessage('목록을 복사했어요.');}
         catch{setCopyMessage('복사하지 못했어요. 아래 지역명을 직접 선택해 복사해 주세요.');}
@@ -55,15 +55,15 @@ function MerchantRegion({group,rarityById,now}:{group:ReturnType<typeof merchant
       <span className="merchant-name"><strong>{group.region}</strong><small>{group.merchant}{schedule ? ` · ${schedule.group}그룹` : ''}</small>
         <small className={`merchant-region-time ${schedule?.current?'is-active':''}`}>{schedule?.current ? `판매 시간 · ${relativeKoreanTime(schedule.current.end,now)}까지` : schedule?.next ? `다음 · ${relativeKoreanTime(schedule.next.start,now)}` : '시간표 미확인'}</small>
       </span>
-      <span className="merchant-result">{group.status==='complete'?'모두 확보':`${group.needed.length}종 · ${group.remaining}장 부족`}
-        <small>{group.complete}/{group.items.length}종 확보{group.unknown.length?` · ${group.unknown.length}종 미확인`:''}</small>
+      <span className="merchant-result">{group.status==='complete'?'수집 완료':`${group.needed.length}종 · ${group.remaining}장 부족`}
+        <small>{group.complete}/{group.items.length}종 수집 완료{group.unknown.length?` · ${group.unknown.length}종 미확인`:''}</small>
       </span>
     </AccordionSummary>
     <AccordionDetails>
       {schedule && <p className="merchant-region-hours">오늘 {schedule.today.map(sessionTime).join(' / ')}</p>}
       <ul>{group.items.map(card=><li key={card.id}><span className={cardRarityClass(rarityById?.get(card.id))}
         title={cardRarityName(rarityById?.get(card.id))} aria-label={`${card.name} · ${cardRarityName(rarityById?.get(card.id))}`}>{card.name}</span>
-        <span className={card.remaining===0?'verified':'needs-review'}>{card.remaining===null?'미스캔·판독 확인':card.remaining===0?'재료 확보':`${card.remaining}장 부족`}</span></li>)}</ul>
+        <span className={card.remaining===0?'verified':'needs-review'}>{card.remaining===null?'미스캔·판독 확인':card.remaining===0?'수집 완료':`${card.remaining}장 부족`}</span></li>)}</ul>
     </AccordionDetails>
   </Accordion>;
 }

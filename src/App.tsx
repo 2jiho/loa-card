@@ -163,7 +163,7 @@ function App() {
       if (cancelled) return;
       savedState.current = saved ?? null;
       if (saved) { inventory.current = saved.cards; setState(saved); }
-      setBackupStatus(saved ? '브라우저에 저장됨' : '브라우저에 자동 저장');
+      setBackupStatus('카드 목록은 이 브라우저에 자동 저장됩니다.');
     }).catch(e => { if (!cancelled) { setBackupStatus('브라우저 저장 확인 필요'); if (e instanceof LegacyBackupChoice) setLegacyChoices(e.choices); setBackupError(e instanceof Error ? e.message : '목록 복원 실패'); } })
       .finally(() => { if (!cancelled) setBackupReady(true); });
     return () => { cancelled = true; };
@@ -174,7 +174,7 @@ function App() {
     setBackupStatus('브라우저에 저장 중');
     void saveScanBackup(state).then(() => {
       savedState.current = state;
-      if (!cancelled) { setBackupStatus('브라우저에 저장됨'); setBackupError(''); }
+      if (!cancelled) { setBackupStatus('카드 목록은 이 브라우저에 자동 저장됩니다.'); setBackupError(''); }
     }).catch(e => { if (!cancelled) { setBackupStatus('저장되지 않음'); setBackupError(e instanceof Error ? e.message : '저장 실패 · CSV로 보관해 주세요.'); } });
     return () => { cancelled = true; };
   }, [state, busy, error, backupReady, backupAttempt]);
@@ -185,7 +185,7 @@ function App() {
       savedState.current = saved ?? null;
       inventory.current = saved?.cards ?? [];
       setState(saved ?? null); setError(''); setBackupError(''); setLegacyChoices([]);
-      setBackupStatus(saved ? '브라우저에 저장됨' : '브라우저에 자동 저장');
+      setBackupStatus('카드 목록은 이 브라우저에 자동 저장됩니다.');
     } catch (e) { if (e instanceof LegacyBackupChoice) setLegacyChoices(e.choices); setBackupError(e instanceof Error ? e.message : '목록 복원 실패'); }
     finally { setBackupReady(true); }
   }
@@ -195,7 +195,7 @@ function App() {
       await clearScanBackup();
       release(); inventory.current=[]; savedState.current=null; setState(null);
       setQuery(''); setInventoryFilter('owned'); setPage(1); setResetPending(false); setError(''); setBackupError('');
-      setBackupStatus('브라우저에 자동 저장');
+      setBackupStatus('카드 목록은 이 브라우저에 자동 저장됩니다.');
     } catch (e) { setBackupError(e instanceof Error ? e.message : '목록 초기화 실패'); }
     finally { setBackupReady(true); }
   }
@@ -422,12 +422,7 @@ function App() {
           setResultView('cards');setInventoryFilter('owned');setQuery('');setPage(1);
           window.scrollTo({ top: 0, behavior: 'instant' });
         }}><span className="brand-icon" aria-hidden="true">
-          <svg width="28" height="30" viewBox="0 0 28 30" fill="none">
-            <rect x="3.5" y="3.5" width="16" height="22" rx="3" transform="rotate(-10 11.5 14.5)" fill="currentColor" fillOpacity=".08" stroke="currentColor" strokeOpacity=".45" />
-            <rect x="8" y="5" width="16" height="22" rx="3" fill="#25251f" stroke="currentColor" strokeWidth="1.4" />
-            <path d="m16 10 3.5 5-3.5 5-3.5-5 3.5-5Z" fill="currentColor" fillOpacity=".22" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-            <path d="M11 8h2m6 16h2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          </svg>
+          <img src={`${import.meta.env.BASE_URL}favicon.svg`} width="28" height="30" alt="" />
         </span>LoaCard</a>
         <div className="header-tools"><span className={`local-status ${busy||csvReading?'is-active':''}`} role="status" title="카드 인식은 현재 브라우저에서 실행됩니다.">
           {busy||csvReading ? <span className="scan-spinner" aria-hidden="true" /> : <span className="status-dot" aria-hidden="true" />}
@@ -575,10 +570,12 @@ function App() {
       <section id="panel-growth" role="tabpanel" aria-labelledby="view-growth" hidden={activeView!=='growth'}>{activeView==='growth' && <GrowthPlanner cards={liveResults.cards} growthPoints={liveResults.xp} busy={busy} complete={unowned!==null} onComplete={markGrowthComplete} />}</section>
       <section id="panel-raid" role="tabpanel" aria-labelledby="view-raid" hidden={activeView!=='raid'}>{activeView==='raid' && <RaidCards cards={liveResults.cards} complete={unowned!==null} xp={liveResults.xp} />}</section>
       <footer className="app-footer">
-        <div className="footer-links"><span>LoaCard · 무료·비상업 팬 도구</span><a href={`${import.meta.env.BASE_URL}licenses/index.html`} target="_blank" rel="noopener noreferrer">라이선스 및 권리 안내</a></div>
-        <p>스마일게이트의 공식 서비스가 아니며 제휴·보증을 받지 않습니다.<br />로스트아크 이미지·게임 데이터의 권리는 스마일게이트 등 각 권리자에게 있습니다.</p>
-        <p role="status">{backupStatus} · 별도 보관은 CSV 저장</p>
-        {catalogVersion && <p>카드 데이터 {catalogVersion.replace("client-", "")} 기준</p>}
+        <div>LoaCard · 로스트아크 비공식 팬 도구</div>
+        <p className="footer-links"><span>무료·비상업 서비스</span><a href={`${import.meta.env.BASE_URL}licenses/index.html`} target="_blank" rel="noopener noreferrer">라이선스 및 권리 안내</a></p>
+        <p>게임 이미지와 데이터의 권리는 스마일게이트 및 각 권리자에게 있습니다.<br />LoaCard는 스마일게이트와 제휴하지 않은 독립적인 서비스입니다.</p>
+        <p role="status">{backupStatus}</p>
+        {catalogVersion && <p>카드 데이터 기준일: {catalogVersion.replace("client-", "").replaceAll("-", ".")}</p>}
+        <p>© 2026 LoaCard</p>
       </footer>
       </main></div>
       <UsageGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
