@@ -4,6 +4,15 @@ export interface CardSort {
   kind: SortKind;
   direction: "asc" | "desc" | "unknown";
 }
+/** A missing arrow is not a direction change. Learning a previously unknown
+ * direction also does not invalidate positions captured under the same sort. */
+export function reconcileCardSort(current:CardSort|null,next:CardSort|null):{sort:CardSort|null;changed:boolean} {
+  if(!next)return {sort:current,changed:false};
+  if(!current)return {sort:next,changed:false};
+  if(current.kind!==next.kind)return {sort:next,changed:true};
+  if(next.direction==='unknown')return {sort:current,changed:false};
+  return {sort:next,changed:current.direction!=='unknown'&&current.direction!==next.direction};
+}
 export function parseGrowthPoints(text: string) {
   const match = /^(\d+)\/(\d+)$/.exec(normalizeNumericOcr(text).replace(/[,()]/g, ""));
   if (!match) return null;

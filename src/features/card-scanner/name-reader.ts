@@ -18,6 +18,7 @@ import { parseInventoryTotal } from "./ocr-values";
 import { nameAttempt } from "./name-diagnostics";
 import type { NameAttempt } from "./name-diagnostics";
 import { ExactRegionResult } from './exact-region-result';
+import type {CardReadBudget} from './card-read-budget';
 
 /** OCR supplies visible text; artwork can independently confirm a truncated name. */
 export function createNameReader(cards: (CatalogName & { feature?: string })[], status?: (message: string) => void, signal?: AbortSignal) {
@@ -78,8 +79,21 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
     }
     return engine;
   }
-  async function recognize(source: HTMLCanvasElement, language: "kor" | "eng") {
-    const instance = await worker(language);
+  async function boundedWorker(language:"kor"|"eng",budget?:CardReadBudget){
+    budget?.check();
+    const engine=worker(language);
+    const invalidate=()=>{engines.delete(language);void engine.then(w=>w.terminate()).catch(()=>{});};
+    return budget ? budget.wait(()=>engine,invalidate) : engine;
+  }
+  async function parameters(language:"kor"|"eng",psm:PSM,budget?:CardReadBudget){
+    const instance=await boundedWorker(language,budget);
+    const set=()=>instance.setParameters({tessedit_pageseg_mode:psm});
+    if(budget)await budget.wait(set,()=>{engines.delete(language);void instance.terminate().catch(()=>{});});
+    else await set();
+  }
+  async function recognize(source: HTMLCanvasElement, language: "kor" | "eng", budget?:CardReadBudget) {
+    const instance = await boundedWorker(language,budget);
+    if(budget)return (await budget.wait(()=>instance.recognize(source),()=>{engines.delete(language);void instance.terminate().catch(()=>{}); } )).data;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const { data } = await Promise.race([
@@ -144,7 +158,8 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
       if(sortResult.status==='rejected')throw sortResult.reason;
       return {growthPoints:pointsResult.value,sort:sortResult.value};
     },
-    async count(source: HTMLCanvasElement, maximum: number, diagnostic?: CountDiagnostics) {
+    async count(source: HTMLCanvasElement, maximum: number, diagnostic?: CountDiagnostics,budget?:CardReadBudget) {
+      budget?.check();
       const record = (engine: string, data: { text: string; confidence: number }) => diagnostic?.readings.push({ engine, text: data.text, confidence: data.confidence, value: parseCounterEvidence(data.text, maximum)?.value ?? null });
       const context = source.getContext("2d", { willReadFrequently: true })!;
       const rgba = context.getImageData(0, 0, source.width, source.height);
@@ -193,8 +208,10 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
       rawTight.width = 34;
       rawTight.height = 16;
       rawTight.getContext("2d")!.drawImage(source, 6, 2, 34, 16, 0, 0, 34, 16);
-      const first = await digits.recognize(source),
-        second = await digits.recognize(rawTight);
+      let first:import('./neural-reader').NeuralReading,second:import('./neural-reader').NeuralReading;
+      try {first=await digits.recognize(source,false,undefined,budget);second=await digits.recognize(rawTight,false,undefined,budget);}
+      catch(error){mask.width=0;tight.width=0;throw error;}
+      finally{rawTight.width=0;}
       record("PP-OCRv6 전체", { text: first.text, confidence: first.confidence * 100 });
       record("PP-OCRv6 숫자 영역", { text: second.text, confidence: second.confidence * 100 });
       rawTight.width = 0;
@@ -219,7 +236,9 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
       }
       // One additional achromatic crop can corroborate the tight reading when
       // colored artwork caused a spurious digit in the full strip.
-      const masked = await digits.recognize(tight);
+      let masked:import('./neural-reader').NeuralReading;
+      try{masked=await digits.recognize(tight,false,undefined,budget);}
+      catch(error){mask.width=0;tight.width=0;throw error;}
       record("PP-OCRv6 흰 숫자", { text: masked.text, confidence: masked.confidence * 100 });
       readings.push({ engine: "neural", variant: "mask", text: masked.text, confidence: masked.confidence * 100 });
       agreed = confirmCounter(readings, maximum);
@@ -236,7 +255,7 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
         ] as const) {
           const enlarged = enlarge(canvas, isBinary);
           try {
-            const data = await recognize(enlarged, "eng");
+            const data = await recognize(enlarged, "eng",budget);
             record("Tesseract", data);
             readings.push({ engine: "tesseract", variant: canvas === tight ? "tight" : canvas === mask ? "mask" : "raw", text: data.text, confidence: data.confidence });
             const count = confirmCounter(readings, maximum);
@@ -266,7 +285,7 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
           tight.getContext("2d")!.drawImage(mask, 6, 2, 34, 16, 0, 0, 34, 16);
           const enlarged = enlarge(tight, true);
           try {
-            const data = await recognize(enlarged, "eng");
+            const data = await recognize(enlarged, "eng",budget);
             record("Tesseract 획 분리", data);
             readings.push({ engine: "tesseract", variant: `threshold-${delta}`, text: data.text, confidence: data.confidence });
             const count = confirmCounter(readings, maximum);
@@ -284,7 +303,8 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
         tight.width = 0;
       }
     },
-    async match(source: HTMLCanvasElement, quick = false, offsetY = 0, allowRaw = false, onAttempt?: (attempt: NameAttempt) => void) {
+    async match(source: HTMLCanvasElement, quick = false, offsetY = 0, allowRaw = false, onAttempt?: (attempt: NameAttempt) => void,budget?:CardReadBudget) {
+      budget?.check();
       const label = document.createElement("canvas");
       label.width = 128;
       label.height = 36;
@@ -347,6 +367,7 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
         label.width = 0;
         return null;
       }
+      const rawCrop = document.createElement("canvas");
       try {
         for (const packed of masks) {
           const bands = new Map(
@@ -370,7 +391,6 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
           if (previous) return { ...previous.result, complete: allowRaw };
         }
         // Raw glyphs survive video compression better than saturation masks.
-        const rawCrop = document.createElement("canvas");
         rawCrop.width = 128;
         rawCrop.height = 18;
         const rawContext = rawCrop.getContext("2d")!;
@@ -442,7 +462,7 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
           variant = y === 0 ? "원본 첫 줄" : "원본 두 줄 결합";
           rawContext.clearRect(0, 0, 128, 18);
           rawContext.drawImage(label, 0, y, 128, 18, 0, 0, 128, 18);
-          const data = await neural.recognize(rawCrop, y === 0, { group: fingerprint, line: y === 0 ? 0 : 1 });
+          const data = await neural.recognize(rawCrop, y === 0, { group: fingerprint, line: y === 0 ? 0 : 1 },budget);
           if (y === 0) {
             firstText = data.text;
             firstConfidence = data.confidence;
@@ -470,7 +490,7 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
         }
         rawCrop.width = 0;
         variant = "원본 전체 이름 영역";
-        const full = await neural.recognize(label, true),
+        const full = await neural.recognize(label, true,undefined,budget),
           fullResult = primaryMatch(full.text, full.confidence) ?? lexiconMatch(full);
         if (fullResult) {
           if (quick || confirmedReading(fullResult)) return rememberName(fullResult, 36);
@@ -505,7 +525,7 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
             for (const [index, transformed] of [new Uint8ClampedArray(pixels), normalizeSoftNamePixels(new Uint8ClampedArray(pixels))].entries()) {
               variant = index === 0 ? `등급 ${grade} 배경 제거` : `등급 ${grade} 배경 제거 · 밝기 정규화`;
               softContext.putImageData(new ImageData(transformed, 128, 18), 0, 0);
-              const data = await neural.recognize(soft, true);
+              const data = await neural.recognize(soft, true,undefined,budget);
               const result = primaryMatch(data.text, data.confidence) ?? lexiconMatch(data);
               const confirmed = result && confirmName({ ...result,
                 ctc: "ctc" in result ? result.ctc as NameMatchEvidence["ctc"] : undefined }, false) ? result : null;
@@ -527,9 +547,7 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
           { masks: outlined, psm: "11", heights: [18, 36] },
         ];
         for (const pass of passes) {
-          await (
-            await worker("kor")
-          ).setParameters({ tessedit_pageseg_mode: pass.psm as PSM });
+          await parameters('kor',pass.psm as PSM,budget);
           for (const height of pass.heights)
             for (const packed of pass.masks) {
               const image = context.createImageData(128, 36);
@@ -547,7 +565,7 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
               const enlarged = enlarge(trimmed, true);
               trimmed.width = 0;
               try {
-                const data = await recognize(enlarged, "kor");
+                const data = await recognize(enlarged, "kor",budget);
                 // Incomplete Hangul fragments are not complete name evidence.
                 const result = /[ㄱ-ㅎㅏ-ㅣ]/.test(data.text)
                   ? null
@@ -583,9 +601,7 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
           0,
           0,
         );
-        await (
-          await worker("kor")
-        ).setParameters({ tessedit_pageseg_mode: "6" as PSM });
+        await parameters('kor','6' as PSM,budget);
         for (const height of [18, 36]) {
           const trimmed = document.createElement("canvas");
           trimmed.width = 128;
@@ -596,7 +612,7 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
           const enlarged = enlarge(trimmed);
           trimmed.width = 0;
           try {
-            const data = await recognize(enlarged, "kor");
+            const data = await recognize(enlarged, "kor",budget);
             const result = /[ㄱ-ㅎㅏ-ㅣ]/.test(data.text)
               ? null
               : matchCardName(data.text, cards);
@@ -609,6 +625,7 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
         return null;
       } finally {
         label.width = 0;
+        rawCrop.width = 0;
       }
     },
     async dispose() {

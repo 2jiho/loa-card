@@ -26,6 +26,8 @@ export class ScanLedger {
   private overflow = new Map<number, ObservationStage>();
   private diagnosticIds: number[] = [];
   private nameDiagnosticsTruncated = 0;
+  private observer?: (type:string,value:unknown)=>void;
+  observe(observer:(type:string,value:unknown)=>void){this.observer=observer;}
   constructor(limit = 100_000) { this.limit = limit; }
   frame(located: boolean) { this.frames++; if (!located) this.unlocatedFrames++; }
   beginRead(id:number,kind:'visual'|'short'|'full',startedAt:number,scheduling?:{priorityGroup:number;priorReads:number;priorOcrAttempts?:number}) {
@@ -35,15 +37,18 @@ export class ScanLedger {
     if(readings.length>=3)return (_endedAt:number)=>{};
     const reading:NonNullable<ObservationTrace['readings']>[number]={kind,startedAt,...scheduling};
     readings.push(reading);
-    return (endedAt:number)=>{reading.endedAt??=endedAt;};
+    this.observer?.('read-start',{id,...reading});
+    return (endedAt:number)=>{reading.endedAt??=endedAt;this.observer?.('read-end',{id,kind,endedAt});};
   }
   acquire(input: Omit<ObservationTrace, "id" | "stage">) {
     const id = ++this.observations;
     this.stages.acquired = (this.stages.acquired ?? 0) + 1;
     if (id <= this.limit) this.traces.push({ ...input, box: { ...input.box }, id, stage: "acquired" });
+    this.observer?.('acquired',{...input,id});
     return id;
   }
   finish(id: number, stage: ObservationStage, details: Partial<Pick<ObservationTrace, "reason" | "group" | "cardId" | "name" | "nameAttempts">> = {}) {
+    this.observer?.('stage',{id,stage,reason:details.reason,group:details.group,cardId:details.cardId});
     const trace = this.traces[id - 1];
     const previous = trace?.stage ?? this.overflow.get(id) ?? "acquired";
     this.stages[previous] = Math.max(0, (this.stages[previous] ?? 1) - 1);

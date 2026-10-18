@@ -15,6 +15,13 @@ export interface RecoveryCompletion {
 
 type ReadingEvidence = Pick<RecoveryCompletion, 'cards' | 'latest' | 'confirmed'>;
 
+/** A verified auto-stop can tolerate a transient failed layout detection after
+ * its recent header. Manual stops still require the final view to be located. */
+export function freshCaptureTail(located:boolean,verifiedAutoStop:boolean,lastLocated:number,endedAt:number|undefined) {
+  return (located||verifiedAutoStop)&&Number.isFinite(lastLocated)&&endedAt!==undefined&&Number.isFinite(endedAt)&&
+    lastLocated>=endedAt-1&&lastLocated<=endedAt;
+}
+
 function freshlyConfirmed(card:ScannedCard,{latest,confirmed}:ReadingEvidence):boolean {
   const order=latest.get(card.id),proof=confirmed.get(card.id);
   return order!==undefined && proof!==undefined && Number.isFinite(order) && Number.isFinite(proof) && proof>=order &&
@@ -36,4 +43,12 @@ export function canSkipRecovery(input:RecoveryCompletion):boolean {
     expected===null || !Number.isInteger(expected) || expected<=0 || finalExpected!==expected ||
     cards.length!==expected || latest.size!==expected || new Set(cards.map(c=>c.id)).size!==expected)return false;
   return cards.every(card=>freshlyConfirmed(card,input));
+}
+
+/** A verified automatic stop already proved the current names AND fields.
+ * Unmatched crops stay visible for review and in the recording; they need not
+ * force a complete archive replay before returning this verified inventory.
+ * Manual stop, missing cards, changed fields and pending work retain recovery. */
+export function canFinishVerifiedCapture(input:RecoveryCompletion, verifiedAutoStop:boolean):boolean {
+  return verifiedAutoStop && canSkipRecovery({...input,unresolved:0});
 }

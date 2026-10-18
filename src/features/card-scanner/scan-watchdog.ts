@@ -3,7 +3,7 @@ import type {ScannerState} from './scanner';
 export class ScanStalledError extends Error {
   constructor(message:string){super(message);this.name='ScanStalledError';}
 }
-export const scanLimits={stall:45_000,cleanup:15_000,initialization:180_000,warning:20_000};
+export const scanLimits={stall:15_000,cleanup:15_000,initialization:180_000,warning:7_000};
 
 /** Progress is completed work, not status text, a spinner or a shrinking queue. */
 export class ScanProgressClock {

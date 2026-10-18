@@ -94,12 +94,6 @@ button.card-thumbnail { display:inline-flex; flex:0 0 auto; padding:0; border:0;
 .notice,.error { font-size:12px; padding:14px 18px; border:1px solid var(--accent-line); border-radius:8px; color:var(--accent); background:var(--accent-soft); margin:14px 0; }
 .notice p { margin:5px 0 0; color:var(--muted); }
 .error { color:var(--danger); border-color:var(--danger); display:flex; align-items:center; justify-content:space-between; gap:12px; }
-.unidentified { margin:16px 0; padding:14px; background:var(--surface-alt); border-radius:8px; font-size:12px; }
-.unidentified summary { cursor:pointer; color:var(--accent); }
-.unidentified p { color:var(--muted); }
-.rescan-cards { display:flex; gap:18px; overflow-x:auto; padding:4px; }
-.rescan-cards figure { margin:0; flex-shrink:0; }
-.rescan-cards figcaption { font-size:11px; margin-top:6px; }
 .reset-confirm { display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:12px; background:var(--accent-soft); padding:14px; margin-top:16px; border:1px solid var(--accent-line); border-radius:8px; }
 .reset-confirm span { margin-right:auto; }
 .app-footer { color:var(--muted); font-size:11px; line-height:1.65; padding:24px 0; }

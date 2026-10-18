@@ -1,6 +1,7 @@
 import type { Box } from "./detector";
 import { emptySlotVector, isEmptySlotVector } from "./empty-slot";
 import { blankNameLine } from './name-visibility';
+import {hasPanelOverlay} from './overlay-quality';
 export interface CaptureQuality {
   usable: boolean;
   reason: string;
@@ -32,6 +33,7 @@ export function inspectCapture(rgba: ArrayLike<number>, width: number, height: n
     return { usable: false, reason: "미보유 카드 뒷면 · 빈 슬롯", sharpness };
   if (blankNameLine(rgba, width, height))
     return { usable: false, reason: "이름 영역에 글자 대비 없음 · 가림 해제 후 재관측", sharpness };
+  if(hasPanelOverlay(rgba,width,height))return {usable:false,reason:'툴팁 패널 가림 · 가림 해제 후 재관측',sharpness};
   if (!labelVisible && !structural) return { usable: false, reason: "이름 영역 표시 없음 · 빈칸 또는 이동/가림", sharpness };
   if (!aligned) return { usable: false, reason: "카드 이동 중 · 온전한 관측 대기", sharpness };
   return { usable: true, reason: labelVisible ? "판독 후보" : "테두리 확인 · 원본 이름 판독 후보", sharpness };

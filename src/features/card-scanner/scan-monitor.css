@@ -1,0 +1,24 @@
+.scan-monitor-host{grid-column:1/-1;min-width:0}
+.scan-monitor-host>p{font-size:12px;color:var(--muted)}
+.scan-monitor{box-sizing:border-box;width:100%;max-width:340px;padding:14px;color:#e7e9ee;background:#161a20;border:1px solid #343b47;border-radius:8px;font:12px/1.5 'Segoe UI','Malgun Gothic',sans-serif;font-variant-numeric:tabular-nums}
+.scan-monitor *{box-sizing:border-box}
+.scan-monitor header,.scan-monitor footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.scan-monitor header small,.scan-monitor header>span,.scan-monitor footer small{font-size:11px;color:#aab4c3}
+.monitor-action{margin:12px 0;color:#f2c57c}.monitor-action>strong{font-size:18px;letter-spacing:-.5px}.monitor-action.is-ready{color:#a2dfb3}
+.monitor-grid-title{display:flex;flex-wrap:wrap;gap:3px 8px;justify-content:space-between;margin:14px 0 8px;font-size:11px}.monitor-grid-title>span{color:#b9cbe3}
+.monitor-map{position:relative;width:168px;margin:0 auto;padding:0}
+.monitor-map-row{position:relative;height:12px;display:grid;grid-template-columns:25px repeat(10,10px);align-items:center;gap:3px}
+.monitor-map-row>[role=rowheader]{font-size:9px;color:#aab4c3;text-align:right;padding-right:4px;line-height:12px}
+.monitor-dot{width:10px;height:10px;display:flex;align-items:center;justify-content:center;border:1px solid #505967;border-radius:1px;font-size:8px;line-height:1;background:#262d37;color:#b3bfce;transition:background-color .15s,border-color .15s}
+.monitor-dot.is-waiting,.monitor-legend .is-waiting{background:#4b86b4;border-color:#89bbdf}
+.monitor-dot.is-read,.monitor-legend .is-read{background:#527d5f;border-color:#a5d3b3;color:#fff}
+.monitor-dot.is-review,.monitor-legend .is-review{background:#9c6b20;border-color:#ffcc75;color:#fff}
+.monitor-dot.is-empty,.monitor-legend .is-empty{background:#161a20;border-color:#313742}
+.monitor-viewport{position:absolute;top:0;left:24px;width:135px;border:1px solid #c9d9ec;box-shadow:0 0 0 2px #161a20;border-radius:3px;background:#a7c9ff15;pointer-events:none;transition:transform .08s linear,height .08s;z-index:1}
+.monitor-legend{display:flex;flex-wrap:wrap;gap:5px 10px;font-size:10px;margin:12px 0 5px;color:#c1cbd8}.monitor-legend>span{display:flex;align-items:center;gap:4px}.monitor-legend i{display:inline-block;width:8px;height:8px;border:1px solid #505967;background:#262d37}
+.monitor-estimate,.monitor-pending{font-size:10px;color:#aab4c3}
+.monitor-total{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.monitor-total>span{font-size:11px;color:#aab4c3}.monitor-total strong{font-size:18px}.monitor-total small{font-size:12px;font-weight:400;color:#aab4c3}.scan-monitor progress{display:block;width:100%;height:3px;margin:5px 0 0;border:0;border-radius:2px;accent-color:#9fc4ad}.scan-monitor progress::-webkit-progress-bar{background:#343b47;border-radius:2px}.scan-monitor progress::-webkit-progress-value{background:#9fc4ad;border-radius:2px}
+.scan-monitor footer{margin-top:12px}.scan-monitor button{font:inherit;font-size:11px;color:#e7e9ee;background:#252c36;border:1px solid #596575;border-radius:4px;padding:5px 8px;cursor:pointer}.scan-monitor button:focus-visible{outline:2px solid #f2c57c;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.scan-monitor *{animation:none!important;transition:none!important}}
+
+.monitor-viewport.is-estimated{border-style:dashed;background:#a7c9ff0a}

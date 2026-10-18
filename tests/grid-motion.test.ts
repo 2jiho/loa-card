@@ -13,3 +13,11 @@ test("uniform loading tiles cannot establish a row offset", () => {
   const flat = Array.from({ length: 40 }, () => new Uint8Array(12));
   assert.equal(estimateRowShift(flat, flat), null);
 });
+
+test('three-row jumps use the remaining ten columns in either direction',()=>{
+ const patterned=(offset:number)=>Array.from({length:40},(_,i)=>Uint8Array.from({length:48},(_,k)=>((i+offset*10+1)*73+k*31)%251));
+ assert.equal(estimateRowShift(patterned(0),patterned(3)),3);
+ assert.equal(estimateRowShift(patterned(3),patterned(0)),-3);
+ const blocked=patterned(3);for(let i=0;i<4;i++)blocked[i].fill(0);
+ assert.equal(estimateRowShift(patterned(0),blocked),null);
+});

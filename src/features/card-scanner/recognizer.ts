@@ -66,7 +66,7 @@ export interface ScannedCard {
   countDiagnostics?: CountDiagnostics;
   nameEvidence?: NameEvidence[];
   nameConfirmedBy?: "repeat" | "sort";
-  capturePosition?: { frame: string; slot: number; stable: boolean; sort: import("./capture-metadata").CardSort | null };
+  capturePosition?: { frame: string; slot: number; stable: boolean; sort: import("./capture-metadata").CardSort | null; location?:import('./scroll-card-location').ScrollCardLocation };
 }
 export function difference(a: ArrayLike<number>, b: ArrayLike<number>) {
   let sum = 0;
@@ -214,7 +214,8 @@ export async function createRecognizer(status: (message: string) => void, signal
       return artwork ? portraitIdentity(artwork) : null;
     },
     nameDiagnostics(canvas: HTMLCanvasElement) { return nameAttempts.get(canvas)?.slice() ?? []; },
-    async identify(canvas: HTMLCanvasElement, full = true, captureStable = false, structural = false) {
+    async identify(canvas: HTMLCanvasElement, full = true, captureStable = false, structural = false,budget?:import('./card-read-budget').CardReadBudget) {
+      budget?.check();
       const fields = inspect(canvas);
       const attempts: import("./name-diagnostics").NameAttempt[] = [];
       nameAttempts.set(canvas, attempts);
@@ -226,7 +227,7 @@ export async function createRecognizer(status: (message: string) => void, signal
         attempts.push(attempt);
         if (attempts.length > 24) attempts.splice(8, 1);
       };
-      let text = await reader.match(canvas, true, fields.offsetY, structural, onAttempt);
+      let text = await reader.match(canvas, true, fields.offsetY, structural, onAttempt,budget);
       const corroborate = (reading: NonNullable<Awaited<ReturnType<typeof reader.match>>>) =>
         !confirmCatalogName(reading, captureStable) ? portrait(canvas, { id: reading.card.id, rawText: reading.rawText,
           complete: reading.complete, canonicalName: reading.card.name,
@@ -234,7 +235,7 @@ export async function createRecognizer(status: (message: string) => void, signal
       let corroborated = text ? corroborate(text) : null;
       if (!text || (!confirmCatalogName(text, captureStable) && !corroborated)) {
         if (full) {
-          text = await reader.match(canvas, false, fields.offsetY, structural, onAttempt);
+          text = await reader.match(canvas, false, fields.offsetY, structural, onAttempt,budget);
           corroborated = text ? corroborate(text) : null;
         }
       }
@@ -318,7 +319,8 @@ export async function createRecognizer(status: (message: string) => void, signal
         sort.width = 0;
       }
     },
-    async read(canvas: HTMLCanvasElement, id?: string, corroborate = false, allowOcr = true) {
+    async read(canvas: HTMLCanvasElement, id?: string, corroborate = false, allowOcr = true,budget?:import('./card-read-budget').CardReadBudget) {
+      budget?.check();
       if (!allowOcr) return readVisual(canvas, context, inspect(canvas), countPatterns, id ? byId.get(id)?.maxAwakening : undefined);
       if (id && byId.get(id)?.maxAwakening === 0)
         return { awakening: 0, extraCopies: 0 };
@@ -358,7 +360,7 @@ export async function createRecognizer(status: (message: string) => void, signal
           20,
         );
       try {
-        const digitValue = await reader.count(strip, maximum, diagnostic);
+        const digitValue = await reader.count(strip, maximum, diagnostic,budget);
         if (pattern.value !== null) {
           diagnostic.patternOcrAgreed = digitValue === pattern.value;
           diagnostic.reason = digitValue === pattern.value ? "숫자 패턴과 독립 숫자 OCR 일치"

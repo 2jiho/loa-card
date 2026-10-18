@@ -4,7 +4,7 @@ export interface LiveFrameStamp { mediaTime: number; presentedFrames: number; mi
  * The watchdog still notices a stopped share when no video callback arrives. */
 export function startVideoFrames(video: HTMLVideoElement, signal: AbortSignal,
   onFrame: (stamp?: LiveFrameStamp) => void, onStop: () => void,
-  onError: (error: unknown) => void, interval = 33) {
+  onError: (error: unknown) => void, interval = 33, onPreview?:()=>void) {
   let active = true, callbackId: number | undefined, lastTime = -Infinity;
   let previousPresented: number | undefined;
   const callbacks = typeof video.requestVideoFrameCallback === "function" &&
@@ -39,7 +39,11 @@ export function startVideoFrames(video: HTMLVideoElement, signal: AbortSignal,
   };
   const timer = setInterval(() => {
     try {
-      if (!live() || callbacks || video.readyState < 2 || video.currentTime === lastTime) return;
+      if (!live() || video.readyState < 2) return;
+      // A covered/background video may not receive compositor callbacks.
+      // Keep display-only tracking independent; never duplicate capture jobs.
+      onPreview?.();
+      if (callbacks || video.currentTime === lastTime) return;
       lastTime = video.currentTime; onFrame();
     } catch (error) { fail(error); }
   }, interval);

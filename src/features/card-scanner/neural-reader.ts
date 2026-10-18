@@ -1,3 +1,4 @@
+import {CardReadTimeout,type CardReadBudget} from './card-read-budget';
 export interface NeuralReading {
   text: string;
   confidence: number;
@@ -6,10 +7,8 @@ export interface NeuralReading {
 }
 export interface NameLine { group: string; line: 0 | 1 }
 export function createNeuralReader(model: "korean" | "digits" = "korean", lexicon?: import("./ctc-lexicon").LexiconEntry[], status?: (message: string) => void) {
-  const worker = new Worker(
-    new URL("./neural-ocr-worker.ts", import.meta.url),
-    { type: "module" },
-  );
+  let worker:Worker;
+  let readyPromise:Promise<NeuralReading|null>|undefined;
   let nextId = 0,
     disposed = false;
   const pending = new Map<
@@ -27,6 +26,8 @@ export function createNeuralReader(model: "korean" | "digits" = "korean", lexico
     }
     pending.clear();
   }
+  function startWorker(){
+  worker = new Worker(new URL("./neural-ocr-worker.ts", import.meta.url),{type:'module'});
   worker.onerror = (event) => {
     worker.terminate();
     disposed = true;
@@ -42,6 +43,14 @@ export function createNeuralReader(model: "korean" | "digits" = "korean", lexico
     if (error) item.reject(new Error(error));
     else item.resolve(result);
   };
+  }
+  startWorker();
+  function restart(){
+    worker.onmessage=null;worker.onerror=null;worker.terminate();
+    fail(new CardReadTimeout());readyPromise=undefined;
+    if(!disposed)startWorker();
+  }
+  function ready(){return readyPromise??=request('ready');}
   function request(type: "ready" | "recognize", source?: HTMLCanvasElement, useLexicon = false, nameLine?: NameLine) {
     if (disposed) return Promise.reject(new Error("OCR 종료"));
     const id = ++nextId;
@@ -66,10 +75,11 @@ export function createNeuralReader(model: "korean" | "digits" = "korean", lexico
   }
   return {
     async ready() {
-      await request("ready");
+      await ready();
     },
-    async recognize(source: HTMLCanvasElement, useLexicon = false, nameLine?: NameLine) {
-      return (await request("recognize", source, useLexicon, nameLine))!;
+    async recognize(source: HTMLCanvasElement, useLexicon = false, nameLine?: NameLine, budget?:CardReadBudget) {
+      const read=async()=>{await ready();budget?.check();return (await request("recognize", source, useLexicon, nameLine))!;};
+      return budget ? budget.wait(read,restart) : read();
     },
     dispose() {
       disposed = true;

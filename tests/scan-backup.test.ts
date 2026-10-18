@@ -21,6 +21,14 @@ test('a new tab restores the same inventory and XP without sessionStorage', asyn
   assert.equal(await a.load(), undefined); await a.save(state());
   assert.deepEqual(await createScanBackup(() => factory, () => null).load(), state());
 });
+
+test('live thumbnail activity is not persisted with the inventory',async()=>{
+  const factory=new IDBFactory(),backup=createScanBackup(()=>factory);
+  const input={...state(),activity:[{id:1,image:'temporary-crop',status:'reading' as const}]};
+  await backup.load();await backup.save(input);
+  assert.deepEqual(await backup.load(),state());
+  assert.equal(input.activity.length,1);
+});
 test('stale tab cannot overwrite a newer scan; explicit reload permits later changes', async () => {
   const factory = new IDBFactory(), a = createScanBackup(() => factory), b = createScanBackup(() => factory);
   await a.load(); await b.load(); await a.save(state('새 스캔'));

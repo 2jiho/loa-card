@@ -69,3 +69,30 @@ test("encoder failure is reported without returning a partial recovery video", a
   assert.equal(await capture.finish(), undefined);
   assert.equal(warnings.length, 1); assert.match(warnings[0], /실패/);
 });
+
+test('disk spool preserves order, flushes tail and disposes on explicit release',async()=>{
+ const written:string[]=[];let disposed=0;
+ const capture=recordContinuous({} as MediaStream,assert.fail,Recorder,1024,1000,async()=>({
+  async write(blob){written.push(await blob.text());},async finish(type){return new Blob(written,{type});},async dispose(){disposed++;},
+ }));
+ FakeRecorder.instance.data('a');FakeRecorder.instance.data('b');
+ const result=await capture.finish();assert.ok(result);assert.deepEqual(written,['a','b','tail']);
+ assert.equal(disposed,0);await result.dispose?.();assert.equal(disposed,1);
+});
+test('slow disk cannot accumulate unbounded encoded chunks',async()=>{
+ let release!:()=>void,disposed=0;const messages:string[]=[];
+ const blocked=new Promise<void>(resolve=>{release=resolve;});
+ const capture=recordContinuous({} as MediaStream,m=>messages.push(m),Recorder,1024,1000,async()=>({
+  async write(){await blocked;},async finish(){return new Blob(['unused']);},async dispose(){disposed++;},
+ }),5);
+ FakeRecorder.instance.data('1234');FakeRecorder.instance.data('56');release();
+ assert.equal(await capture.finish(),undefined);assert.equal(messages.length,1);assert.match(messages[0],/한도/);
+ for(let i=0;i<10;i++)await Promise.resolve();assert.equal(disposed,1);
+});
+test('disk errors return no misleading full recording and do not throw through scanner callbacks',async()=>{
+ const messages:string[]=[];
+ const capture=recordContinuous({} as MediaStream,m=>messages.push(m),Recorder,1024,1000,async()=>({
+  async write(){throw Error('quota');},async finish(){throw Error('unexpected');},async dispose(){},
+ }));
+ FakeRecorder.instance.data('source');assert.equal(await capture.finish(),undefined);assert.match(messages[0],/quota/);
+});

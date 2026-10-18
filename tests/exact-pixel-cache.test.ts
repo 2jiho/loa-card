@@ -38,3 +38,11 @@ test('owned independent pixel snapshots retain exact matching and bounded evicti
  assert.equal(c.get(0,'crop',new Uint8ClampedArray([1,2,3,255])),undefined);
  assert.equal(c.get(1,'crop',new Uint8ClampedArray([4,5,6,255])),'second');
 });
+
+test('frame snapshots survive overwriting and eviction of source slots',()=>{
+ const cache=new ExactPixelCache<string>(2),px=new Uint8ClampedArray([1,2,3,255]);
+ cache.set(0,'a',px,'old-zero');cache.set(1,'b',px,'old-one');
+ const previous=cache.snapshot();cache.set(0,'a',px,'new-zero');cache.set(2,'c',px,'new-two');
+ assert.equal(previous.get(0,'a',px),'old-zero');assert.equal(previous.get(1,'b',px),'old-one');
+ assert.equal(cache.get(0,'a',px),'new-zero');assert.equal(cache.get(1,'b',px),undefined);
+});

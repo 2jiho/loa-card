@@ -47,3 +47,13 @@ test("watchdog detects an ended share with no callbacks, and timer fallback skip
   fallback.video.currentTime = 1 / 30; t.mock.timers.tick(33); assert.equal(captures, 2);
   abort.abort(); fallback.video.currentTime = 2 / 30; t.mock.timers.tick(33); assert.equal(captures, 2);
 });
+
+test('display preview continues without compositor callbacks and never manufactures capture frames',t=>{
+ t.mock.timers.enable({apis:['setInterval']});
+ const mock=input(),abort=new AbortController();let previews=0,captures=0;
+ startVideoFrames(mock.video,abort.signal,()=>captures++,()=>{},error=>{throw error;},33,()=>previews++);
+ t.mock.timers.tick(330);assert.equal(previews,10);assert.equal(captures,0);
+ mock.deliver(.33,1);assert.equal(captures,1);
+ t.mock.timers.tick(33);assert.equal(previews,11);assert.equal(captures,1);
+ abort.abort();t.mock.timers.tick(1000);assert.equal(previews,11);
+});

@@ -97,7 +97,10 @@ export function createScanBackup(factory: () => IDBFactory = () => indexedDB,
     queue = task.catch(() => {});
     return task;
   }
-  return { load: (selectedLegacy?: string) => access('load', undefined, selectedLegacy), save: (state: ScannerState) => access('save', structuredClone(state)), clear: () => access('clear') };
+  return { load: (selectedLegacy?: string) => access('load', undefined, selectedLegacy), save: (state: ScannerState) => {
+    const {activity: _activity,...inventory}=state;
+    return access('save',structuredClone(inventory));
+  }, clear: () => access('clear') };
 }
 const backup = createScanBackup();
 export const loadScanBackup = backup.load;

@@ -1,5 +1,12 @@
+import {ScanGrid,type ScanGridSnapshot} from './scan-grid';
+import type {ExactRecorder} from './exact-recording';
 import { initializeWithin } from './initialization';
 import {guardScan} from './scan-watchdog';
+import {CardReadAttempts,CardReadBudget,CardReadTimeout} from './card-read-budget';
+import {scrollCardLocation,estimateScrollRows} from './scroll-card-location';
+import {InventoryPosition} from './inventory-position';
+import {ObservedInventoryLayout} from './observed-inventory-layout';
+import {RecentScanActivity,type ScanActivityItem} from './scan-activity';
 import type { PreparedScanner } from './scanner-preparation';
 import { createVisualClient } from './visual-client';
 import type { VisualResult } from './visual-client';
@@ -14,9 +21,12 @@ import { tryStartTrackFrames } from './track-frame-source';
 import { ScanLedger } from "./scan-ledger";
 import type { LedgerSnapshot } from "./scan-ledger";
 import { CandidateQueue } from "./candidate-queue";
+import { FreshObservations } from './fresh-observation';
+import { FinishTimer, type FinishTiming } from './finish-timing';
 import { estimateRowShift } from "./grid-motion";
 import { CaptureObservations, settledFields, sameCapture } from "./capture-quality";
 import type { CardSort } from "./capture-metadata";
+import { reconcileCardSort } from './capture-metadata';
 import { createDetector } from "./detector";
 import {
   createRecognizer,
@@ -26,6 +36,7 @@ import type { ScannedCard } from "./recognizer";
 import { confirmSortedNames } from "./name-confirmation";
 import { consensus } from "./consensus";
 import { readScrollGeometry } from "./scroll-position";
+import {LiveScrollPreview} from './live-scroll-preview';
 import { ScrollCoverage } from './scroll-coverage';
 import type { ScrollGap } from './scroll-coverage';
 import { countReliability, CountObservations } from "./count-confidence";
@@ -42,13 +53,15 @@ import {LiveInventory} from './live-inventory';
 import type {LiveInventorySnapshot} from './live-inventory';
 import { runJoinedWorkers } from './joined-workers';
 import { fieldRetryIdentity, obsoleteFieldRetry, pruneFieldRetries } from './field-retry';
-import { canSkipRecovery, confirmedReadingCount } from './recovery-completion';
+import { canSkipRecovery, canFinishVerifiedCapture, confirmedReadingCount, freshCaptureTail } from './recovery-completion';
 import { saveAcquisition, resolvedSavedObservation, coveredSavedAcquisition } from './saved-acquisition';
 import type { SavedAcquisition, SavedObservation } from './saved-acquisition';
 import {AutoCompletionHold,canStopSharing,confirmedCaptureCount,stopCompletedShare} from './auto-completion';
 const cardCollator = new Intl.Collator("ko");
 
 export interface ScannerState {
+  grid?:ScanGridSnapshot;
+  activity?:ScanActivityItem[];
   interrupted?: 'stalled' | 'cancelled' | 'failed';
   processingWarning?: string;
   workPhase?: import('./read-progress').ScanWorkPhase;
@@ -88,11 +101,13 @@ export interface ScannerState {
   retryWork?: { skippedFields:number; reusedIdentities:number };
   identifiedAfterSharing?: { id: string; name: string }[];
   sharingEndedAt?: number;
+  finishTiming?: FinishTiming;
+  scrollPreviewPerformance?: {samples:number;readMs:number;maxReadMs:number;duringAcquisition:number};
   shareEndInventory?: LiveInventorySnapshot;
   livePerformance?: { acquisitionMs: number; recognized: number; uniqueCards: number; firstResultMs: number | null; lagMs: number;
     stages?: AcquisitionTiming & { copyMs:number; samples:number };
     stagesByLocation?: Partial<Record<'located'|'unlocated', AcquisitionTiming & {copyMs:number;samples:number}>> };
-  unidentified: { image: string; time: number; pending: boolean; group?: number }[];
+  unidentified: { image: string; time: number; pending: boolean; group?: number; reason?:string; location?:import('./scroll-card-location').ScrollCardLocation }[];
   captureDiagnostics?: {
     acquired: number; rejected: number; duplicates: number; improved: number;
     reasons: Record<string, number>;
@@ -131,7 +146,7 @@ async function runScannerInternal(
   rowMode: "all" | "top" | "stable" = "all",
   stillImages?: HTMLImageElement[],
   captureOnly = false,
-  debug: { nativeAcquisition?: boolean; parallelRecovery?: boolean; trackFrames?: boolean; replay?: DebugCapture; replayInputs?: AsyncIterable<{ element: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement | OffscreenCanvas; image?: string; time: number; percent: number }>; record?: (frame: DebugFrame) => void;
+  debug: { nativeAcquisition?: boolean; exact?: ExactRecorder; trace?: (type:string,value:unknown,time:number)=>void; parallelRecovery?: boolean; trackFrames?: boolean; replay?: DebugCapture; replayInputs?: AsyncIterable<{ element: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement | OffscreenCanvas; image?: string; time: number; percent: number }>; record?: (frame: DebugFrame) => void;
     continuous?: (recording: ContinuousRecording) => void;
     snapshots?: () => AsyncIterable<{ element: HTMLImageElement; image: string; time: number; percent: number }>;
     preview?: (image: string) => void; recording?: () => boolean; recordingError?: (message: string) => void } = {},
@@ -155,15 +170,23 @@ async function runScannerInternal(
     captureDiagnostics: { acquired: 0, rejected: 0, duplicates: 0, improved: 0, reasons: {}, samples: [] },
   };
   const ledger = new ScanLedger();
+  const activity=new RecentScanActivity();
+  const grid=new ScanGrid();
+  const inventoryPosition=new InventoryPosition();
+  const observedLayout=new ObservedInventoryLayout();
   let auditComplete = false;
   let lastEmission = -Infinity;
   let refreshCards: (() => void) | undefined;
+  let refreshGrid: (() => void) | undefined;
   const emit = (force = false) => {
     const now = performance.now();
     if (!force && now - lastEmission < 100) return;
     lastEmission = now;
     refreshCards?.();
+    refreshGrid?.();
     state.ledger = ledger.snapshot(auditComplete);
+    state.activity=activity.snapshot();
+    state.grid=grid.snapshot();
     update({ ...state, cards: [...state.cards], captureDiagnostics: state.captureDiagnostics ? { ...state.captureDiagnostics, reasons: { ...state.captureDiagnostics.reasons }, samples: [...state.captureDiagnostics.samples] } : undefined });
   };
   emit();
@@ -175,6 +198,10 @@ async function runScannerInternal(
   let originals: ReturnType<typeof createCaptureOriginals> | undefined;
   let recordingFailure = "";
   let continuous: ReturnType<typeof recordContinuous> | undefined;
+  const finishTimer = new FinishTimer();
+  let recordingStart = performance.now();
+  const trace=(type:string,value:unknown)=>{const time=(performance.now()-recordingStart)/1000;debug.exact?.event(type,value,time);debug.trace?.(type,value,time);};
+  ledger.observe((type,value)=>{if(type==='stage'){const event=value as {id:number;stage:string};grid.stage(event.id,event.stage);}if(debug.exact||debug.trace)trace(type,value);});
   let recovering = false;
   let releasePending: (() => void) | undefined;
   let acquisition: ReturnType<typeof createAcquisitionClient> | undefined = prepared?.acquisition;
@@ -211,6 +238,11 @@ async function runScannerInternal(
       }); }
       catch (error) { state.captureWarning = error instanceof Error ? error.message : "연속 화면 기록을 시작하지 못했습니다."; }
     }
+    if(debug.exact){
+      try{if(!acquisition)throw Error('입력 기록 Worker 없음');acquisition.startRecording(debug.exact.takePort());}
+      catch(error){debug.exact.incomplete(String(error));}
+    }
+    trace('configuration',{source,rowMode,captureOnly,lanePlan,hardwareConcurrency:navigator.hardwareConcurrency,build:import.meta.env.VITE_BUILD_REVISION});
     onReady?.();
     const cards = new Map(seed.map((card) => [card.id, card])),
       evidence = new Map<string, ScannedCard[]>(
@@ -229,6 +261,7 @@ async function runScannerInternal(
     let lastMetadataFrame: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement | OffscreenCanvas | undefined;
     type Candidate = {
       savedObservation?:SavedObservation;
+      pixelKey:string;
       needsIdentity?: boolean;
       fieldTarget?: {id:string;order:number};
       knownIdentity?: NonNullable<Awaited<ReturnType<NonNullable<typeof recognizer>['identify']>>>;
@@ -236,13 +269,15 @@ async function runScannerInternal(
       borderAlignment: number; order: number; position: NonNullable<ScannedCard["capturePosition"]>;
       preview: string; previewCanvas?: HTMLCanvasElement; sortReading?: Promise<Awaited<ReturnType<NonNullable<typeof recognizer>["metadata"]>>>;
     };
-    const releaseCandidate = (item: Candidate) => { item.image.width = 0; item.image.height = 0; if (item.previewCanvas) item.previewCanvas.width = 0; };
+    const freshObservations = new FreshObservations<SavedObservation>();
+    const releaseCandidate = (item: Candidate) => { freshObservations.finish(item.savedObservation); item.image.width = 0; item.image.height = 0; if (item.previewCanvas) item.previewCanvas.width = 0; };
     const queue = new CandidateQueue<Candidate>(1600, item => {
       ledger.finish(item.trace, "superseded", { reason: "같은 관측 묶음의 더 좋은 이미지로 교체", group: item.group });
       releaseCandidate(item);
     });
     const deferred: (Candidate & { feature: Uint8Array })[] = [];
     const fullRetries: (Candidate & { feature: Uint8Array })[] = [];
+    const readAttempts=new CardReadAttempts();
     releasePending = () => {
       let item: Candidate | undefined;
       while ((item = queue.shift())) { ledger.finish(item.trace, "dropped", { group: item.group, reason: "처리 중지" }); releaseCandidate(item); }
@@ -276,6 +311,23 @@ async function runScannerInternal(
     let lastDiagnosticSample = -Infinity;
     let lastNameValidation = -Infinity;
     let cardsDirty = false;
+    let lastLayoutUpdate=-Infinity;
+    let livePositions:{id:string;slot:number}[]=[];
+    refreshGrid=()=>{
+      if(auditComplete)return;
+      const current=state.cards.filter(card=>latestIdentityOrder.has(card.id)&&!card.review.includes('이름 확인'));
+      const now=performance.now();
+      // Spatial reconciliation is independent of the complete-inventory check.
+      // Bound graph traversal to 4 Hz; latest field status updates on every emit.
+      if(now-lastLayoutUpdate>=250) {
+        lastLayoutUpdate=now;
+        livePositions=observedLayout.resolve(current.map(card=>card.id),inventoryPosition.verifiedPositions(),false);
+      }
+      const statuses=new Map(current.map(card=>[card.id,
+        confirmedReadingCount({cards:[card],latest:latestIdentityOrder,confirmed:confirmedFieldOrder})?'read' as const:
+          card.review.length?'review' as const:'waiting' as const]));
+      grid.placeLive(livePositions.filter(p=>statuses.has(p.id)),statuses);
+    };
     // Consensus/evidence stay synchronous for every observation. Sorting and
     // neighbour validation only build the published view; intermediate views
     // are never consumed by recognition and need not be rebuilt per card.
@@ -288,6 +340,12 @@ async function runScannerInternal(
         lastNameValidation = started;
       } else state.cards = ordered;
       state.currentRunRead = confirmedReadingCount({cards:state.cards,latest:latestIdentityOrder,confirmed:confirmedFieldOrder});
+      if(state.expected&&state.currentRunRead===state.expected&&state.cards.length===state.expected&&state.sort?.kind==='name') {
+        const ids=state.cards.map(card=>card.id);
+        const directions=state.sort.direction==='unknown'?['asc','desc']:[state.sort.direction];
+        for(const direction of directions)for(const location of inventoryPosition.order(direction==='desc'?[...ids].reverse():ids))
+          grid.register(location.frame,location.top);
+      }
       cardsDirty = false;
       state.resultPresentation ??= { observations: 0, updates: 0, milliseconds: 0 };
       state.resultPresentation.updates++;
@@ -306,6 +364,14 @@ async function runScannerInternal(
     const scrollContext = scrollStrip.getContext("2d", {
       willReadFrequently: true,
     })!;
+    const previewStrip=document.createElement('canvas');previewStrip.width=16;previewStrip.height=942;
+    // Keep source-video scaling on the GPU; CPU-backed drawImage can convert
+    // an entire high-resolution video for a tiny strip on every callback.
+    const previewContext=previewStrip.getContext('2d',{willReadFrequently:false})!;
+    const scrollPreview=new LiveScrollPreview<CanvasImageSource>((source,box,w,h)=>{
+      previewContext.drawImage(source,box.x,box.y,box.width,box.height,0,0,w,h);
+      return previewContext.getImageData(0,0,w,h).data;
+    });
     let previous: Uint8Array[] = [],
       lastLocation = "",
       header: HTMLCanvasElement | undefined,
@@ -318,6 +384,8 @@ async function runScannerInternal(
       preview: string | undefined,
       group: number,
       vector: Uint8Array,
+      location?:import('./scroll-card-location').ScrollCardLocation,
+      reason='이름 확인 필요',
     ) => {
       const existing = unknownFeatures.findIndex(
         (old, i) => (group !== undefined && state.unidentified[i].group === group) || sameCapture(old, vector),
@@ -328,6 +396,7 @@ async function runScannerInternal(
           state.unidentified[existing] = {
             ...state.unidentified[existing],
             pending: false,
+            location,reason,
           };
           changed = true;
         }
@@ -343,6 +412,7 @@ async function runScannerInternal(
           time,
           pending,
           group,
+          location,reason,
         });
         changed = true;
       }
@@ -353,7 +423,7 @@ async function runScannerInternal(
     let replayAnalysis:SavedAcquisition|undefined;
     let lastOriginalAt=-Infinity;
     let readingJobs=0;
-    const recordingStart = continuous?.startedAt ?? performance.now();
+    recordingStart = continuous?.startedAt ?? performance.now();
     const directOriginals = !!continuous && !debug.record && !debug.snapshots;
     if (continuous && !debug.snapshots && !directOriginals) originals = createCaptureOriginals({ rowMode, captureOnly }, signal);
     if (debug.record || originals || directOriginals) {
@@ -403,14 +473,15 @@ async function runScannerInternal(
         savedId=encoder.submit(nativeAcquisition?frozenNative!:currentFrame,frameTime,elapsed);
         if(savedId!==undefined)lastOriginalAt=elapsed;
       }
+      if(debug.exact&&recovering){try{if(!acquisition)throw Error('복구 입력 기록 Worker 없음');await acquisition.recordOnly(currentFrame,frameTime);}catch(error){debug.exact.incomplete(String(error));}}
       const cached=recovering&&replayAnalysis?.width===width&&replayAnalysis.height===height?replayAnalysis:undefined;
       let remote:Awaited<ReturnType<NonNullable<typeof acquisition>['detectAndAcquire']>>|undefined;
       try {
         remote = cached ? {layout:cached.layout,cells:cached.cells.map((cell,index)=>({...cell,
           image:resolvedSavedObservation(cached.observations[index],confirmedFieldOrder)?document.createElement('canvas'):crop(currentFrame,cell.content)}))} :
           acquisition && !recovering ? nativeAcquisition
-          ? await acquisition.detectNative(frozenNative!,currentFrame)
-          : await acquisition.detectAndAcquire(currentFrame) : undefined;
+          ? await acquisition.detectNative(frozenNative!,currentFrame,frameTime)
+          : await acquisition.detectAndAcquire(currentFrame,frameTime) : undefined;
       } finally {ownedNative?.close();}
       if(cached){state.recoveryReuse??={frames:0,observations:0,skippedOriginals:0};state.recoveryReuse.frames++;}
       if(continuous&&!recovering&&remote?.timing) {
@@ -429,6 +500,7 @@ async function runScannerInternal(
         groups[locationKind]=groupStage;
       }
       const layout = remote ? remote.layout : detector.detect(frame);
+      if(continuous&&!recovering)scrollPreview.bind(currentFrame,width,height,layout,copyStarted);
       let saved:SavedAcquisition|undefined=cached;
       if(savedId!==undefined&&!layout)encoder?.attachAnalysis(savedId,saveAcquisition(width,height,null,[]));
       if(recovering&&remote?.timing){
@@ -436,8 +508,11 @@ async function runScannerInternal(
         p.frames++;p.acquisitionMs+=remote.timing.roundTripMs;p.copyMs+=copyMs;p.detectMs+=remote.timing.detectMs;p.cropMs+=remote.timing.cropMs;
       }
       state.sampled++;
+      trace('frame',{frame:state.sampled,time:frameTime,phase:recovering?'recovery':'input',layout});
+
       ledger.frame(!!layout);
       state.located = !!layout;
+      if(!recovering)grid.begin(!!layout);
       if (!layout) {
         previous = [];
         previousVectors = [];
@@ -460,7 +535,12 @@ async function runScannerInternal(
           state.sort == null ||
           frameTime - lastMetadataTime >= 2)
       ) {
-        metadata = recognizer!.metadata(currentFrame, layout);
+        metadata = recognizer!.metadata(currentFrame, layout).catch(error=>{
+          // A shared OCR Worker may restart after a card deadline. Metadata is
+          // optional here and will be retried from a fresh frame, never invented.
+          if(error instanceof CardReadTimeout)return {growthPoints:null,sort:null};
+          throw error;
+        });
         frameMetadata = metadata;
         lastMetadataTime = frameTime;
         lastMetadataFrame = inputFrame;
@@ -507,6 +587,10 @@ async function runScannerInternal(
           942,
         );
         state.scrollPosition=scrollGeometry?.position??null;
+        if(!recovering) {
+          grid.geometry(estimateScrollRows(scrollGeometry));
+          grid.viewport(inventoryPosition.estimateTop(scrollGeometry));
+        }
         if (state.scrollPosition !== null) {
           state.scrollStartSeen ||= state.scrollPosition <= 0.02;
           state.scrollEndSeen ||= state.scrollPosition >= 0.98;
@@ -550,6 +634,7 @@ async function runScannerInternal(
                   ).length >= 8,
             )
           : [];
+      const gridGroups=Array<number|undefined>(40).fill(undefined);
       for (let i = 0; i < images.length; i++) {
         diagnostics.acquired++;
         const box = alignedCells[i].content;
@@ -558,6 +643,7 @@ async function runScannerInternal(
         // The acquisition Worker has already inspected the same uncompressed
         // pixels. Do not read every returned crop back again on the UI thread.
         const quality = acquired[i].quality;
+        if(!recovering)grid.cell(i,quality.reason==='미보유 카드 뒷면 · 빈 슬롯'?'empty':quality.usable?'unknown':'review',quality.reason);
         const savedObservation=cached?.observations[i];
         // A duplicate live crop can borrow an observation only when acquisition
         // proved every source pixel and its geometry identical.
@@ -587,7 +673,12 @@ async function runScannerInternal(
         // Briefly visible complete names can survive a fast scroll. Keep their
         // evidence separate so rejecting one frame cannot suppress a stable pair.
         const group = captures.offerDetailed(observations[i], i % 10, quality.sharpness, stable);
-        const offered = savedObservation ? 'better' : group.decision;
+        const freshRetry = continuous && !recovering && group.decision === 'duplicate' &&
+          freshObservations.retry(group.id, acquired[i].pixelKey, frameTime, stable,
+            observation => resolvedSavedObservation(observation, confirmedFieldOrder));
+        const offered = savedObservation || freshRetry ? 'better' : group.decision;
+        gridGroups[i]=group.id;
+        if(!recovering)grid.group(i,group.id,trace,offered!=='duplicate');
         if (offered !== "duplicate") {
           collectedThisFrame++;
           if (offered === "better") diagnostics.improved++;
@@ -595,6 +686,7 @@ async function runScannerInternal(
           state.collectedCrops = (state.collectedCrops ?? 0) + 1;
           const order = savedObservation?.order ?? (continuous ? timedCaptureOrder(initialCaptureOrder, frameTime, i) : ++captureOrder);
           const observation=savedObservation??{order,stable,frame:`${captureSession}/${state.sampled}`};
+          if (continuous && !recovering) freshObservations.remember(group.id, acquired[i].pixelKey, frameTime, observation);
           if(saved) saved.observations[i]=observation;
           exactObservations.set(acquired[i].pixelKey,observation);
           while(exactObservations.size>2048)exactObservations.delete(exactObservations.keys().next().value!);
@@ -604,7 +696,7 @@ async function runScannerInternal(
           const preview = cell.previewImage ?? crop(currentFrame, alignedCells[i].preview);
           cell.previewImage=undefined;
           const enqueued = queue.push({
-            savedObservation:observation,
+            savedObservation:observation,pixelKey:cell.pixelKey,
             group: group.id, trace,
             priorityGroup: continuous ? livePriority.group(observations[i],i%10) : -1,
             preview: "", previewCanvas: preview,
@@ -615,12 +707,17 @@ async function runScannerInternal(
             borderAlignment: alignedCells[i].alignment,
             order,
             position: { frame: observation?.frame ?? `${captureSession}/${state.sampled}`, slot: i, stable,
-              sort: null },
+              sort: null,location:scrollCardLocation(scrollGeometry,i,stable) },
             sortReading: frameMetadata,
           });
           coverageSlots[i]=enqueued;
-          if (!enqueued) { ledger.finish(trace, "dropped", { group: group.id, reason: "판독 대기열 용량 초과" }); images[i].width = 0; preview.width = 0; }
+          if (!enqueued) { freshObservations.finish(observation); ledger.finish(trace, "dropped", { group: group.id, reason: "판독 대기열 용량 초과" }); images[i].width = 0; preview.width = 0; }
         } else { coverageSlots[i]=true;ledger.finish(trace, "duplicate", { group: group.id }); diagnostics.duplicates++; images[i].width = 0; }
+      }
+      if(!recovering) {
+        observedLayout.capture(gridGroups);
+        grid.record(state.sampled);
+        for(const location of inventoryPosition.capture(state.sampled,gridGroups,scrollGeometry))grid.register(location.frame,location.top);
       }
       if(scrollGeometry) {
         scrollCoverage.offer(scrollGeometry.position,scrollGeometry.pageSpan,coverageSlots);
@@ -647,18 +744,18 @@ async function runScannerInternal(
         const pending = metadata;
         metadata = undefined;
         const next = await pending;
-        const changed =
-          state.sort &&
-          next.sort &&
-          (state.sort.kind !== next.sort.kind ||
-            state.sort.direction !== next.sort.direction);
-        if (changed) {
+        const sortUpdate=reconcileCardSort(state.sort??null,next.sort);
+        if (sortUpdate.changed) {
+          grid.resetPositions();
+          inventoryPosition.resetPositions();
+          observedLayout.resetPositions();
+          livePositions=[];lastLayoutUpdate=-Infinity;
           previousVectors = [];
           previous = [];
           scrollCoverage.reset();state.scrollGaps=[];
         }
         if (next.growthPoints) state.growthPoints = next.growthPoints;
-        if (next.sort) state.sort = next.sort;
+        state.sort = sortUpdate.sort;
       }
       if (recognizer && header && state.expected === null) {
         const total = await recognizer!.total(
@@ -718,6 +815,11 @@ async function runScannerInternal(
         item.previewCanvas = undefined;
       }
       let retained = false;
+      activity.start(item.trace,item.preview);
+      let activityStatus:ScanActivityItem['status']='review';
+      emit();
+      const attempt=readAttempts.begin(item.pixelKey,!fast);
+      const budget=attempt?.budget ?? new CardReadBudget();
       let visualResult: VisualResult | undefined;
       let acceptedIdentity: Candidate['knownIdentity'];
       const reject = () => { ledger.finish(item.trace, "unidentified", { group: item.group, reason: "이름 판독 실패", nameAttempts: reader?.nameDiagnostics(item.image) }); reportUnknown(item.image, item.time, false, item.preview, item.group, item.feature); };
@@ -760,14 +862,16 @@ async function runScannerInternal(
           }
         }
         if (retained) {
+          activityStatus='waiting';
           ledger.finish(item.trace, "deferred", { group: item.group, reason: unknown ? "이름 보조 판독 대기" : "장수·각성 보조 판독 대기" });
           state.queued = queue.length + deferred.length + fullRetries.length;
-          if (unknown) reportUnknown(item.image, item.time, true, item.preview, item.group, item.feature);
+          if (unknown) reportUnknown(item.image, item.time, true, item.preview, item.group, item.feature,item.position.location);
         }
         return retained;
       };
       readingJobs++;
       try {
+        if(!attempt)throw new CardReadTimeout();
         // Full retries use the best retained crop and an independent reader;
         // they can run during sharing without serializing source acquisition.
         if (item.sortReading) {
@@ -777,7 +881,9 @@ async function runScannerInternal(
           if (fast) void item.sortReading.then(assignSort).catch(error => { captureError=error; capturing=false; });
           else assignSort(await item.sortReading);
         }
-        if (fast && visual) visualResult=await visual.read(item.image);
+        if (fast && visual) visualResult=await budget.wait(()=>visual.read(item.image),()=>{
+          visual.dispose();const index=visuals.indexOf(visual);if(index>=0)visuals[index]=createVisualClient(signal);
+        });
         const retainedIdentity=fieldRetryIdentity(item);
         if(retainedIdentity){state.retryWork??={skippedFields:0,reusedIdentities:0};state.retryWork.reusedIdentities++;}
         const identity = retainedIdentity ?? (fast ? (visualResult ? visualResult.identity : reader!.identifyVisual(item.image)) : await reader!.identify(
@@ -785,6 +891,7 @@ async function runScannerInternal(
           !quick && (isStill || !queued || deferred.length >= 512),
           item.stable,
           item.borderAlignment >= .8,
+          budget,
         ));
         if (!identity) {
           const inspected = visualResult?.fields ?? await reader!.inspect(item.image);
@@ -794,7 +901,7 @@ async function runScannerInternal(
           if (await defer()) return;
           ledger.finish(item.trace, "unidentified", { group: item.group, reason: "이름 판독 실패", nameAttempts: reader!.nameDiagnostics(item.image) });
           if (!queued || visibleCard)
-            reportUnknown(item.image, item.time, false, item.preview, item.group, item.feature);
+            reportUnknown(item.image, item.time, false, item.preview, item.group, item.feature,item.position.location);
           return;
         }
         if ((queued || quick) && identity.review.includes("이름 확인")) {
@@ -811,7 +918,9 @@ async function runScannerInternal(
         // including identities recovered by the independent OCR reader.
         if (continuous) livePriority.serviced(item.priorityGroup);
         ledger.finish(item.trace, "identified", { group: item.group, cardId: identity.id, name: identity.name });
-        let values = visualResult?.values ?? await reader!.read(item.image, identity.id, false, !fast);
+        let values:Awaited<ReturnType<NonNullable<typeof reader>['read']>>;
+        try {values=visualResult?.values ?? await reader!.read(item.image, identity.id, false, !fast,budget);}
+        catch(error){if(!(error instanceof CardReadTimeout))throw error;values=await reader!.read(item.image,identity.id,false,false);}
         const identified = item.feature;
         const repeatedCount = countObservations.offer(identity.id, item.position.frame, identified, {
           borderAlignment: item.borderAlignment, awakening: values.awakening,
@@ -827,7 +936,8 @@ async function runScannerInternal(
         let reliability = resolveCountReliability();
         if (!fast && reliability === "unconfirmed" && values.awakening !== null &&
             values.countDiagnostics?.pattern?.value != null && !identity.review.length) {
-          values = await reader!.read(item.image, identity.id, true);
+          try{values = await reader!.read(item.image, identity.id, true,true,budget);}
+          catch(error){if(!(error instanceof CardReadTimeout))throw error;}
           reliability = resolveCountReliability();
         }
         if (values.extraCopies === 0 && reliability === "unconfirmed") {
@@ -888,7 +998,21 @@ async function runScannerInternal(
           state.queued=queue.length+deferred.length+fullRetries.length;
         }
         cards.set(identity.id, consensus(observations));
+        if(!identity.review.includes('이름 확인')) {
+          observedLayout.identify(item.group,identity.id);
+          grid.identify(item.group,identity.id);
+          for(const location of inventoryPosition.identify(item.group,identity.id))grid.register(location.frame,location.top);
+        }
+        if(debug.trace)trace('position-debug',inventoryPosition.diagnostics());
+        {const card=cards.get(identity.id)!;trace('card',{trace:item.trace,order:item.order,time:item.time,id:card.id,name:card.name,awakening:card.awakening,extraCopies:card.extraCopies,review:card.review});}
+        activityStatus=cards.get(identity.id)!.review.length||reliability==='unconfirmed'?'review':'read';
         state.currentRunNames=confirmedCaptureCount({cards:[...cards.values()],latest:latestIdentityOrder,confirmedNames:confirmedNameOrder});
+        if (continuous && !recovering) {
+          if (!identity.review.includes('이름 확인')) finishTimer.record(identity.id, item.time * 1000);
+          if (state.finishTiming?.expected !== state.expected) state.finishTiming = undefined;
+          if (!state.finishTiming && state.currentRunNames === state.expected)
+            state.finishTiming = finishTimer.coverage([...latestIdentityOrder.keys()], state.expected, performance.now() - recordingStart);
+        }
         cardsDirty = true;
         state.resultPresentation ??= { observations: 0, updates: 0, milliseconds: 0 };
         state.resultPresentation.observations++;
@@ -899,17 +1023,34 @@ async function runScannerInternal(
         emit(unknownFeatures.length !== previousUnknowns);
         if ((fast || quick) && (reliability === "unconfirmed" || values.awakening === null)) await defer(false,identity.id);
       } catch (error) {
+        if(error instanceof CardReadTimeout){
+          signal.throwIfAborted();
+          if(item.fieldTarget){
+            // The identity was already accepted. Leave its unresolved fields
+            // reviewable instead of creating a duplicate unnamed card.
+            ledger.finish(item.trace,'identified',{group:item.group,cardId:item.fieldTarget.id,reason:error.message});
+          }else{
+            ledger.finish(item.trace,'unidentified',{group:item.group,reason:error.message,nameAttempts:reader?.nameDiagnostics(item.image)});
+            reportUnknown(item.image,item.time,false,item.preview,item.group,item.feature,item.position.location,error.message);
+          }
+          return;
+        }
         ledger.finish(item.trace, "dropped", { group: item.group, reason: "판독 처리 오류" });
         throw error;
       } finally {
+        activity.finish(item.trace,activityStatus,acceptedIdentity?.name??item.knownIdentity?.name);
+        grid.finish(item.trace,({read:'read',waiting:'waiting',review:'review',reading:'waiting'} as const)[activityStatus]);
         readingJobs--;
+        attempt?.finish();
         if(recoveryReadStart!==undefined&&state.recoveryPerformance){state.recoveryPerformance.readings++;state.recoveryPerformance.readMs+=performance.now()-recoveryReadStart;}
         finishReading?.((performance.now()-recordingStart)/1000);
         // Release the cropped backing store after the Worker and thumbnail read.
         if (!retained) {
+          freshObservations.finish(item.savedObservation);
           item.image.width = 0;
           item.image.height = 0;
         }
+        emit();
       }
     };
     if (debug.replay || stillImages || source === "video") {
@@ -928,6 +1069,7 @@ async function runScannerInternal(
       // acquisition. OCR consumes crops independently while the share is live.
       let lastSnapshotTime = -Infinity;
       const stopped = () => {
+        scrollPreview.clear();grid.liveViewport(undefined,false);
         state.sharingEndedAt??=(performance.now()-recordingStart)/1000;
         state.workPhase = 'reading';
         capturing = false;
@@ -940,22 +1082,34 @@ async function runScannerInternal(
       let lastCompletionCheck=-Infinity;
       const captureCompletion=()=>({expected:state.expected,finalExpected:state.expected,
         cards:confirmSortedNames([...cards.values()],[...evidence.values()].flat(),recognizer!.catalog),
-        latest:latestIdentityOrder,confirmedNames:confirmedNameOrder,
+        latest:latestIdentityOrder,confirmedNames:confirmedNameOrder,confirmed:confirmedFieldOrder,
         inputSettled:!liveCollection,headerAvailable:!!finalHeader?.width&&Number.isFinite(lastLocatedTime)});
       const tryAutoStop=async()=>{
         if(!continuous||!recognizer||!capturing||signal.aborted||captureError||state.autoStopped)return;
-        if(liveCollection)return;
+        const now=performance.now();
+        if(now-lastCompletionCheck<100)return;
+        lastCompletionCheck=now;
+        if(!liveCollection&&(metadata||metadataRead)) {
+          checkingCompletion=true;
+          try {await settleMetadata();} finally {checkingCompletion=false;}
+          return;
+        }
+        if(state.expected!==latestIdentityOrder.size){autoCompletion.reset();return;}
+        // Reserve a gap once coverage is plausible. Continuous acquisition must
+        // not starve final verification by occupying every idle reader turn.
+        if(liveCollection) {
+          checkingCompletion=true;
+          try {await liveCollection;} finally {checkingCompletion=false;}
+          signal.throwIfAborted();
+          if(captureError||!capturing)return;
+        }
         if(metadata||metadataRead) {
           checkingCompletion=true;
           try {await settleMetadata();} finally {checkingCompletion=false;}
           return;
         }
-        const now=performance.now();
-        if(now-lastCompletionCheck<100)return;
-        lastCompletionCheck=now;
-        if(state.expected!==latestIdentityOrder.size){autoCompletion.reset();return;}
         const input=captureCompletion();
-        if(!autoCompletion.observe(input,now)||!finalHeader)return;
+        if(!autoCompletion.observe(input,performance.now())||!finalHeader)return;
         // Reserve the idle OCR session and freeze the header during this final
         // check. Source backup continues until tracks are actually stopped.
         checkingCompletion=true;
@@ -982,7 +1136,10 @@ async function runScannerInternal(
       };
       const acquireLiveFrame = (time: number, nativeFrame?: VideoFrame) => {
         const started = performance.now();
-        if (!capturing || checkingCompletion || liveCollection || !liveCadence.take(started)) return liveCollection;
+        if (!capturing || checkingCompletion || liveCollection || !liveCadence.take(started)) {
+          trace('input-skip',{time,reason:!capturing?'ended':checkingCompletion?'verification':liveCollection?'busy':'cadence'});return liveCollection;
+        }
+        trace('input-accept',{time});
         liveCollection = collect(true, time, nativeFrame).then(() => {
           liveCadence.complete(started, performance.now());
           state.livePerformance ??= { acquisitionMs: 0, recognized: 0, uniqueCards: 0, firstResultMs: null, lagMs: 0 };
@@ -999,6 +1156,25 @@ async function runScannerInternal(
         if (captureError) throw captureError;
       }, stopped, failed) : undefined;
       state.liveInput = trackInput ? 'track' : 'video';
+      const publishScrollPreview=()=>{
+        // Only the small scrollbar strip is read, independently of OCR.
+        if(capturing&&video.readyState>=2) {
+          const previewStarted=performance.now();
+          const geometry=scrollPreview.read(video,video.videoWidth,video.videoHeight,previewStarted);
+          if(geometry!==undefined) {
+            if(geometry) {
+              const duration=performance.now()-previewStarted;
+              const stats=state.scrollPreviewPerformance??={samples:0,readMs:0,maxReadMs:0,duringAcquisition:0};
+              stats.samples++;stats.readMs+=duration;stats.maxReadMs=Math.max(stats.maxReadMs,duration);
+              if(liveCollection)stats.duringAcquisition++;
+            }
+            if(grid.liveViewport(inventoryPosition.estimateTop(geometry))) {
+              state.grid=grid.snapshot();
+              update({...state});
+            }
+          }
+        }
+      };
       const videoInput = startLiveFrames(
         video,
         signal,
@@ -1020,7 +1196,7 @@ async function runScannerInternal(
         },
         () => { if (!trackInput) stopped(); },
         failed,
-        33,
+        33, publishScrollPreview,
       );
       stopInput = () => { videoInput(); trackInput?.(); };
       state.workPhase = 'capture';
@@ -1070,12 +1246,15 @@ async function runScannerInternal(
       const completionInput={expected:state.expected,finalExpected:state.expected,cards:finalCards,
         latest:latestIdentityOrder,confirmed:confirmedFieldOrder,pending:queue.length+deferred.length+fullRetries.length,
         unresolved:Math.max(state.unidentified.length,ledger.snapshot().unresolvedGroups),dropped:state.droppedFrames,
-        inputSettled:!capturing&&!liveCollection,tailFresh:state.located&&state.sharingEndedAt!==undefined&&
-          lastLocatedTime>=state.sharingEndedAt-1&&lastLocatedTime<=state.sharingEndedAt};
+        inputSettled:!capturing&&!liveCollection,
+        tailFresh:freshCaptureTail(state.located,state.autoStopped===true,lastLocatedTime,state.sharingEndedAt)};
+      trace('completion-check',{autoStopped:state.autoStopped,lastLocatedTime,sharingEndedAt:state.sharingEndedAt,
+        pending:completionInput.pending,unresolved:completionInput.unresolved,dropped:completionInput.dropped,
+        tailFresh:completionInput.tailFresh,read:confirmedReadingCount(completionInput),expected:state.expected});
       // Check the final acquired header again, after OCR sessions are idle.
       // This prevents an initial total or a restored list from certifying completion.
       let verifiedFinalExpected:number|null=state.autoStopped?state.expected:null;
-      if(state.autoStopped&&canSkipRecovery(completionInput))state.recoverySkipped=true;
+      if(canFinishVerifiedCapture(completionInput,state.autoStopped===true))state.recoverySkipped=true;
       else if(recognizer&&finalHeader&&completionInput.tailFresh) {
         try {
           const total=await recognizer.total(finalHeader,{x:0,y:0,width:finalHeader.width,height:finalHeader.height});
@@ -1178,22 +1357,32 @@ async function runScannerInternal(
     refreshCards();
     if (recognizer) state.cards = confirmSortedNames([...cards.values()], [...evidence.values()].flat(), recognizer.catalog).sort((a,b) => cardCollator.compare(a.name,b.name));
     if(continuous)state.identifiedAfterSharing=state.cards.filter(card=>identifiedThisRun.has(card.id)&&!liveIdentities.has(card.id)).map(({id,name})=>({id,name}));
+    refreshGrid=undefined;
+    if(state.expected&&state.currentRunRead===state.expected&&state.cards.length===state.expected&&state.cards.every(card=>!card.review.length)) {
+      grid.confirm(state.cards.map(card=>card.id));
+      grid.restoreOrder(inventoryPosition.verifiedOrder());
+      grid.restorePositions(observedLayout.resolve(state.cards.map(card=>card.id),inventoryPosition.verifiedPositions()));
+    }
     state.percent = 100;
     state.status = captureOnly ? "카드 획득·품질 검사 완료 · OCR 실행 안 함"
       : scanCompletion(state.expected, state.cards.length, state.cards.filter(card => card.review.length).length);
+    if (!captureOnly && state.recoverySkipped && state.unidentified.length)
+      state.status += ` · 미식별 입력 ${state.unidentified.length}개 확인 필요`;
     emit(true);
   } finally {
     try {
       state.workPhase = 'cleanup'; emit(true);
       stopInput?.();
       if(finalHeader)finalHeader.width=0;
+      await liveCollection?.catch(()=>{});
+      if(debug.exact)try{await acquisition?.stopRecording();}catch(error){debug.exact.incomplete(String(error));}
       acquisition?.dispose();
       for(const visual of visuals) visual?.dispose();
-      await liveCollection;
       releasePending?.();
       auditComplete = true;
       const finalRecording = await continuous?.finish();
       if (finalRecording) debug.continuous?.(finalRecording);
+      if (finalRecording && !debug.continuous) await finalRecording.dispose?.();
       const finalStatus = state.status;
       // Internal backups have no consumers left, including when recovery failed
       // before its raw iterator started. Never launch an unused PNG export here.
@@ -1210,12 +1399,17 @@ async function runScannerInternal(
       if (recordingFailure) debug.recordingError?.(recordingFailure);
       emit(true);
     } finally {
+      trace('end',{aborted:signal.aborted,expected:state.expected,read:state.currentRunRead,cards:state.cards.map(({id,name,awakening,extraCopies,review})=>({id,name,awakening,extraCopies,review}))});
       signal.removeEventListener('abort', abortPrepared);
       if (prepared) await prepared.dispose();
       else {
         detector.dispose();
         if (recognizer) await recognizer.dispose();
         await Promise.all(extraRecognizers.map(reader => reader.dispose()));
+      }
+      if (state.finishTiming && state.finishTiming.expected === state.expected && state.percent === 100 && !signal.aborted) {
+        state.finishTiming = finishTimer.finish(state.finishTiming, performance.now() - recordingStart);
+        emit(true);
       }
     }
   }

@@ -7,6 +7,7 @@ const acquire=createCardAcquirer((w,h)=>new OffscreenCanvas(w,h),true);
 const frame=new OffscreenCanvas(1,1);
 const context=frame.getContext('2d',{willReadFrequently:true})!;
 let detector:ReturnType<typeof createDetector>|undefined;
+let recording:MessagePort|undefined,credits=3,inFlightBytes=0,peakInFlightBytes=0;
 function prepare() {
  return detector??=(async()=>{
   const base=new URL(import.meta.env.BASE_URL,self.location.href).href;
@@ -23,8 +24,13 @@ function prepare() {
   }},true);
  })();
 }
-self.onmessage=async(event:MessageEvent<{kind?:'prepare';id:number;bitmap:ImageBitmap|VideoFrame;layout?:Layout;patches?:boolean;pixelTransport?:boolean}>)=>{
+self.onmessage=async(event:MessageEvent<{kind?:'prepare'|'record'|'record-end';port?:MessagePort;time?:number;recordOnly?:boolean;id:number;bitmap:ImageBitmap|VideoFrame;layout?:Layout;patches?:boolean;pixelTransport?:boolean}>)=>{
  const {id,bitmap}=event.data;
+ if(event.data.kind==='record'){
+  recording=event.data.port;credits=3;inFlightBytes=peakInFlightBytes=0;
+  if(recording){recording.onmessage=e=>{credits=Math.min(3,credits+1);inFlightBytes=Math.max(0,inFlightBytes-(e.data.bytes??0));};recording.start();}return;
+ }
+ if(event.data.kind==='record-end'){recording?.postMessage({kind:'end',peakInFlightBytes});recording?.close();recording=undefined;self.postMessage({recordingEnded:true});return;}
  if(event.data.kind==='prepare') {
   try{await prepare();self.postMessage({ready:true});}
   catch(error){self.postMessage({ready:true,error:String(error)});}
@@ -38,6 +44,14 @@ self.onmessage=async(event:MessageEvent<{kind?:'prepare';id:number;bitmap:ImageB
   const height='displayHeight' in bitmap?bitmap.displayHeight:bitmap.height;
   if(frame.width!==width||frame.height!==height){frame.width=width;frame.height=height;}
   context.drawImage(bitmap,0,0);
+  // Record the exact detector input before quality filtering. Never wait for disk/encoding.
+  if(recording){
+   if(credits>0&&width*height*4<=32*1024*1024&&inFlightBytes+width*height*4<=64*1024*1024){
+    const before=performance.now(),pixels=context.getImageData(0,0,width,height);credits--;inFlightBytes+=pixels.data.byteLength;peakInFlightBytes=Math.max(peakInFlightBytes,inFlightBytes);
+    recording.postMessage({kind:'frame',id,time:event.data.time??0,phase:event.data.recordOnly?'recovery':'input',width,height,pixels:pixels.data.buffer,readbackMs:performance.now()-before},[pixels.data.buffer]);
+   }else recording.postMessage({kind:'gap',id,time:event.data.time??0});
+  }
+  if(event.data.recordOnly){self.postMessage({id,cells:[],layout:null});return;}
   const detectStarted=performance.now();
   const layout=event.data.layout??(await prepare()).detect(frame);
   const cropStarted=performance.now();

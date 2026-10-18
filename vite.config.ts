@@ -1,13 +1,26 @@
+import {createHash} from 'node:crypto';
+import {readFileSync,readdirSync} from 'node:fs';
+import {join} from 'node:path';
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import {execFileSync} from 'node:child_process';
+let revision='local';
+try{revision=execFileSync('git',['rev-parse','--short','HEAD'],{encoding:'utf8'}).trim();if(execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim())revision+='-dirty';}catch{/* Source archives can build without Git. */}
+// Bind source, data, dependencies and pinned model hashes; computed once at build/server start.
+const replayHash=createHash('sha256');
+function hashTree(path:string){for(const item of readdirSync(path,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))){const file=join(path,item.name);if(item.isDirectory())hashTree(file);else{replayHash.update(file.replaceAll('\\','/'));replayHash.update(readFileSync(file));}}}
+hashTree('src');hashTree('public/scanner');
+for(const file of ['package-lock.json','scripts/prepare-ocr-assets.mjs','licenses/third-party/manifest.json'])replayHash.update(readFileSync(file));
+const replaySignature=replayHash.digest('hex');
 export default defineConfig({
+  define:{'import.meta.env.VITE_BUILD_REVISION':JSON.stringify(revision),'import.meta.env.VITE_REPLAY_SIGNATURE':JSON.stringify(replaySignature)},
   base: process.env.PAGES_BASE_PATH || "/",
   worker: { format: "es" },
   // The OCR worker is loaded on first scan; prebundle now so dev does not
   // reload the page and discard the selected input during model startup.
-  optimizeDeps: { include: ["onnxruntime-web/wasm"] },
+  optimizeDeps: { include: ["onnxruntime-web/wasm", "lz4-lite"] },
   plugins: [
     react(),
     {

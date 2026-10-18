@@ -10,10 +10,12 @@ const delay=(ms:number)=>new Promise<void>(r=>setTimeout(r,ms));
 
 test('status/queue changes do not reset a stalled scan; actual processed frames do',()=>{
   const clock=new ScanProgressClock(0);clock.observe(snapshot(),0);clock.ready(0);
-  clock.observe(snapshot({status:'다른 문구',queued:20}),40_000);
-  assert.equal(clock.check(45_000,true,false),'stalled');
-  clock.observe(snapshot({sampled:1}),45_001);
-  assert.equal(clock.check(80_000,true,false),null);
+  clock.observe(snapshot({status:'다른 문구',queued:20}),10_000);
+  assert.equal(clock.delayed(7_000),true);
+  assert.equal(clock.check(14_999,true,false),null);
+  assert.equal(clock.check(15_000,true,false),'stalled');
+  clock.observe(snapshot({sampled:1}),15_001);
+  assert.equal(clock.check(29_000,true,false),null);
 });
 test('long processing with progress continues and stationary live sharing is not a stall',()=>{
   const clock=new ScanProgressClock(0);clock.ready(0);

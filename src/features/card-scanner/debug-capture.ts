@@ -66,6 +66,7 @@ export function parseDebugCapture(text: string): DebugCapture {
   if (text.length > MAX_DEBUG_BYTES * 2) throw new Error("디버그 파일이 너무 큽니다.");
   const data = JSON.parse(text) as DebugCapture;
   const image = (value: unknown) => typeof value === "string" && /^data:image\/(png|webp);base64,[A-Za-z0-9+/]+=*$/.test(value);
+  const seedImage = (value:unknown) => image(value) || typeof value === 'string' && /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/.test(value);
   if (!data || data.kind !== "loacard-capture" || data.version !== 1 ||
       !["screen", "video", "images"].includes(data.source) ||
       !["all", "top", "stable"].includes(data.rowMode) || typeof data.captureOnly !== "boolean" ||
@@ -87,7 +88,7 @@ export function parseDebugCapture(text: string): DebugCapture {
   for (const card of data.seed) {
     if (!card || typeof card.id !== "string" || typeof card.name !== "string" ||
         !Array.isArray(card.review) || card.review.some(value => typeof value !== "string") ||
-        !image(card.image) || !Number.isFinite(card.confidence) || !Number.isFinite(card.observations) ||
+        !seedImage(card.image) || !Number.isFinite(card.confidence) || !Number.isFinite(card.observations) ||
         !Number.isFinite(card.time) ||
         (card.awakening !== null && (!Number.isInteger(card.awakening) || card.awakening < 0 || card.awakening > 5)) ||
         (card.extraCopies !== null && (!Number.isInteger(card.extraCopies) || card.extraCopies < 0 || card.extraCopies > 15)))

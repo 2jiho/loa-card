@@ -27,7 +27,9 @@ export function estimateRowShift(
             distance(previous[oldRow * 10 + col], current[row * 10 + col]),
           );
       }
-    if (scores.length >= 20)
+    // Even a three-row jump leaves ten same-column witnesses. Require eight
+    // matches below; uniform/repeated grids still fail the alternative margin.
+    if (scores.length >= 10)
       candidates.push({
         shift,
         score: scores.reduce((n, v) => n + v, 0) / scores.length,

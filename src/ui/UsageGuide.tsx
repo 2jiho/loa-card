@@ -36,7 +36,7 @@ export function UsageGuide({ open, onClose }: { open: boolean; onClose: () => vo
         <p>페이지를 열면 인식 모델을 미리 준비합니다. 화면은 외부 OCR 서버로 전송하지 않고 현재 브라우저에서 읽습니다.</p>
       </section>
       <section aria-labelledby="guide-check"><h3 id="guide-check">스캔이 끝났는지 확인하기</h3>
-        <p>전체 카드 이름과 보관함 수량이 확인되면 공유가 자동으로 종료됩니다. 이후에도 <strong>카드를 읽고 있어요</strong>가 보이면 남은 판독이 끝날 때까지 기다려 주세요.</p>
+        <p>전체 카드의 이름·각성·장수와 보관함 수량이 확인되면 공유가 자동으로 종료됩니다. 확인할 카드가 남으면 가림을 치우고 해당 구간을 다시 보여 주세요.</p>
         <dl>
           <dt>수량이 부족하거나 확인할 카드가 남아요</dt><dd>판독이 끝나면 공유를 다시 시작하고 해당 구간을 잠깐 멈춰 보여 주세요. 같은 카드는 중복으로 더하지 않고 갱신합니다.</dd>
           <dt>카드가 잘 안 읽혀요</dt><dd>마우스를 스크롤바로 옮겨 툴팁을 없애고 카드 테두리까지 보이게 해 주세요. 스크롤 속도를 줄여 다시 보여 주세요.</dd>
@@ -56,6 +56,10 @@ export function UsageGuide({ open, onClose }: { open: boolean; onClose: () => vo
         <p>CSV에는 경험치와 캡처 사진이 없습니다. 불러오기 확인 화면에서 <strong>보유 카드 경험치</strong>를 입력하면 도감작 계산에 반영됩니다. 비워 두면 경험치는 미확인으로 처리합니다.</p>
         <p>CSV 불러오기는 현재 목록을 교체합니다. 다른 계정을 스캔할 때는 필요한 CSV를 저장하고 <strong>목록 초기화</strong> 후 시작하세요.</p>
         <p>CSV로 불러온 카드에는 DB에 연결된 원화를 표시합니다. 원화가 없는 카드는 대체 아이콘이 나오며, 이름·각성·장수는 그대로 사용할 수 있습니다.</p>
+      </section>
+      <section aria-labelledby="guide-replay"><h3 id="guide-replay">스캔 기록·오류 재현</h3>
+        <p>최근 공유 화면 한 건을 이 브라우저에 자동 보관합니다. <strong>스캔 기록</strong>에서 같은 입력 픽셀을 재현하거나 파일로 저장·불러올 수 있습니다. 입력 재현은 내 카드 목록을 바꾸지 않습니다.</p>
+        <p>공유 화면 전체가 포함되므로 게임 창을 선택하세요. 외부에 첨부하기 전 미리보기를 확인하세요. 자동 전송은 없으며 다음 스캔을 시작하면 이전 기록을 교체합니다. 기록 삭제는 목록 초기화와 별개입니다.</p>
       </section>
     </DialogContent>
     <DialogActions><Button onClick={onClose}>닫기</Button></DialogActions>

@@ -4,6 +4,12 @@ export class ExactPixelCache<T> {
   private entries = new Map<number, { key: string; pixels: Uint8ClampedArray; value: T }>();
   private limit: number;
   constructor(limit = 40) { this.limit = limit; }
+  /** Immutable pixel snapshots may be shared while the next grid overwrites slots. */
+  snapshot() {
+    const result=new ExactPixelCache<T>(this.limit);
+    result.entries=new Map(this.entries);
+    return result;
+  }
   get(slot: number, key: string, pixels: Uint8ClampedArray): T | undefined {
     const entry = this.entries.get(slot);
     if (!entry || entry.key !== key || entry.pixels.length !== pixels.length) return undefined;

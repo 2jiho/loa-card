@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {canSkipRecovery,confirmedReadingCount} from '../src/features/card-scanner/recovery-completion';
+import {canSkipRecovery,canFinishVerifiedCapture,confirmedReadingCount} from '../src/features/card-scanner/recovery-completion';
 import type {RecoveryCompletion} from '../src/features/card-scanner/recovery-completion';
 import type {ScannedCard} from '../src/features/card-scanner/recognizer';
 
@@ -23,6 +23,18 @@ test('reading progress excludes seeds, stale proofs and incomplete fields withou
 });
 test('all freshly confirmed cards including zero extras can finish without replay',()=>{
  assert.equal(canSkipRecovery(complete()),true);
+});
+
+test('fully verified automatic capture can return inventory without replaying unmatched crops',()=>{
+ const input={...complete(),unresolved:5};
+ assert.equal(canSkipRecovery(input),false);
+ assert.equal(canFinishVerifiedCapture(input,false),false,'manual stop still needs recovery');
+ assert.equal(canFinishVerifiedCapture(input,true),true);
+ assert.equal(input.unresolved,5,'unmatched inputs remain reviewable, never silently discarded');
+ for(const change of [{expected:3},{finalExpected:3},{confirmed:new Map<string,number>()},
+  {latest:new Map([['a',21],['b',10]])},{pending:1},{dropped:1},{inputSettled:false},{tailFresh:false},
+  {cards:[{...card,extraCopies:null},input.cards[1]]}])
+  assert.equal(canFinishVerifiedCapture({...input,...change},true),false);
 });
 test('matching saved inventory is not a fresh scan',()=>{
  assert.equal(canSkipRecovery({...complete(),latest:new Map()}),false);
@@ -49,4 +61,17 @@ test('names and every field require explicit confirmation',()=>{
   assert.equal(canSkipRecovery({...complete(),cards:[{...card,...change},{...card,id:'b'}]}),false);
  for(const value of [NaN,Infinity,-Infinity])
   assert.equal(canSkipRecovery({...complete(),confirmed:new Map([['a',value],['b',10]])}),false);
+});
+
+test('verified automatic stop tolerates a transient missing layout only with a recent header',async()=>{
+ const {freshCaptureTail}=await import('../src/features/card-scanner/recovery-completion');
+ assert.equal(freshCaptureTail(false,true,12.67,13.09),true);
+ assert.equal(freshCaptureTail(false,false,12.67,13.09),false);
+ assert.equal(freshCaptureTail(true,false,12.67,13.09),true);
+ for(const last of [-Infinity,NaN,10,14])assert.equal(freshCaptureTail(false,true,last,13.09),false);
+ assert.equal(freshCaptureTail(false,true,12.67,undefined),false);
+ const input={...complete(),unresolved:3,tailFresh:freshCaptureTail(false,true,12.67,13.09)};
+ assert.equal(canFinishVerifiedCapture(input,true),true);
+ for(const change of [{pending:1},{dropped:1},{confirmed:new Map<string,number>()}])
+  assert.equal(canFinishVerifiedCapture({...input,...change},true),false);
 });

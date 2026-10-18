@@ -1,6 +1,7 @@
 import type {RecoveryCompletion} from './recovery-completion';
+import {confirmedReadingCount} from './recovery-completion';
 
-export type CaptureCompletion = Pick<RecoveryCompletion, 'expected' | 'finalExpected' | 'cards' | 'latest' | 'inputSettled'> & {
+export type CaptureCompletion = Pick<RecoveryCompletion, 'expected' | 'finalExpected' | 'cards' | 'latest' | 'confirmed' | 'inputSettled'> & {
   /** Current-run name proofs; restored inventories cannot supply these. */
   confirmedNames: ReadonlyMap<string, number>;
   headerAvailable: boolean;
@@ -14,15 +15,15 @@ export function confirmedCaptureCount(input: Pick<CaptureCompletion, 'cards' | '
   }).length;
 }
 
-/** Ending capture does not certify fields or skip recovery. Every identity
- * still needs a current-run proof and a captured header rechecked before stop.
- * Queued/noisy duplicate observations remain available to post-share recovery. */
+/** Keep acquiring better observations until names AND latest fields are proven.
+ * Queued/noisy observations still remain available to post-share verification. */
 export function canStopSharing(input: CaptureCompletion): boolean {
   const {expected, cards, latest, confirmedNames} = input;
   if (!input.inputSettled || !input.headerAvailable ||
     expected === null || !Number.isInteger(expected) || expected <= 0 || input.finalExpected !== expected ||
     cards.length !== expected || latest.size !== expected || new Set(cards.map(c => c.id)).size !== expected) return false;
-  return confirmedCaptureCount({cards, latest, confirmedNames}) === expected;
+  return confirmedCaptureCount({cards, latest, confirmedNames}) === expected &&
+    confirmedReadingCount(input) === expected;
 }
 
 /** Desktop capture can stop delivering frames when pixels do not change.

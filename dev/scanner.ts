@@ -25,6 +25,7 @@ function update(state: ScannerState) {
     status: state.status, percent: state.percent, sampled: state.sampled,
     expected: state.expected, identified: state.cards.length,
     currentRunRead: state.currentRunRead ?? 0,
+    finishTiming: state.finishTiming,
     review: state.cards.filter(card => card.review.length).length,
     unreadable: state.unreadable, queued: state.queued, growthPoints: state.growthPoints,
     acquisition: state.captureDiagnostics && {
