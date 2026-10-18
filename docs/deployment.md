@@ -26,6 +26,29 @@ git push --atomic origin main v0.1.0
 
 태그, package.json, lockfile 버전과 변경 내역이 일치하고 `main` 이력에 포함된 커밋이어야 배포된다. 검증 실패 시 배포를 중단한다. 배포된 파일의 해시 검증까지 통과해야 Release가 생성된다. 이미 생성된 Release는 재실행 시 수정하지 않는다. 발표한 태그는 옮기거나 덮어쓰지 않는다.
 
+### 릴리스 설명 작성
+
+`CHANGELOG.md`의 해당 버전 본문이 그대로 GitHub Release에 게시된다. 커밋 제목을 나열하는 대신 사용자가 무엇을 할 수 있고 무엇이 달라졌는지 적는다. 첫 릴리스는 주요 기능을 소개하고 이후 버전은 직전 릴리스와의 차이만 설명한다.
+
+각 버전 아래에는 다음 순서로 `###` 제목을 사용한다. 해당 내용이 없는 항목은 생략하며, 형식을 채우려고 기능이나 수정 내역을 만들어 쓰지 않는다.
+
+- **추가 기능**: 새로 사용할 수 있는 기능과 사용 위치.
+- **개선**: 기존 기능의 속도·편의성·표시 방식 변화.
+- **오류 수정**: 문제가 생기던 조건과 수정 후 동작.
+- **주의사항**: 호환성 변경, 사용자가 해야 할 조치, 알려진 한계.
+
+검증 결과를 적을 때는 테스트 통과와 실제 게임 화면 검증 범위를 구분한다. 인식률이나 속도를 모든 환경에서 보장하는 표현은 피한다.
+
+게시 후 설명만 정정할 때는 `main`의 변경 내역을 고친 뒤 같은 버전의 본문을 추출해 갱신한다. 태그·앱 버전·배포 파일은 변경하지 않는다. 아래 PowerShell 명령은 버전 일치 검증을 거치므로 해당 버전 작업 시 사용한다.
+
+```powershell
+$env:RELEASE_NOTES_PATH = Join-Path $env:TEMP 'loa-card-release-notes.md'
+node scripts/release-version.mjs v0.1.0
+if ($LASTEXITCODE -ne 0) { throw '릴리스 설명 검증 실패' }
+gh release edit v0.1.0 --notes-file $env:RELEASE_NOTES_PATH
+Remove-Item Env:RELEASE_NOTES_PATH
+```
+
 GitHub `github-pages` environment의 배포 정책에는 `main` branch와 `v*` tag를 허용해야 한다. 실패한 릴리스는 Actions에서 같은 실행을 재시도한다. 특정 기존 태그 재배포는 `gh workflow run pages.yml --ref v0.1.0`처럼 실행할 수 있다. 브랜치를 선택한 수동 실행은 거부한다. 이전 버전으로 되돌릴 때도 검증된 기존 태그를 선택하며 그 이후 새 버전으로 수정한다.
 
 배포 자동화는 [GitHub의 태그 push 이벤트](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#push)와 [GitHub CLI Release 생성](https://cli.github.com/manual/gh_release_create)을 사용한다.
