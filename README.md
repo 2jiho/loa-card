@@ -40,7 +40,7 @@ npm run preview
 - 개발 입력 화면: dev 서버의 `/dev/scanner.html`. 로컬 영상·이미지를 선택해 실제 스캐너를 실행합니다. 일반 배포에는 포함하지 않습니다.
 - `fixtures/local/`, `work/`: 선택적인 개인 검사 자료이며 Git·배포에서 제외합니다. 커밋된 테스트 fixture와 마스터만으로 일반 테스트·빌드를 실행합니다.
 
-GitHub Pages 배포는 수동 워크플로를 제공합니다. 저장소 하위 경로·배포 확인 절차는 [배포 안내](docs/deployment.md)을 따릅니다.
+`v0.1.0`부터 버전 태그로 관리합니다. 태그를 푸시하면 검증 → GitHub Pages 배포 → Release 생성이 자동 실행됩니다. [변경 내역](CHANGELOG.md)과 [버전·배포 안내](docs/deployment.md)를 참고하세요.
 
 ## 데이터와 라이선스
 
