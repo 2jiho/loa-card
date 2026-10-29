@@ -29,10 +29,10 @@ test('one missing card keeps an ended scan in review with its map and a re-show 
 });
 
 test('equal card counts cannot hide unresolved inputs or call a full scan complete',()=>{
- const outcome=scanMonitorOutcome({...complete,unresolvedCount:14},ended);
- assert.equal(outcome.kind,'review');assert.equal(outcome.unresolvedCount,14);assert.equal(outcome.missingCount,0);
- assert.equal(outcome.showGrid,true);assert.match(outcome.detail,/입력 14건/);assert.doesNotMatch(outcome.detail,/14종/);
- assert.doesNotMatch(outcome.message,/완료/);
+  const outcome=scanMonitorOutcome({...complete,unresolvedCount:14},ended);
+  assert.equal(outcome.kind,'review');assert.equal(outcome.header,'미식별 입력 확인');assert.equal(outcome.unresolvedCount,14);assert.equal(outcome.missingCount,0);
+  assert.equal(outcome.showGrid,true);assert.match(outcome.detail,/입력 14건/);assert.doesNotMatch(outcome.detail,/14종/);
+  assert.match(outcome.message,/수량은 확인됐지만 미식별 화면 입력/);
 });
 
 test('equal counts and no unidentified crops still show unresolved changed-field proof',()=>{

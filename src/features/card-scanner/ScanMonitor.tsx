@@ -95,7 +95,7 @@ export function ScanMonitorPanel({state:input,busy,sharing,onStop,feedback}:Prop
       <div className="monitor-legend"><span><i className="is-unknown"/>위치 기록 없음</span><span><i className="is-waiting"/>판독 대기</span><span><i className="is-reading"/>판독 중</span><span><i className="is-read"/>완료</span><span><i className="is-review"/>다시 보기</span><span><i className="is-empty"/>카드 없음</span></div>
       <small className="monitor-estimate">{complete?`위치 연결 ${mapped}/${total}`:sharing&&top===undefined?'맨 위부터 겹치는 행이 보이도록 스크롤해 주세요.':'빈 표시: 위치 미확인 · 판독 실패를 뜻하지 않아요.'}</small>
     </>:<p className="monitor-pending">스크롤 범위를 확인하면 전체 카드 위치가 표시돼요.</p>}
-    {sharing&&<footer><small>진행 창은 카드 영역 밖에 두세요.</small><button onClick={onStop}>공유 중지</button></footer>}
+     {sharing&&<footer><small>진행 창은 카드 영역 밖에 두세요. 공유를 종료해도 수집된 카드 판독은 계속됩니다.</small><button onClick={onStop}>공유 종료</button></footer>}
   </section>;
 }
 

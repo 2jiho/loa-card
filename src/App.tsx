@@ -484,7 +484,7 @@ function App() {
   const workPhase = sharing ? 'capture' : state?.workPhase ?? 'reading';
   const statusTitle = state?.interrupted === "stalled" ? "스캔 미완료" : error ? "입력을 확인해 주세요" : busy && !engineReady ? "스캔 준비 중" : sharing ? "화면 공유 중" : busy && workPhase==='cleanup' ? "스캔을 마무리하고 있어요" : busy && workPhase==='verifying' ? "판독 결과를 검증하고 있어요" : busy && workPhase==='recovery' ? "저장된 화면을 다시 확인하고 있어요" : finalizing ? "카드 검증 완료" : busy ? "카드를 읽고 있어요" : stopped ? "스캔 중지됨" : review > 0 ? "확인할 카드가 남아 있어요" : state?.autoStopped ? "전체 카드 수집 완료" : state?.status === "CSV 불러오기 완료" ? "CSV 불러오기 완료" : cards.length ? "카드 목록 준비됨" : "화면을 공유해 시작하세요";
   const statusDescription = busy && !engineReady ? `${state?.status ?? "화면 검출 모듈 준비 중"} · 준비가 끝나면 스크롤해 주세요.`
-    : sharing ? (state?.located ? "성장 탭을 천천히 스크롤해 주세요. 읽은 카드는 아래에 쌓입니다." : "카드 보관함의 성장 탭을 찾고 있어요. 카드 화면을 보여 주세요.")
+    : sharing ? (state?.located ? "성장 탭을 천천히 스크롤해 주세요. 읽은 카드는 아래에 쌓입니다. 공유를 종료해도 수집된 카드 판독은 계속됩니다." : "카드 보관함의 성장 탭을 찾고 있어요. 카드 화면을 보여 주세요.")
     : busy && workPhase==='cleanup' ? "판독 작업을 종료하고 임시 기록을 정리하고 있습니다."
     : busy && workPhase==='verifying' ? "보관함 수량과 카드별 판독 근거를 대조하고 있습니다."
     : busy && workPhase==='recovery' ? "빠뜨리거나 가려진 카드가 있는지 저장된 화면을 재검사하고 있습니다."
@@ -498,8 +498,8 @@ function App() {
     <section className="summary-grid" aria-label="스캔 요약">
         <div className="summary-card"><span>{state?.currentRunRead !== undefined ? '판독 확인' : '수집한 카드'}</span><strong><ScanReadCount completed={state?.currentRunRead ?? cards.length} expected={state?.expected ?? null} store={busy?scanMonitorStore:undefined}/></strong>
           {state?.expected != null && <p className={match && !review ? "verified" : "muted"}>{state?.currentRunRead !== undefined && `수집 ${cards.length}종 · `}{match ? "수량 일치" : `${Math.abs(state.expected - cards.length)}종 차이`}</p>}</div>
-        {(review > 0 || nameIssues.length > 0) && <div className="summary-card"><span>확인할 카드</span><strong className="needs-review">{review > 0 ? <>{review}<small>종</small></> : <>미식별<small>{nameIssues.length}건</small></>}</strong>
-          {review > 0 && nameIssues.length > 0 && <p>미식별 화면 {nameIssues.length}건</p>}</div>}
+        {review > 0 && <div className="summary-card"><span>카드 값·보유 확인</span><strong className="needs-review">{review}<small>종</small></strong></div>}
+        {nameIssues.length > 0 && <div className="summary-card"><span>미식별 화면 입력</span><strong className="needs-review">{nameIssues.length}<small>건</small></strong></div>}
         <div className="summary-card"><span>{state?.growthPointsEstimated ? '보유 경험치 (예상)' : '보유 경험치'}</span><strong>{state?.growthPoints?.current.toLocaleString('ko-KR') ?? "—"}</strong></div>
       </section>
   );

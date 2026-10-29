@@ -84,3 +84,15 @@ test('waiting, reading and completed work publish on the feedback lane before in
  assert.equal(store.getSnapshot()!.grid!.inventory![0].status,'read');
  publisher.dispose();
 });
+
+test('incremental crop admission publishes waiting counts without waiting for a full frame',()=>{
+ const grid=new ScanGrid(),store=createScanMonitorStore();
+ grid.begin(true);
+ for(let slot=0;slot<3;slot++){
+  grid.group(slot,slot+1,slot+1,true,1);
+  grid.record(slot+1);
+  store.publish({grid:grid.snapshot(),queued:slot+1,activeReadings:0,currentRunRead:0,expected:40,capacity:450});
+  assert.equal(store.getSnapshot()!.queued,slot+1);
+  assert.equal(store.getSnapshot()!.grid!.inventory!.filter(cell=>cell.status==='waiting').length,slot+1);
+ }
+});

@@ -1178,6 +1178,11 @@ async function runScannerInternal(
           if(enqueued)commit();
           groupGrid(enqueued);
           if(enqueued){
+            state.queued=queue.length+deferred.length+fullRetries.length;
+            // Publish waiting work as each crop is admitted. The independent
+            // feedback publisher coalesces this to its 33ms lane, so the map
+            // does not wait for all forty slots in this acquisition frame.
+            if(feedback)feedbackPublisher.request();
             try{debug.feedbackProbe?.queued({sessionId:captureSession,frameId:sourceFrameId,observationId:String(trace),
               captureOrder:order,captureTime:frameTime,phase:recovering?'recovery':'input',slot:i},state.sampled);
             }catch{/* A diagnostic failure cannot reject an accepted crop. */}

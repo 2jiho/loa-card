@@ -57,8 +57,10 @@ export function scanMonitorOutcome(state:ScanMonitorOutcomeSource|null,{busy,sha
  if(!facts.hasInput&&!changes&&!changesUnavailable)return {...base,kind:'idle' as const,showGrid:false,header:'대기',message:'화면 공유를 시작해 주세요',detail:''};
  if(expected!==null&&count(state?.currentRunRead)&&read===expected&&facts.unresolvedCount===0&&pending===0&&!changes&&!changesUnavailable)
   return {...base,kind:'complete' as const,showGrid:true,header:'판독 완료',message:'카드 판독 완료',detail:''};
- return {...base,kind:'review' as const,showGrid:true,header:'확인 필요',
-  message:expected===null||read>expected?'보관함 수량을 다시 보여 주세요':'확인할 구간을 다시 보여 주세요',
+  const allNamesRead=expected!==null&&read===expected;
+  const unidentifiedOnly=allNamesRead&&unresolvedCount>0&&!changes&&!changesUnavailable&&!pending;
+  return {...base,kind:'review' as const,showGrid:true,header:unidentifiedOnly?'미식별 입력 확인':'확인 필요',
+   message:expected===null||read>expected?'보관함 수량을 다시 보여 주세요':unidentifiedOnly?'카드 수량은 확인됐지만 미식별 화면 입력이 남아 있어요':'확인할 구간을 다시 보여 주세요',
   detail:problems||((expected!==null&&read>expected)?'판독 수량이 보관함 수량과 달라요.':
    expected===null?'카드 성장 탭의 보관함 수량을 확인해 주세요.':'카드 판독 상태를 확인해 주세요.')};
 }

@@ -21,6 +21,9 @@
 .scan-attention { padding:16px 20px; margin:0 0 20px; border-color:var(--accent-line); scroll-margin-top:20px; }
 .scan-attention h2 { font-size:14px; }
 .scan-attention h2 span { color:var(--accent); margin-left:6px; font-variant-numeric:tabular-nums; }
+.scan-attention-group { margin-top:12px; }
+.scan-attention-group h3,.scan-missing h3 { font-size:12px; font-weight:600; margin:0 0 4px; }
+.scan-attention-group h3 span,.scan-missing h3 span { color:var(--muted); font-weight:400; margin-left:4px; }
 .scan-attention p { font-size:12px; color:var(--muted); margin:4px 0 12px; }
 .scan-attention-grid { display:flex; flex-wrap:wrap; gap:16px 12px; }
 .scan-attention-grid:empty { display:none; }
