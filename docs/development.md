@@ -92,6 +92,8 @@ npm run corpus -- compare-human <label-sha256> work/actual.json
 
 등록 명령이 반환한 SHA로 라벨을 선택한다. 라벨은 `fixtures/local/corpus/human-labels/`에 내용 해시로 추가하며 기존 사례 manifest·baseline을 고치지 않는다. 실제 크롭 anchor가 있으면 최초 등록에 `--asset work/crop.png`를 명시한다. 이전 개발용 flat sidecar는 `--migrate-private-v1`을 함께 지정할 때만 변환한다. `--operator-confirmed`는 사람이 확인한 자료라는 작업자의 명시적 주장이지 정답의 암호학적 증명이 아니다. 같은 확인 내용에서 만든 원본·재현 라벨은 확인 SHA를 공유하며 독립 확인 두 건으로 세지 않는다.
 
+AI 비전 모델이 프레임을 판독할 때는 카탈로그 이름 목록(`work/catalog-names.txt`)을 먼저 제공해 목록 안에서만 고르게 한다. 후보 압축은 `node dev/vision-catalog-resolve.mjs public/scanner/cards.json work/vision-hypotheses.json`로 한다. 이 결과는 사람 확인 전까지 operator-asserted 초안이며 expected로 자동 승격하지 않는다.
+
 `verify-human`은 입력·라벨·확인 내용·PNG의 해시와 구조를 검사한다. anchor의 전체 RGBA를 다시 복원한 검사와 구분한다. `compare-human`은 해당 사례·입력에 묶인 보고서에서 라벨 필드의 값과 최신 필드 근거를 별도로 검사한다. 이름만 라벨링하면 최신 이름 확정을 검사하고, 숫자를 하나라도 라벨링하면 기존의 유효한 최신 각성·장수쌍 근거도 요구한다. 이때 다른 숫자를 인간 정답으로 추가하지 않는다. 저장된 0장 값이 같아도 최신 관측의 장수가 `null`이면 숫자 검증을 통과하지 않는다. 엄격한 실행 재생·inventory 체크포인트가 없는 보고서는 최신 근거 미지원이다. 종료 코드는 범위 안 값·최신 근거 일치 0, 값 차이 2, 최신 근거 미확정·미지원 3, 잘못된 입력 1이다. `--values-only`는 값만 진단하며 일치해도 최신 근거 통과로 표시하지 않는다. 부분 라벨 통과를 전체 인식률로 해석하지 않는다.
 
 `npm run dev`의 `/dev/scanner.html`에서 **등록한 입력**을 선택하면 사례의 순서를 그대로 실행한다. 영상은 Range 요청으로 읽고, 사진은 한 장씩 열고 해제한다. 자동 기록과 **결과 JSON 저장**은 `caseId`, 입력 해시, 실행 조건·코드 구성과 정규 `result`를 보존한다. 자동 기록은 모든 판독과 소스 확인 후 별도 단계에서 수행하며 스캔 처리 시간에 합산하지 않는다. 10초 안에 저장되지 않으면 실패를 표시하고 기존 스캔 결과와 보고서는 재시도할 수 있게 유지한다. 이 페이지는 원본 해시를 다시 계산하지 않으므로 먼저 `verify`를 실행한다. `.loareplay`는 앱의 스캔 진단에서 사용한다. 개발용 API는 dev 서버에서만 제공하며 공개 빌드에는 포함하지 않는다.
