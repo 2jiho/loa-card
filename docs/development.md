@@ -98,6 +98,24 @@ npm run corpus -- compare-human <label-sha256> work/actual.json
 
 `record-run`도 같은 검증·보관 규칙을 사용한다. 보고서의 사례 ID·입력 순서·해시·크기를 manifest와 대조하고 원본 바이트의 해시를 파일명으로 써 기존 기록을 덮어쓰지 않는다. 같은 바이트는 한 번만 보관한다. 부분·취소·실패 실행도 남기며 수량이나 출처가 불완전한 결과는 구분한다. 모든 run은 프로그램 관측 자료이며 baseline·expected로 자동 승격하지 않는다. POST 보관 API는 실제 loopback·동일 출처의 UTF-8 JSON만 받고 최대 16MiB로 제한한다.
 
+### 검증 기준선 (2026-10-29)
+
+비공개 로컬 코퍼스에서 아래 명령과 결과로 저장 무결성·비교·상태 재생 기준선을 확인했다.
+
+- `npm run corpus -- list` — 사례 목록. 종류·입력 수·바이트 확인.
+- `npm run corpus -- verify` — 전체 입력 바이트·순서·해시 일치.
+- `npm run corpus -- compare <run1> <run2>` — 같은 사례·모드의 프로그램 관측 비교. `same`은 기준과 같다는 뜻이며 정답 승격이 아니다.
+- `npm run corpus -- replay-state <report.json>` — grid·inventory·input·unknownLifecycle·freshness 상태를 기록된 이벤트로 재생해 캡처된 해시와 대조. `input` 채널은 라이브 입력(admission/pipeline)이 기록된 세션에서만 존재하며, 없는 이전 기록은 미지원으로 표시한다.
+
+라이브 1배속 세션(`dev/scanner.html` 자동 세션 저장)의 실측 지표는 보관된 run 보고서에서 분석 도구로 다시 확인한다.
+
+```sh
+node --import tsx scripts/analyze-observation-timing.mjs <run.json>
+node --import tsx scripts/analyze-input-delivery.mjs <run.json>
+```
+
+분석 범위는 읽기 큐 대기·판독 작업 시간, 입력 admission 결정·큐 대기·획득 구간, 프레임 고정 간격·예산, 콜백 간격·Long Task 겹침이다. 이것들은 화면 반영 지연·OCR 정확도·실제 OS 공유 성능을 증명하지 않는다.
+
 `/dev/scanner.html?localpixels=1`은 영상 1배속에서 카드 픽셀 전달만 비교하는 실험이다. 기본 경로는 그대로이며 다른 입력 실험과 함께 실행하지 않는다. 이미 읽은 격자 ROI에서 완전히 포함된 불투명·정수·무배율 140×210 카드만 소유한 픽셀 버퍼로 전달하고, 소수 좌표·축척·잘림·투명·Canvas 보간이 필요한 경우는 기존 경로를 쓴다. `localPixelCrops`는 이 대체 수만 나타낸다. 전체 입력 해시·공통 원본 ID·측정 영수증을 만들지 않는다. 실제 브라우저의 크롭·좌표·특징·품질·이름 영역 일치와 별도 정상 경로 성능 비교를 통과하기 전에는 기본값으로 채택하지 않는다.
 
 보고서에는 기존 앱과 같은 제한된 실패 진단도 포함한다. 원본 프레임 대신 최대 32개·인코딩 문자 합계 1MiB의 크롭을 모으며 실제 판독 PNG를 미리보기보다 우선한다. 필드 진단과 미식별 관측 메타데이터는 각각 1MiB 상한이고, 전체 보고서는 16MiB를 넘으면 저장하지 않는다. `unidentifiedObservations`는 이미지가 빠진 관측도 그룹·캡처 순서·원본 프레임·슬롯·OCR 시도와 함께 남긴다. 이미지 인덱스는 동일 URI로만 연결하고, 없는 이미지는 `null`로 표시한다. 미식별 경고의 전체 발생·퇴역 이력은 아직 이 최종 요약만으로 재생할 수 없다. 진단도 개인 화면이므로 로컬에만 보관하고 공개 이슈에 자동 전송하지 않는다. 입력 API는 실제 소켓의 loopback 연결만 허용한다.
