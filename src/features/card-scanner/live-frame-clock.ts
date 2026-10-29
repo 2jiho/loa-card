@@ -1,4 +1,4 @@
-export interface LiveFrameStamp { mediaTime: number; presentedFrames: number; missedFrames: number }
+export interface LiveFrameStamp { readonly mediaTime: number; readonly presentedFrames: number; readonly missedFrames: number }
 
 /** Follow delivered video frames instead of polling the same raster at 30 Hz.
  * The watchdog still notices a stopped share when no video callback arrives. */
@@ -34,7 +34,10 @@ export function startVideoFrames(video: HTMLVideoElement, signal: AbortSignal,
       previousPresented = metadata.presentedFrames;
       if (metadata.mediaTime === lastTime) return;
       lastTime = metadata.mediaTime;
-      onFrame({ mediaTime: metadata.mediaTime, presentedFrames: metadata.presentedFrames, missedFrames });
+      // Paint the current scroll position before capture/encoding can occupy
+      // the main thread. The timer remains a background-compositor fallback.
+      onPreview?.();
+      onFrame(Object.freeze({ mediaTime: metadata.mediaTime, presentedFrames: metadata.presentedFrames, missedFrames }));
     } catch (error) { fail(error); }
   };
   const timer = setInterval(() => {

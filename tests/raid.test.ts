@@ -133,7 +133,8 @@ test('unknown copy counts retain current effects but never invent potential grow
   assert.equal(p.total, 18);
   assert.equal(p.growth.total, 18);
   assert.equal(p.growth.uncertain, true);
-  assert.equal(p.plan, null);
+  assert.equal(p.plan?.selected.find(c=>c.id===cards[0].id)?.to,3);
+  assert.ok(p.plan!.missing>0);
 });
 
 test('unconfirmed identity, awakening, duplicates and absent partial-scan rows are unknown', () => {
@@ -159,6 +160,16 @@ test('next milestone DP matches brute-force six-slot choice costs', () => {
   }
   assert.equal(nextRaidPlan(members, 30)!.missing, expected);
   assert.equal(nextRaidPlan(members, 30)!.selected.length, 6);
+});
+
+test('a seventh unknown card does not block a sufficient confirmed six-card growth plan',()=>{
+ const cards=inventory('1015',0,15);
+ cards[6]={...cards[6],awakening:null,extraCopies:null,review:['이름 확인'],countReliable:false};
+ const p=raidProgress(set('1015'),master,cards,false);
+ assert.equal(p.unknown,true);assert.equal(p.growth.uncertain,true);
+ assert.equal(p.plan?.missing,0);assert.equal(p.plan?.selected.length,6);
+ assert.ok(!p.plan?.selected.some(c=>c.id===cards[6].id));
+ assert.equal(nextRaidPlan(p.members,30)?.missing,0);
 });
 
 test('support effects accumulate: You Have a Plan 1.5%, master trial 2.5%, new support 3.5%', () => {

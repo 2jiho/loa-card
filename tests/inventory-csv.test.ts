@@ -1,16 +1,21 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {inventoryCsv,parseInventoryCsv} from '../src/inventory-csv';
+import {inventoryCsv,inventoryCsvIssues,parseInventoryCsv} from '../src/inventory-csv';
 import type {ScannedCard} from '../src/features/card-scanner/recognizer';
 const card=(name:string,awakening:number|null,extraCopies:number|null):ScannedCard=>({id:name,name,awakening,extraCopies,countReliable:true,review:[],confidence:1,image:'private pixels',time:0,observations:1});
 test('CSV presence means ownership and retains zero extra copies with exactly three columns',()=>{
  assert.equal(inventoryCsv([card('세리아',5,0),card('실리안',0,12)]),'\uFEFF이름,각수,카드수\r\n세리아,5,0\r\n실리안,0,12\r\n');
  assert.equal(inventoryCsv([]),'\uFEFF이름,각수,카드수\r\n');
 });
-test('unread fields remain blank rather than becoming zero and metadata stays out of CSV',()=>{
- const csv=inventoryCsv([card('카드',null,null)]);
- assert.equal(csv,'\uFEFF이름,각수,카드수\r\n카드,,\r\n');
- assert.doesNotMatch(csv,/private|confidence|observations/);
+test('unread or uncertain fields cannot be exported into an unrecoverable three-column CSV',()=>{
+ for(const patch of [{awakening:null},{extraCopies:null},{review:['장수 확인']},{countReliable:false},{countReliable:undefined}]) {
+  const cards=[{...card('카드',0,0),...patch}];
+  assert.equal(inventoryCsvIssues(cards).length,1);
+  assert.throws(()=>inventoryCsv(cards),/확인 필요/);
+ }
+ for(const cards of [[card('a',4,10)],[card('a',0,0),card('a',0,0)],[{...card('a',0,1),maxAwakening:0}]])
+  assert.throws(()=>inventoryCsv(cards),/확인 필요/);
+ assert.doesNotMatch(inventoryCsv([card('카드',0,0)]),/private|confidence|observations/);
 });
 test('names with delimiters or formulas remain a single literal spreadsheet cell',()=>{
  assert.equal(inventoryCsv([card('이름,"별명"\n다음',1,2)]),'\uFEFF이름,각수,카드수\r\n"이름,""별명""\n다음",1,2\r\n');

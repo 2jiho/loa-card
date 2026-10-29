@@ -1,9 +1,11 @@
 import { collectionCandidates } from './collection-candidates';
 import type { CollectionCandidate } from './collection-candidates';
 import type { Cost, GrowthComparisonRequest, GrowthCard, OwnedCard } from './optimizer';
+import { bookEffectActive } from './optimizer';
 
 export type AvailableGrowth = Cost & {
   cards: CollectionCandidate['cards'];
+  requirements: { bookId: string; target: string; threshold: number; requiredCount: number }[];
   gain: number;
   missingCopies: number;
   conditional: boolean;
@@ -38,10 +40,10 @@ export function growthSequence(request: GrowthComparisonRequest, valid: GrowthCa
   const actual = new Map(valid.map(card => [card.id, { ...owned.get(card.id)! }]));
   const actualLevels = new Map(valid.map(card => [card.id, owned.get(card.id)!.awakening!]));
   const score = (levels: Map<string, number>) => request.master.books.reduce((total, book) => {
-    if (!book.cardIds.every(id => levels.has(id))) return total;
-    const sum = book.cardIds.reduce((n, id) => n + levels.get(id)!, 0);
+    let count=0,sum=0;
+    for(const id of book.cardIds){const level=levels.get(id);if(level!==undefined){count++;sum+=level;}}
     return total + book.effects.reduce((n, effect) => n + (effect.target === request.target &&
-      book.cardIds.length >= effect.requiredCount && sum >= effect.threshold ? effect.value : 0), 0);
+      count>=effect.requiredCount && sum>=effect.threshold ? effect.value : 0), 0);
   }, 0);
   let usedXp = 0, gained = 0;
   const result: GrowthSequenceStep[] = [];
@@ -53,13 +55,14 @@ export function growthSequence(request: GrowthComparisonRequest, valid: GrowthCa
     if (!candidates.length) break;
     const next = candidates[0];
     const upgrades = new Map(next.cards.map(card => [card.id, card.to]));
+    const beforeLevels=new Map([...eligible.keys()].map(id=>[id,inventory.get(id)!.awakening!]));
+    const afterLevels=new Map([...beforeLevels,...upgrades]);
     const milestones = next.bookIds.map(id => {
       const book = bookById.get(id)!;
       const from = book.cardIds.reduce((n, cardId) => n + (inventory.get(cardId)?.awakening ?? 0), 0);
       const to = book.cardIds.reduce((n, cardId) => n + (upgrades.get(cardId) ?? inventory.get(cardId)?.awakening ?? 0), 0);
-      const registered = book.cardIds.every(cardId => inventory.has(cardId));
-      const thresholds = [...new Set(book.effects.filter(e => e.target === request.target && e.threshold <= to &&
-        (!registered || e.threshold > from)).map(e => e.threshold))].sort((a, b) => a - b);
+      const thresholds = [...new Set(book.effects.filter(e => e.target === request.target && bookEffectActive(book,e,afterLevels) &&
+        !bookEffectActive(book,e,beforeLevels)).map(e => e.threshold))].sort((a, b) => a - b);
       return { bookId: id, name: book.name, from, to, thresholds };
     });
     const prerequisiteMissingCopies = cumulativeMissingCopies;
@@ -74,13 +77,41 @@ export function growthSequence(request: GrowthComparisonRequest, valid: GrowthCa
         extraCopies: Math.max(0, (previous?.extraCopies ?? 0) - upgrade.copies), review: [], countReliable: true });
       eligible.set(upgrade.id, catalog.get(upgrade.id)!);
     }
-    // Rebuild this row's complete prerequisites from the actual ledger. Reading
-    // only next.cards would omit shared growth performed by a skipped earlier row.
-    const requiredIds = new Set(next.bookIds.flatMap(id => bookById.get(id)!.cardIds));
+    // Re-plan promised milestones from actual resources. The efficient virtual
+    // route may use an unowned optional member; a confirmed alternative can still
+    // execute the same reward without buying that card.
     const cards: CollectionCandidate['cards'] = [];
     const proposed = new Map(actualLevels);
-    for (const id of requiredIds) {
-      const to = inventory.get(id)!.awakening!, previous = actual.get(id);
+    const partial=milestones.some(m=>bookById.get(m.bookId)!.effects.some(e=>e.target===request.target&&
+      m.thresholds.includes(e.threshold)&&e.requiredCount<bookById.get(m.bookId)!.cardIds.length));
+    if(!partial){
+      // Full-member rewards have no optional registration choice; reuse the
+      // virtual allocation and restore only skipped prerequisites as before.
+      for(const id of new Set(next.bookIds.flatMap(id=>bookById.get(id)!.cardIds)))
+        proposed.set(id,Math.max(actualLevels.get(id)??0,inventory.get(id)!.awakening!));
+    }else{
+      const executionInventory=new Map([...owned,...actual].map(([id,card])=>[id,{...card}]));
+      const executionEligible=new Map([...actual.keys()].map(id=>[id,catalog.get(id)!]));
+      for(const milestone of milestones){
+      const book=bookById.get(milestone.bookId)!;
+      const effects=book.effects.filter(e=>e.target===request.target && milestone.thresholds.includes(e.threshold) && bookEffectActive(book,e,afterLevels));
+      if(!effects.length||effects.every(e=>bookEffectActive(book,e,proposed)))continue;
+      const goal={bookId:book.id,threshold:Math.max(...effects.map(e=>e.threshold)),requiredCount:Math.max(...effects.map(e=>e.requiredCount))};
+      const alternatives=collectionCandidates({...request,xp:request.xp-usedXp},[...executionEligible.values()],executionInventory,goal)
+        .sort((a,b)=>a.missingCopies-b.missingCopies||a.xp-b.xp||a.silver-b.silver||a.key.localeCompare(b.key));
+      const plan=alternatives[0];
+      if(!plan)throw new Error('도감 성장 조건을 다시 확인해 주세요.');
+      for(const upgrade of plan.cards){
+        const previous=executionInventory.get(upgrade.id);
+        proposed.set(upgrade.id,upgrade.to);
+        executionInventory.set(upgrade.id,{id:upgrade.id,awakening:upgrade.to,
+          extraCopies:Math.max(0,(previous?.extraCopies??0)-upgrade.copies),review:[],countReliable:true});
+        executionEligible.set(upgrade.id,catalog.get(upgrade.id)!);
+      }
+      }
+    }
+    for (const [id,to] of proposed) {
+      const previous = actual.get(id);
       const from = previous?.awakening ?? 0, absent = !previous;
       if (!absent && from >= to) continue;
       const card = catalog.get(id)!;
@@ -95,6 +126,12 @@ export function growthSequence(request: GrowthComparisonRequest, valid: GrowthCa
     const missingCopies = cards.reduce((n, c) => n + c.missing, 0);
     const shortfall = Math.max(0, cost.xp - (request.xp - usedXp));
     const gain = score(proposed) - score(actualLevels);
+    // Preserve the actual rewards, not virtual ranking milestones: completion
+    // must recheck unchanged members too, including optional-member choices.
+    const requirements = request.master.books.flatMap(book => book.effects.filter(effect =>
+      effect.target === request.target && bookEffectActive(book,effect,proposed) &&
+      !bookEffectActive(book,effect,actualLevels)).map(effect => ({ bookId: book.id,
+        target: effect.target, threshold: effect.threshold, requiredCount: effect.requiredCount })));
     const status = missingCopies > 0 ? 'cards-needed' : shortfall > 0 ? 'xp-needed' : 'ready';
     if (status === 'ready') {
       usedXp += cost.xp; gained += gain;
@@ -107,7 +144,7 @@ export function growthSequence(request: GrowthComparisonRequest, valid: GrowthCa
     result.push({ ...next, milestones, key: `${iteration}:${next.key}`, conditional, xpShortfall, status,
       cumulativeXp, cumulativeGain, cumulativeMissingCopies, prerequisiteMissingCopies,
       remainingXp: Math.max(0, request.xp - cumulativeXp),
-      available: { ...cost, cards, gain, missingCopies, conditional: cards.some(c => c.absent),
+      available: { ...cost, cards, requirements, gain, missingCopies, conditional: cards.some(c => c.absent),
         xpShortfall: shortfall, usedXp, gained, remainingXp: request.xp - usedXp } });
   }
   return result;

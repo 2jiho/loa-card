@@ -1,5 +1,18 @@
 import {estimateScrollRows} from './scroll-card-location';
-type Pending={groups:(number|undefined)[];step:number|undefined};
+type Pending={groups:(number|undefined)[];step:number|undefined;settled:boolean};
+/** Card OCR stability allows vertical movement. Position calibration instead
+ * needs the same groups in the SAME slots and an unchanged thumb. */
+export class StationaryInventoryView {
+ private previous:Pick<Pending,'groups'|'step'>|undefined;
+ reset(){this.previous=undefined;}
+ observe(groups:(number|undefined)[],geometry:{position:number;pageSpan:number}|null) {
+   if(groups.length!==40||!geometry||estimateScrollRows(geometry)!==55||!Number.isFinite(geometry.position)||geometry.position<0||geometry.position>1){this.reset();return false;}
+   const step=geometry.position*51,previous=this.previous;
+   this.previous={groups:[...groups],step};
+   if(previous?.step===undefined||Math.abs(step-previous.step)>.12)return false;
+   return new Set(groups.flatMap((g,i)=>g!==undefined&&g===previous.groups[i]?[i%10]:[])).size>=6;
+ }
+}
 /** Position registration is separate from card recognition. Reconcile pending
  * views when their card names become known; never fill gaps by card count. */
 export class InventoryPosition {
@@ -45,10 +58,10 @@ export class InventoryPosition {
  verifiedPositions() {
    return [...this.identitySlots].filter(([id])=>this.trustedIds.has(id)).map(([id,slot])=>({id,slot}));
  }
- offer(groups:(number|undefined)[],geometry:{position:number;pageSpan:number}|null,frame=++this.sequence):number|undefined {
-   return this.capture(frame,groups,geometry).find(value=>value.frame===frame)?.top;
+ offer(groups:(number|undefined)[],geometry:{position:number;pageSpan:number}|null,frame=++this.sequence,settled=false):number|undefined {
+   return this.capture(frame,groups,geometry,settled).find(value=>value.frame===frame)?.top;
  }
- capture(frame:number,groups:(number|undefined)[],geometry:{position:number;pageSpan:number}|null) {
+ capture(frame:number,groups:(number|undefined)[],geometry:{position:number;pageSpan:number}|null,settled=false) {
    if(groups.length!==40)return [];
    if(geometry&&(!Number.isFinite(geometry.position)||geometry.position<0||geometry.position>1||
      !Number.isFinite(geometry.pageSpan)||geometry.pageSpan<=0||Math.abs(4/geometry.pageSpan-51)>3))return [];
@@ -56,7 +69,7 @@ export class InventoryPosition {
    // cards can locate it now or after late name recognition. Never reuse a stale
    // scrollbar position, and never calibrate the thumb from these frames.
    const step=geometry&&estimateScrollRows(geometry)===55?geometry.position*51:undefined;
-   this.pending.set(frame,{groups:[...groups],step});
+   this.pending.set(frame,{groups:[...groups],step,settled});
    while(this.pending.size>256)this.pending.delete(this.pending.keys().next().value!);
    return this.reconcile();
  }
@@ -72,10 +85,12 @@ export class InventoryPosition {
    let changed=true;
    while(changed) {
      changed=false;
-     for(const [frame,{groups,step}] of this.pending) {
+     for(const [frame,{groups,step,settled}] of this.pending) {
        const votes=new Map<number,Set<number>>(),trustedVotes=new Map<number,Set<number>>();
-       const endpoint=step!==undefined?(step<=.12?0:step>=50.88?51:undefined):undefined;
-       let endpointConflict=false;
+       // A thumb endpoint is only an absolute anchor after the raster has settled.
+       // Moving frames may still reconnect through independently known cards.
+       const endpoint=settled&&step!==undefined?(step<=.12?0:step>=50.88?51:undefined):undefined;
+       let endpointConflict=false,tentativeConflict=false;
        let known=0;
        for(let i=0;i<40;i++) {
          const group=groups[i];if(group===undefined)continue;
@@ -84,7 +99,10 @@ export class InventoryPosition {
          known++;
          // A thumb can reach its endpoint before the cards finish moving.
          // Even a partial known row must not be moved to fit the thumb.
-         if(endpoint!==undefined&&old!==endpoint*10+i)endpointConflict=true;
+         if(endpoint!==undefined&&old!==endpoint*10+i){
+           if(this.trustedGroups.has(group)||id!==undefined&&(this.trustedIds.has(id)||this.orderedSlots.has(id)))endpointConflict=true;
+           else tentativeConflict=true;
+         }
          if(old%10!==i%10)continue;
          const top=Math.floor(old/10)-Math.floor(i/10);
          if(top<0||top>51||step!==undefined&&Math.abs(top-step)>2)continue;
@@ -96,11 +114,22 @@ export class InventoryPosition {
        if(endpointConflict)continue;
        const offsets=[...this.anchors].map(([row,raw])=>raw-row).sort((a,b)=>a-b);
        const offset=offsets[Math.floor(offsets.length/2)]??0,predicted=step===undefined?NaN:Math.round(step-offset);
-       const calibrated=step!==undefined&&known===0&&offsets.length>=2&&offsets.at(-1)!-offsets[0]<=.2&&Math.abs(step-offset-predicted)<=.15&&new Set(groups.filter(g=>g!==undefined)).size>=8&&predicted>=0&&predicted<=51?predicted:undefined;
+       const calibrated=settled&&step!==undefined&&known===0&&offsets.length>=2&&offsets.at(-1)!-offsets[0]<=.2&&Math.abs(step-offset-predicted)<=.15&&new Set(groups.filter(g=>g!==undefined)).size>=8&&predicted>=0&&predicted<=51?predicted:undefined;
+       // A stable absolute endpoint can repair a scrollbar-only prediction, but
+       // cannot rewrite independent known positions. Drop tentative descendants
+       // as well so a stale guessed row cannot keep propagating after correction.
+       if(endpoint!==undefined&&tentativeConflict){
+         for(const group of this.slots.keys())if(!this.trustedGroups.has(group))this.slots.delete(group);
+         for(const id of this.identitySlots.keys())if(!this.trustedIds.has(id))this.identitySlots.delete(id);
+         changed=true;break;
+       }
        const top=match??endpoint??calibrated;
        if(top===undefined||match!==undefined&&endpoint!==undefined&&match!==endpoint)continue;
        const trusted=endpoint!==undefined||(trustedVotes.get(top)?.size??0)>=6;
-       if(trusted&&step!==undefined)this.anchors.set(top,step);
+       // The thumb can move a full row before the card raster catches up.
+       // Overlap still locates these cards, but it must not teach a new thumb
+       // offset. Only stationary field evidence can calibrate later jumps.
+       if(trusted&&step!==undefined&&settled)this.anchors.set(top,step);
        for(let i=0;i<40;i++) {
          const group=groups[i];if(group===undefined)continue;
          this.slots.set(group,top*10+i);

@@ -7,9 +7,21 @@ test('ten-second measurement includes OCR backlog and later repeated input does 
   timer.record('a', 2000); timer.record('b', 3000); timer.record('a', 8000);
   const timing = timer.coverage(['a','b'], 2, 9000)!;
   assert.equal(timing.lastCardInputMs, 3000);
+  assert.equal(timing.measurementBasis, 'first-identified-card-captures');
+  assert.equal(timing.sufficientInputVerified, false);
   assert.equal(timer.finish(timing, 13000).withinTarget, true);
   assert.equal(timer.finish(timing, 13001).withinTarget, false);
   assert.equal(timer.finish(timing, 15000).afterLastCardMs, 12000);
+});
+
+test('invalid or reversed completion clocks cannot be reported as zero-delay success', () => {
+  const timer = new FinishTimer(); timer.record('a', 500);
+  const timing = timer.coverage(['a'], 1, 1000)!;
+  for (const now of [NaN, Infinity, -Infinity, 499, 999])
+    assert.throws(() => timer.finish(timing, now), RangeError);
+  const result = timer.finish(timing, 1000);
+  assert.equal(result.afterLastCardMs, 500);
+  assert.equal(result.sufficientInputVerified, false);
 });
 
 test('unknown totals and missing current-run captures cannot certify a timing baseline', () => {

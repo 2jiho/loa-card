@@ -1,0 +1,5 @@
+<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LoaCard 압축 원본 저장 검증</title>
+<style>body{font:15px system-ui;max-width:75rem;margin:2rem;color:#18202a}select,button{font:inherit;padding:.5rem;margin:.4rem}pre{background:#f2f4f7;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere}</style></head>
+<body><h1>압축 원본 저장 검증</h1><p>실제 저장 Worker·브라우저 저널·v5 파일의 native/RGBA 혼합 저장과 복원 해시를 검사합니다. 실제 스캔 입력·인식률·실시간 처리량 검사는 별도입니다.</p>
+<label>영상 <select id="corpus" aria-label="검증할 영상"><option value="">합성 입력만 검사</option></select></label><button id="run">압축 원본 저장 검증</button><button id="save" disabled>검증 파일 저장</button>
+<p id="status" role="status">입력을 선택하세요.</p><pre id="result" aria-label="압축 저장 검증 결과"></pre><script type="module" src="./compact-store-proof.ts"></script></body></html>

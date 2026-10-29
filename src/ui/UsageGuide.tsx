@@ -4,6 +4,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import HelpOutline from '@mui/icons-material/HelpOutlined';
+import BugReportOutlined from '@mui/icons-material/BugReportOutlined';
 import './UsageGuide.css';
 
 const steps = [
@@ -25,7 +26,7 @@ export function ScanQuickStart({ onHelp }: { onHelp: () => void }) {
   </section>;
 }
 
-export function UsageGuide({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function UsageGuide({ open, onClose, onDiagnostics, diagnosticsDisabled }: { open: boolean; onClose: () => void; onDiagnostics: () => void; diagnosticsDisabled: boolean }) {
   return <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" aria-labelledby="usage-guide-title">
     <DialogTitle id="usage-guide-title">LoaCard 사용법</DialogTitle>
     <DialogContent dividers className="usage-guide">
@@ -54,12 +55,18 @@ export function UsageGuide({ open, onClose }: { open: boolean; onClose: () => vo
       <section aria-labelledby="guide-save"><h3 id="guide-save">목록 보관·다른 계정</h3>
         <p>완료 목록은 같은 주소·브라우저에 자동 저장됩니다. 다른 기기로 옮기거나 별도로 보관하려면 <strong>CSV 저장</strong>을 사용하세요.</p>
         <p>CSV에는 경험치와 캡처 사진이 없습니다. 불러오기 확인 화면에서 <strong>보유 카드 경험치</strong>를 입력하면 도감작 계산에 반영됩니다. 비워 두면 경험치는 미확인으로 처리합니다.</p>
+        <p>이름·각성·장수가 미확인인 카드는 다시 읽은 뒤 CSV로 저장할 수 있습니다.</p>
         <p>CSV 불러오기는 현재 목록을 교체합니다. 다른 계정을 스캔할 때는 필요한 CSV를 저장하고 <strong>목록 초기화</strong> 후 시작하세요.</p>
         <p>CSV로 불러온 카드에는 DB에 연결된 원화를 표시합니다. 원화가 없는 카드는 대체 아이콘이 나오며, 이름·각성·장수는 그대로 사용할 수 있습니다.</p>
       </section>
-      <section aria-labelledby="guide-replay"><h3 id="guide-replay">스캔 기록·오류 재현</h3>
-        <p>최근 공유 화면 한 건을 이 브라우저에 자동 보관합니다. <strong>스캔 기록</strong>에서 같은 입력 픽셀을 재현하거나 파일로 저장·불러올 수 있습니다. 입력 재현은 내 카드 목록을 바꾸지 않습니다.</p>
-        <p>공유 화면 전체가 포함되므로 게임 창을 선택하세요. 외부에 첨부하기 전 미리보기를 확인하세요. 자동 전송은 없으며 다음 스캔을 시작하면 이전 기록을 교체합니다. 기록 삭제는 목록 초기화와 별개입니다.</p>
+      <section aria-labelledby="guide-replay"><h3 id="guide-replay">문제 해결</h3>
+        <p>스캔별 결과와 문제 카드 사진을 확인하고, 저장한 입력으로 다시 판독할 수 있습니다. 내 카드 목록은 바뀌지 않습니다.</p>
+        <Button color="inherit" startIcon={<BugReportOutlined />} disabled={diagnosticsDisabled} onClick={onDiagnostics}>스캔 진단</Button>
+        {diagnosticsDisabled&&<p>진행 중인 작업이 끝나면 사용할 수 있습니다.</p>}
+        <p>기본으로 진단 요약과 제한된 문제 이미지만 보관합니다. 입력을 다시 실행하려면 스캔 전에 진단 화면에서 <strong>전체 입력 기록 · 문제 재현용</strong>을 켜 주세요. 기록은 이 브라우저에 보관하며 자동 전송하지 않습니다.</p>
+        <p>최근 8개·총 512MiB 한도로 보관합니다. 오래된 미고정 기록부터 정리하며, 고정하거나 진행 중인 기록은 자동 삭제하지 않습니다. 저장 공간이 부족하면 부분 기록으로 남습니다.</p>
+        <p>페이지가 중단되면 마지막 활성 확인에서 2분이 지난 뒤 진단 목록을 다시 열어 남아 있는 부분 기록을 확인하세요. 저장하지 못한 구간은 복구할 수 없습니다. 미리보기 영상이 없어도 입력이 남아 있으면 재현할 수 있습니다.</p>
+        <p>입력 재판독·당시 실행 상태 재생·실시간 속도 검사는 서로 다릅니다. 진단 파일을 공유하기 전 화면의 개인정보를 확인하세요.</p>
       </section>
     </DialogContent>
     <DialogActions><Button onClick={onClose}>닫기</Button></DialogActions>

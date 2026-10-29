@@ -1,7 +1,7 @@
 import type { ScannerState } from '../card-scanner/scanner';
 import type { ScannedCard } from '../card-scanner/recognizer';
 import type { GrowthMaster } from './optimizer';
-import { trustedInventory } from './optimizer';
+import { bookEffectActive, trustedInventory } from './optimizer';
 import type { GrowthSequenceStep } from './growth-sequence';
 
 export type GrowthCompletion = {
@@ -39,6 +39,14 @@ export function completeGrowth(state: ScannerState, master: GrowthMaster, step: 
   }
   if (xp !== a.xp || points.current - xp !== a.remainingXp)
     throw new Error('경험치가 변경되었습니다. 다시 계산해 주세요.');
+  const levels = new Map(valid.map(card => [card.id, changed.get(card.id)?.awakening ?? owned.get(card.id)!.awakening!]));
+  const books = new Map(master.books.map(book => [book.id, book]));
+  if (!a.requirements?.length || a.requirements.some(requirement => {
+    const book = books.get(requirement.bookId);
+    const effect = book?.effects.find(effect => effect.target === requirement.target &&
+      effect.threshold === requirement.threshold && effect.requiredCount === requirement.requiredCount);
+    return !book || !effect || !bookEffectActive(book,effect,levels);
+  })) throw new Error('도감 조건에 필요한 카드 상태가 변경되었습니다. 다시 계산해 주세요.');
   return { ...state, cards: state.cards.map(c => changed.get(c.id) ?? c),
     growthPoints: { ...points, current: points.current - xp }, growthPointsEstimated: true,
     growthHistory: [...(state.growthHistory ?? []), {

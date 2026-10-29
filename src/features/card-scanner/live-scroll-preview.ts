@@ -41,7 +41,7 @@ export class LiveScrollPreview<Source> {
   /** undefined = throttled; null = hide stale/invalid preview. */
   read(source:Source,width:number,height:number,now:number):ReturnType<typeof readScrollGeometry>|undefined {
     if(!Number.isFinite(now))return null;
-    if(now-this.lastRead<50)return;
+    if(now-this.lastRead<32)return;
     this.lastRead=now;
     const a=this.anchor;
     if(!a||now<a.at||width!==a.width||height!==a.height){this.anchor=undefined;return null;}

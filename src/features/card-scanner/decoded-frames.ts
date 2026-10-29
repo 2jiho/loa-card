@@ -2,7 +2,8 @@ import { ALL_FORMATS, BlobSource, CanvasSink, Input, UrlSource } from "mediabunn
 import { yieldForCapture } from "./input-source";
 
 /** Sequential decoded samples, not a synthetic fixed-rate seek schedule.
- * The consumer must copy pixels before advancing this bounded canvas pool. */
+ * The consumer must copy pixels before advancing this bounded canvas pool.
+ * The library's internal predecode queue is separate from these two canvases. */
 export async function* decodedFrames(source: Blob | string, signal: AbortSignal) {
   signal.throwIfAborted();
   const input = new Input({ formats: ALL_FORMATS,
@@ -22,6 +23,7 @@ export async function* decodedFrames(source: Blob | string, signal: AbortSignal)
       signal.throwIfAborted();
       count++;
       yield { element: sample.canvas, time: sample.timestamp,
+        decodeSample:{trackId:track.id,duration:sample.duration},
         percent: duration > 0 ? Math.min(100, Math.max(0, (sample.timestamp + sample.duration) / duration * 100)) : 0,
         still: false };
       // A decoder's prefetched samples may all resolve as microtasks. Yield

@@ -110,6 +110,47 @@ test('missing fields outrank already-confirmed repeats and newer count changes k
  assert.ok(score(missing)>score(current),'same-frame reliable field confirmation is enough to reprioritize');
 });
 
+test('latest field failures precede older same-card fallbacks without discarding either crop',async()=>{
+ const {retryWorkPriority,shiftOcrRetry}=await import('../src/features/card-scanner/live-scan-policy');
+ const old={id:'old',reads:0,needsIdentity:false,fieldTarget:{id:'a',order:10}};
+ const middle={id:'middle',reads:0,needsIdentity:false,fieldTarget:{id:'a',order:20}};
+ const latest={id:'latest',reads:500,needsIdentity:false,fieldTarget:{id:'a',order:30}};
+ for(const confirmed of [new Map<string,number>(),new Map([['a',5]])]){
+  const queue=[old,middle,latest],orders=new Map([['a',30]]);
+  const priority=(item:typeof old)=>retryWorkPriority(item,item.reads,confirmed,orders);
+  assert.equal(shiftOcrRetry(queue,priority),latest);
+  assert.deepEqual(queue,[old,middle],'an unresolved latest crop does not discard fallback evidence');
+  assert.equal(shiftOcrRetry(queue,priority),old,'if latest fails, the oldest retained fallback remains eligible');
+  assert.equal(shiftOcrRetry(queue,priority),middle);
+  confirmed.set('a',30);
+  assert.ok(priority(old)>=1_000_000);assert.ok(priority(middle)>=1_000_000);
+ }
+});
+
+test('latest-field priority stays below older fallbacks regardless of prior group read count',async()=>{
+ const {retryWorkPriority}=await import('../src/features/card-scanner/live-scan-policy');
+ const current={needsIdentity:false,fieldTarget:{id:'a',order:20}},old={...current,fieldTarget:{id:'a',order:10}};
+ const confirmed=new Map([['a',5]]),orders=new Map([['a',20]]);
+ assert.ok(retryWorkPriority(current,2_000_000,confirmed,orders)<retryWorkPriority(old,0,confirmed,orders));
+ assert.ok(retryWorkPriority(old,2_000_000,confirmed,orders)<1_000_000,'older fallbacks remain eligible for the bounded field turn');
+ assert.equal(retryWorkPriority(current,3,confirmed),4,'omitted latest-order metadata preserves the existing priority');
+ for(const latest of [NaN,Infinity,-Infinity])
+  assert.equal(retryWorkPriority(old,3,confirmed,new Map([['a',latest]])),4,'invalid source order cannot infer older work');
+});
+
+test('latest-field ordering preserves unknown-name priority and bounded fallback service',async()=>{
+ const {LiveRetrySchedule,retryWorkPriority}=await import('../src/features/card-scanner/live-scan-policy');
+ const latestOrders=new Map([['a',20]]),confirmed=new Map<string,number>(),schedule=new LiveRetrySchedule();
+ const old={id:'old-field',needsIdentity:false,fieldTarget:{id:'a',order:10}};
+ const latest={id:'latest-field',needsIdentity:false,fieldTarget:{id:'a',order:20}};
+ const queue=[old,latest,...Array.from({length:20},(_,i)=>({id:`name${i}`,needsIdentity:true,fieldTarget:undefined}))];
+ const priority=(item:typeof queue[number])=>retryWorkPriority(item,0,confirmed,latestOrders);
+ for(let i=0;i<8;i++)assert.equal(schedule.shift(queue,priority)?.id,`name${i}`);
+ assert.equal(schedule.shift(queue,priority),latest);
+ for(let i=8;i<16;i++)assert.equal(schedule.shift(queue,priority)?.id,`name${i}`);
+ assert.equal(schedule.shift(queue,priority),old,'failed latest work cannot permanently starve the preserved fallback');
+});
+
 test('a replenished name queue cannot starve an unconfirmed counter',async()=>{
  const {LiveRetrySchedule,retryWorkPriority}=await import('../src/features/card-scanner/live-scan-policy');
  const schedule=new LiveRetrySchedule(),confirmed=new Map([['done',10]]);
@@ -123,4 +164,29 @@ test('a replenished name queue cannot starve an unconfirmed counter',async()=>{
  assert.equal(schedule.shift(queue,priority)?.id,'name9');
  assert.equal(schedule.shift(queue,priority)?.id,'stale');
  assert.equal(schedule.shift(queue,priority),undefined);
+});
+
+test('actual single-reader dispatch services short and full OCR while capture stays active',async()=>{
+  const {LiveReaderSchedule}=await import('../src/features/card-scanner/live-scan-policy');
+  for(const cores of [1,2,3,NaN]){
+    const schedule=new LiveReaderSchedule(),plan=liveLanePlan(cores),jobs={queued:100,short:20,full:1,live:true};
+    const work=Array.from({length:81},()=>schedule.next(0,plan,jobs));
+    assert.equal(work.filter(x=>x==='fast').length,72);
+    assert.equal(work.filter(x=>x==='short').length,8);
+    assert.equal(work.filter(x=>x==='full').length,1);
+    assert.equal(schedule.next(0,plan,{...jobs,queued:0,short:0}),'full');
+  }
+});
+
+test('multi-reader dispatch preserves metadata fast lane and dedicated OCR roles',async()=>{
+  const {LiveReaderSchedule}=await import('../src/features/card-scanner/live-scan-policy');
+  const plan=liveLanePlan(8),jobs={queued:40,short:2,full:2,live:true};
+  for(const index of [0,1]){
+    const schedule=new LiveReaderSchedule();
+    for(let i=0;i<20;i++)assert.equal(schedule.next(index,plan,jobs),'fast');
+    assert.equal(schedule.next(index,plan,{...jobs,queued:0}),undefined);
+    assert.equal(schedule.next(index,plan,{...jobs,queued:0,live:false}),'short');
+  }
+  assert.equal(new LiveReaderSchedule().next(2,plan,jobs),'short');
+  assert.equal(new LiveReaderSchedule().next(3,plan,jobs),'full');
 });

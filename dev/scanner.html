@@ -7,23 +7,72 @@
     <style>
       body { font: 15px/1.5 system-ui, sans-serif; max-width: 960px; margin: 32px auto; padding: 0 16px; }
       form { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-      button, input { font: inherit; }
+      button, input, select { font: inherit; }
+      select { max-width: 100%; }
+      .source { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+      .note { font-size: 13px; color: #4b5563; }
       video { display: block; max-width: 360px; max-height: 220px; margin: 16px 0; }
       pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f1f3f5; padding: 16px; }
+      #monitor-preview { margin:16px 0; }
+      #batch-cases { display:block; width:100%; margin:8px 0; }
+      #batch-result { max-height:360px; overflow:auto; }
+      #playback-source:not(:empty) { position:fixed; right:8px; top:8px; z-index:10; background:#111; border:1px solid #888; }
+      #playback-source video { width:240px; margin:0; }
     </style>
   </head>
   <body>
     <h1>스캐너 개발 검사</h1>
-    <p>빈 목록에서 영상 하나 또는 이름순 이미지 묶음을 읽습니다. 오프라인 검사이며 실제 화면 공유 성능 검사는 아닙니다.</p>
+    <div id="playback-source" aria-label="실험용 원본 영상 미리보기"></div>
+    <p id="input-experiment" class="note" hidden></p>
+    <p>영상·사진은 빈 목록, 재현 파일은 기록된 시작 목록에서 입력을 다시 읽고, 판독 결과와 상태 재생을 비교합니다. 실제 게임 창 공유는 메인 앱에서 검사하세요.</p>
     <form>
-      <input id="files" type="file" accept="video/*,image/png,image/jpeg,image/webp" multiple aria-label="검사 입력" required />
+      <div class="source">
+        <label for="corpus">등록한 입력</label>
+        <select id="corpus"><option value="">직접 파일 선택</option></select>
+        <button id="refresh-corpus" type="button">목록 새로 읽기</button>
+      </div>
+      <div class="source">
+        <label for="files">직접 선택</label>
+        <input id="files" type="file" accept="video/*,image/png,image/jpeg,image/webp,.loareplay" multiple />
+      </div>
+      <label for="mode">실행 방식</label>
+      <select id="mode">
+        <option value="offline">전체 프레임 순차 검사</option>
+        <option value="live">영상 1배속 · 실시간 처리 경로</option>
+      </select>
       <label><input id="capture-only" type="checkbox" />획득만 검사</label>
+      <label><input id="session-recording" type="checkbox" />자동 세션 저장도 검사</label>
       <button id="start" type="submit">검사 시작</button>
       <button id="stop" type="button" disabled>중지</button>
       <button id="save" type="button" disabled>결과 JSON 저장</button>
+      <button id="replay-state" type="button" disabled>상태 재생 검사</button>
+      <button id="save-session" type="button" disabled>검증 세션 내보내기</button>
+      <button id="retry-archive" type="button" hidden disabled>로컬 기록 다시 저장</button>
     </form>
-    <video muted playsinline controls></video>
+    <div id="monitor-preview" aria-label="앱 진행창 미리보기"></div>
+    <p id="corpus-status" class="note" role="status">입력 코퍼스를 읽고 있습니다.</p>
+    <p class="note">비교 전 <code>npm run corpus -- verify</code>로 저장한 원본을 검사하세요. 일반 검사에는 해시 재계산이 없으며 입력 비교 모드는 실제 사용할 원본 Blob의 SHA를 확인합니다. 사진은 등록·선택 순서를 유지하며 결과를 정답으로 자동 등록하지 않습니다.</p>
+    <p class="note">1배속 검사는 영상의 captureStream으로 실제 공유와 같은 수집·병렬 판독 경로를 실행합니다. OS 캡처 시각과 모든 원본 프레임 도착을 재현하지는 않습니다. 사진·재현 파일은 순차 검사만 지원합니다. 재현 파일은 저장된 픽셀과 설정을 사용하며 원래 처리 속도를 재현하지 않습니다.</p>
+    <fieldset>
+      <legend>원본 일괄 비교</legend>
+      <label for="batch-cases">비교할 사례 · 최대 16개</label>
+      <select id="batch-cases" multiple size="6"></select>
+      <label for="batch-variant">기본 방식과 비교할 판독</label>
+      <select id="batch-variant"><option value="gray">회색조 이름 보완</option><option value="fractional">미세 위치 보정</option><option value="contrast">대비 이름 보완</option></select>
+      <button id="batch-start" type="button" disabled>선택 원본 순차 비교</button>
+      <button id="batch-save" type="button" disabled>일괄 요약 저장</button>
+      <p class="note">사례마다 빈 목록과 새 판독기로 기본 방식과 선택한 보완 방식을 순서대로 검사합니다. 전체 프레임 순차 검사이며 실시간 성능 비교가 아닙니다. 개별 기록 저장 실패·코드 변경·중지는 다음 검사를 막고 부분 결과를 남깁니다.</p>
+      <p id="batch-status" role="status">비교할 원본을 선택하세요.</p>
+      <pre id="batch-result" aria-label="일괄 비교 요약"></pre>
+    </fieldset>
+    <video muted playsinline></video>
     <p id="message" role="status">입력을 선택하세요.</p>
+    <p id="cleanup-status" role="status" hidden></p>
+    <p id="replay-message" role="status"></p>
+    <pre id="replay-comparison" aria-label="기록 당시 결과와 비교"></pre>
+    <p id="archive-message" class="note" role="status"></p>
+    <p id="session-message" class="note" role="status"></p>
+    <pre id="monitor" aria-label="실시간 진행 요약"></pre>
     <pre id="result" aria-label="검사 요약"></pre>
     <script type="module" src="/dev/scanner.ts"></script>
   </body>

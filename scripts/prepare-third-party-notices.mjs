@@ -20,7 +20,7 @@ for (const [path, entry] of Object.entries(lock.packages).sort(([a], [b]) => a.l
   catch (error) { if (entry.optional && error.code === 'ENOENT') continue; throw error; }
   if (pkg.version !== entry.version) throw new Error(`Install npm ci first: ${path}`);
   const names = (await readdir(folder, { withFileTypes: true }))
-    .filter(file => file.isFile() && /^(licen[sc]e|copying|notice)(\.|$|-)/i.test(file.name))
+    .filter(file => file.isFile() && /^(licen[sc]e|copying|notice)(\.|$|[-_])/i.test(file.name))
     .map(file => file.name).sort();
   const texts = await Promise.all(names.map(async name => `${name}\n${await readFile(join(folder, name), 'utf8')}`));
   if (!texts.length && ['onnxruntime-common', 'onnxruntime-web'].includes(pkg.name)) {
@@ -46,6 +46,9 @@ for (const [name, version] of Object.entries(supplemental.packageVersions)) {
 }
 if (sha256(await readFile(join(root, 'node_modules/@techstark/opencv-js/dist/opencv.js'))) !== supplemental.opencvSha256) {
   throw new Error('Review OpenCV embedded notices after replacing the runtime');
+}
+if (sha256(await readFile(join(root, 'node_modules/lz4-wasm/lz4_wasm_bg.wasm'))) !== supplemental.lz4WasmSha256) {
+  throw new Error('Review LZ4 WASM embedded notices after replacing the recording compressor');
 }
 const workerMap = JSON.parse(await readFile(join(root, 'node_modules/tesseract.js/dist/worker.min.js.map'), 'utf8'));
 await mkdir(join(output, 'supplemental'), { recursive: true });

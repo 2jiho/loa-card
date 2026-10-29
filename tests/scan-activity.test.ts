@@ -18,3 +18,33 @@ test('retries reuse one tile, snapshots stay immutable, and new sessions start e
   assert.deepEqual(activity.snapshot(),[{id:7,image:'clearer',status:'read',name:'card'}]);
   assert.deepEqual(new RecentScanActivity().snapshot(),[]);
 });
+
+test('a late thumbnail fills its exact trace without reordering or resetting completed state',()=>{
+ const activity=new RecentScanActivity();activity.start(1,'');activity.start(2,'newer');
+ activity.finish(1,'read','first');const before=activity.snapshot();
+ assert.equal(activity.updateImage(1,'ready-first'),true);
+ assert.deepEqual(activity.snapshot().map(item=>item.id),[1,2]);
+ assert.deepEqual(activity.snapshot()[0],{id:1,image:'ready-first',name:'first',status:'read'});
+ assert.equal(before[0].image,'','previously published snapshots remain immutable');
+ assert.equal(activity.snapshot()[1].image,'newer');
+ assert.equal(activity.updateImage(1,'ready-first'),false);assert.equal(activity.updateImage(1,''),false);
+});
+
+test('an evicted thumbnail cannot return to the strip or replace the latest crop image',()=>{
+ const activity=new RecentScanActivity();
+ for(let id=1;id<=17;id++)activity.start(id,`capture-${id}`);
+ const before=activity.snapshot();
+ assert.equal(activity.updateImage(1,'late-old'),false);
+ assert.equal(activity.snapshot(),before);assert.equal(activity.snapshot().at(-1)?.image,'capture-17');
+});
+
+test('a previous attempt cannot reset the same trace while its retry is running or complete',()=>{
+ const activity=new RecentScanActivity();
+ const first=activity.start(1,'crop');
+ const retry=activity.start(1,'crop');
+ activity.finish(1,'waiting',undefined,first);
+ assert.equal(activity.snapshot()[0].status,'reading');
+ activity.finish(1,'read','card',retry);
+ activity.finish(1,'review',undefined,first);
+ assert.equal(activity.snapshot()[0].status,'read');
+});

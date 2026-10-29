@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LoaCard 이름 영역 비교</title>
+<style>html{color-scheme:light dark}body{font:15px/1.55 system-ui;margin:24px;max-width:64rem;background:Canvas;color:CanvasText}h1{font-size:1.5rem}button{font:inherit;padding:.45rem .7rem;margin-right:8px}:focus-visible{outline:3px solid Highlight;outline-offset:3px}pre{font:12px/1.5 ui-monospace,monospace;background:color-mix(in srgb,CanvasText 6%,Canvas);padding:12px;white-space:pre-wrap;overflow-wrap:anywhere}@media(max-width:420px){body{margin:12px}}</style></head>
+<body><h1>이름 영역 비교</h1>
+<p>로컬에 보관한 이름 영역을 같은 OCR 모델로 비교합니다. 원본·회색·대비·색 채널 변환을 고정된 순서로 검사합니다.</p>
+<p>사전·줄 결합·이름 캐시는 사용하지 않습니다. 각 변형의 3초 예산은 독립적이며, 실제 카드 파이프라인의 정확도·처리 시간 검사가 아닙니다.</p>
+<button id="run" type="button">이름 영역 비교 시작</button><button id="stop" type="button" disabled>중지</button><button id="save" type="button" disabled>결과 JSON 저장</button>
+<p id="status" role="status" aria-live="polite">검사를 시작하면 선택한 입력과 해시를 확인합니다.</p>
+<pre id="result" aria-label="이름 영역 비교 결과"></pre>
+<script type="module" src="./name-label-proof.ts"></script></body></html>

@@ -3,7 +3,7 @@ import { areaGray } from './area-gray';
 import { prepareContrastPattern } from './count-pattern';
 import type { CountPattern } from './count-pattern';
 import type { Reference } from './recognizer';
-import { inspectVisual, portraitIdentity, readVisual } from './visual-fields';
+import { inspectVisual, portraitIdentity, readVisual, reusableVisualPixels } from './visual-fields';
 const native=new OffscreenCanvas(140,210),context=native.getContext('2d',{willReadFrequently:true})!;
 let preparing:ReturnType<typeof prepare>|undefined;
 async function prepare() {
@@ -22,9 +22,10 @@ self.onmessage=async(event:MessageEvent<{id:number;bitmap?:ImageBitmap}>)=>{
   ctx.drawImage(bitmap,0,0);
   const pixels=ctx.getImageData(0,0,image.width,image.height).data;
   const artwork=engine.match(areaGray(pixels,image.width,image.height));
-  const fields=inspectVisual(image,context,engine.templates);
+  const snapshot=reusableVisualPixels(pixels,image.width,image.height);
+  const fields=inspectVisual(image,context,engine.templates,snapshot);
   const identity=artwork?portraitIdentity(artwork):null;
-  const values=identity?readVisual(image,context,fields,engine.patterns,identity.maxAwakening):null;
+  const values=identity?readVisual(image,context,fields,engine.patterns,identity.maxAwakening,snapshot):null;
   self.postMessage({id,result:{identity,fields,values}});
  }catch(error){self.postMessage({id,error:String(error)});}
  finally{bitmap?.close();}

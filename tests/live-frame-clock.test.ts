@@ -22,6 +22,7 @@ test("live capture follows delivered frames and reports actual compositor gaps w
   mock.deliver(1, 60); mock.deliver(1.05, 63);
   assert.equal(frames.length, 61);
   assert.deepEqual(frames.at(-1), { mediaTime: 1.05, presentedFrames: 63, missedFrames: 2 });
+  assert.equal(Object.isFrozen(frames.at(-1)),true,'delivered source coordinates cannot be changed after callback return');
   abort.abort(); assert.equal(mock.pending.size, 0); assert.equal(mock.canceled.length, 1); stop();
 });
 test("ended shares and failed processing stop exactly once and cancel pending callbacks", () => {
@@ -53,7 +54,16 @@ test('display preview continues without compositor callbacks and never manufactu
  const mock=input(),abort=new AbortController();let previews=0,captures=0;
  startVideoFrames(mock.video,abort.signal,()=>captures++,()=>{},error=>{throw error;},33,()=>previews++);
  t.mock.timers.tick(330);assert.equal(previews,10);assert.equal(captures,0);
- mock.deliver(.33,1);assert.equal(captures,1);
- t.mock.timers.tick(33);assert.equal(previews,11);assert.equal(captures,1);
- abort.abort();t.mock.timers.tick(1000);assert.equal(previews,11);
+ mock.deliver(.33,1);assert.equal(captures,1);assert.equal(previews,11);
+ t.mock.timers.tick(33);assert.equal(previews,12);assert.equal(captures,1);
+ abort.abort();t.mock.timers.tick(1000);assert.equal(previews,12);
+});
+
+test('fast frame arrivals update the viewport before expensive capture and skip repeated frames',()=>{
+ const mock=input(),abort=new AbortController(),calls:string[]=[];
+ startVideoFrames(mock.video,abort.signal,()=>calls.push('capture'),()=>{},error=>{throw error;},33,()=>calls.push('preview'));
+ for(let i=1;i<=120;i++)mock.deliver(i/60,i);
+ mock.deliver(2,120);
+ assert.deepEqual(calls,Array.from({length:120},()=>['preview','capture']).flat());
+ abort.abort();
 });

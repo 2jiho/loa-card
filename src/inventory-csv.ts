@@ -27,9 +27,25 @@ function cell(value: string | number | null) {
 /** Rows represent registered inventory entries, never missing-card references.
  * extraCopies excludes the registered copy and cards spent on awakening. */
 export function inventoryCsv(cards:readonly ScannedCard[]):string {
+  const issues=inventoryCsvIssues(cards);
+  if(issues.length)throw new Error(`${issues.length}종 확인 필요 · ${issues[0].name}: ${issues[0].reason}. 다시 스캔한 뒤 저장해 주세요.`);
   const rows:[string, string|number|null, string|number|null][]=[['이름','각수','카드수']];
   for(const card of cards)rows.push([card.name,card.awakening,card.extraCopies]);
   return '\uFEFF'+rows.map(row=>row.map(cell).join(',')).join('\r\n')+'\r\n';
+}
+
+/** The three-column format cannot preserve uncertainty. Reject instead of laundering it on import. */
+export function inventoryCsvIssues(cards:readonly ScannedCard[]):{id:string;name:string;reason:string}[] {
+  const seen=new Set<string>(),names=new Set<string>();
+  return cards.flatMap(card=>{
+    const {awakening:a,extraCopies:n}=card,max=card.maxAwakening??5;
+    const normalized=card.name.normalize('NFC').trim();
+    const reason=seen.has(card.id)||names.has(normalized)?'중복 카드':!card.id||!normalized?'이름 확인':card.review.length?'판독 확인':
+      card.countReliable!==true?'장수 확인':a===null||!Number.isInteger(a)||a<0||a>max?'각성 확인':
+      n===null||!Number.isInteger(n)||n<0||n>(max===0?0:15-a*(a+1)/2)?'장수 확인':'';
+    seen.add(card.id);names.add(normalized);
+    return reason?[{id:card.id,name:card.name,reason}]:[];
+  });
 }
 
 export type CsvCatalogCard={id:string;name:string;rarity:number;maxAwakening?:number;artwork?:string};

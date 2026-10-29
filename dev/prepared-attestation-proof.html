@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>준비 변환 전달 검증</title>
+<style>body{max-width:1100px;margin:32px auto;padding:0 20px;font:15px/1.6 system-ui,sans-serif}button,input,select{font:inherit;padding:7px}pre{background:#f1f3f5;padding:16px;white-space:pre-wrap;overflow-wrap:anywhere}label{margin-right:12px}</style></head>
+<body><h1>준비 변환 전달 검증</h1>
+<p>고정 시작 시각부터 준비 운동 1개와 연속 30개 원본 표본을 사용합니다. 준비 Worker의 전용 포트에서 받은 변환 근거와 실제 native 바이트를 별도 Worker에서 검증합니다.</p>
+<p>획득 Worker의 전체 픽셀과 독립 복원 결과도 비교합니다. 파일 저장·기록 완료 ACK·OCR·실제 화면 공유 성능은 검사하지 않습니다. 기본 스캐너는 변경하지 않습니다.</p>
+<p>전용 포트는 신뢰한 앱 초기화 코드가 연결합니다. 같은 출처의 앱 코드나 초기화 자체가 변조된 환경의 OS 화면을 인증하는 기능은 아닙니다.</p>
+<label>원본 영상 <select id="corpus"></select></label><label>시작 시각(초) <input id="start" type="number" min="0" max="10" step="0.1" value="3"></label>
+<button id="run" disabled>전용 포트 비교</button> <button id="stop" disabled>중지</button> <button id="save" disabled>검증 결과 저장</button>
+<p id="status" role="status">등록한 영상을 읽고 있습니다.</p><pre id="result"></pre>
+<script type="module" src="/dev/prepared-attestation-proof.ts"></script></body></html>

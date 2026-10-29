@@ -1,6 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { insideCard, inspectCapture, CaptureObservations, sameFieldObservation, settledFields } from "../src/features/card-scanner/capture-quality";
+import { insideCard, inspectCapture, CaptureObservations, sameCapture, sameFieldObservation, settledFields } from "../src/features/card-scanner/capture-quality";
+
+test('field comparison preserves strict budgets at every field boundary',()=>{
+ const a=new Uint8Array(3240),b=a.slice();
+ for(const [from,to,limit] of [[0,864,2.5],[864,2016,2.5],[2016,2592,2.5],[2592,3240,5]]){
+  b.fill(0);let remaining=(to-from)*limit-1;
+  for(let i=from;i<to&&remaining;i++){b[i]=Math.min(255,remaining);remaining-=b[i];}
+  assert.equal(sameCapture(a,b),true);
+  // Add the final unit at the end, so an early exit must not round the budget.
+  b[to-1]++;
+  assert.equal(sameCapture(a,b),false);
+  assert.equal(sameFieldObservation(a,b),from===2592);
+ }
+});
 
 function faintNameImage() {
   const image = new Uint8Array(140 * 210 * 4).fill(120);
@@ -81,4 +94,27 @@ test("duplicate groups remain stable across brightness-bin boundaries", () => {
   assert.equal(store.offerDetailed(b, 4, 12, true).decision, "new");
   const renamed = b.slice(); renamed.fill(150, 0, 864);
   assert.notEqual(store.offerDetailed(renamed, 3, 12, true).id, first.id);
+});
+
+test('a changing representative is indexed in its new bin throughout gradual brightness drift',()=>{
+  const store=new CaptureObservations();
+  let score=10;const initial=store.offerDetailed(new Uint8Array(3240).fill(111),2,score,true);
+  for(let brightness=113;brightness<150;brightness+=2){
+    score=score*1.2+1;
+    const next=store.offerDetailed(new Uint8Array(3240).fill(brightness),2,score,true);
+    assert.equal(next.id,initial.id,`brightness ${brightness}`);
+    assert.equal(next.decision,'better');
+  }
+  assert.equal(store.size,1);
+});
+
+test('matching metadata is LRU bounded without reusing observation IDs or dropping new candidates',()=>{
+  const store=new CaptureObservations(2),a=new Uint8Array(3240).fill(50),b=new Uint8Array(3240).fill(100),c=new Uint8Array(3240).fill(150);
+  const first=store.offerDetailed(a,0,1,true),second=store.offerDetailed(b,0,1,true);
+  assert.equal(store.offerDetailed(a,0,1,true).id,first.id);
+  store.offerDetailed(c,0,1,true);
+  assert.equal(store.size,2);
+  assert.equal(store.offerDetailed(a,0,1,true).id,first.id);
+  const reobserved=store.offerDetailed(b,0,1,true);
+  assert.equal(reobserved.decision,'new');assert.ok(reobserved.id>second.id);
 });

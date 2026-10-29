@@ -1,4 +1,5 @@
 import type { Cost, GrowthBook, GrowthCard, GrowthComparisonRequest, OwnedCard } from './optimizer';
+import { bookEffectActive } from './optimizer';
 
 export type CollectionCandidate = Cost & {
   key: string; gain: number; efficiency: number | null; missingCopies: number;
@@ -12,43 +13,55 @@ type Allocation = Cost & { missing: number; levels: [string, number][] };
  * Absent cards are explicitly hypothetical new registrations; uncertain observations
  * are never treated as unowned. Beam DP preserves cheap-XP and few-missing alternatives.
  */
-export function collectionCandidates(request: GrowthComparisonRequest, valid: GrowthCard[], owned: Map<string, OwnedCard>): CollectionCandidate[] {
+export function collectionCandidates(request: GrowthComparisonRequest, valid: GrowthCard[], owned: Map<string, OwnedCard>, goal?:{bookId:string;threshold:number;requiredCount:number}): CollectionCandidate[] {
   const { master, target } = request;
   const validIds = new Set(valid.map(c => c.id));
   const catalog = new Map(master.cards.map(c => [c.id, c]));
   const initial = new Map(valid.map(c => [c.id, owned.get(c.id)!.awakening!]));
-  const objective = master.books.filter(b => b.effects.some(e => e.target === target) &&
-    b.cardIds.every(id => catalog.has(id) && (!owned.has(id) || validIds.has(id))));
+  const objective = master.books.filter(b => (!goal||b.id===goal.bookId) && b.effects.some(e => e.target === target) &&
+    b.cardIds.every(id => catalog.has(id)));
   const scoreBook = (book: GrowthBook, levels: Map<string, number>) => {
-    if (!book.cardIds.every(id => levels.has(id))) return 0;
-    const sum = book.cardIds.reduce((n, id) => n + levels.get(id)!, 0);
-    return book.effects.reduce((n, e) => n + (e.target === target && sum >= e.threshold && book.cardIds.length >= e.requiredCount ? e.value : 0), 0);
+    let count=0,sum=0;
+    for(const id of book.cardIds){const level=levels.get(id);if(level!==undefined){count++;sum+=level;}}
+    return book.effects.reduce((n, e) => n + (e.target === target && count>=e.requiredCount && sum>=e.threshold ? e.value : 0), 0);
   };
   const before = new Map(objective.map(b => [b.id, scoreBook(b, initial)]));
   const cost = (card: GrowthCard, to: number) => card.steps.slice(initial.get(card.id) ?? 0, to)
     .reduce((n, s) => ({ xp: n.xp + s.xp, silver: n.silver + s.silver, copies: n.copies + s.copies }), { xp: 0, silver: 0, copies: 0 });
   const found = new Map<string, CollectionCandidate>();
   for (const book of objective) {
+    if(goal&&book.id!==goal.bookId)continue;
     const sum = book.cardIds.reduce((n, id) => n + (initial.get(id) ?? 0), 0);
-    const absent = book.cardIds.some(id => !initial.has(id));
-    const pending = [...new Set(book.effects.filter(e => e.target === target && (absent || e.threshold > sum))
-      .map(e => Math.max(0, e.threshold - sum)))].sort((a, b) => a - b);
-    const thresholds = pending.slice(0, 1);
-    if (!thresholds.length) continue;
-    const limit = Math.max(...thresholds);
+    const registered=book.cardIds.filter(id=>initial.has(id)).length;
+    const effect=goal?{...goal,target,value:0}:book.effects.filter(e=>e.target===target && (registered<e.requiredCount||sum<e.threshold))
+      .sort((a,b)=>a.threshold-b.threshold||a.requiredCount-b.requiredCount)[0];
+    if(effect&&bookEffectActive(book,effect,initial))continue;
+    if(!effect)continue;
+    const usable=book.cardIds.filter(id=>!owned.has(id)||validIds.has(id));
+    if(usable.length<effect.requiredCount||usable.reduce((total,id)=>total+catalog.get(id)!.steps.length,0)<effect.threshold)continue;
+    const limit=Math.max(0,effect.threshold-sum);
+    // Track registration count separately from awakening sum. An absent optional
+    // card may be skipped; an unreadable card may never be registered as missing.
+    const trackRegistration=registered<book.cardIds.length;
+    const stride=trackRegistration?effect.requiredCount+1:1;
     let dp = new Map<number, Allocation[]>([[0, [{ xp: 0, silver: 0, copies: 0, missing: 0, levels: [] }]]]);
     for (const id of book.cardIds) {
       const card = catalog.get(id)!, from = initial.get(id) ?? 0;
       const next = new Map<number, Allocation[]>();
-      for (const [added, allocations] of dp) for (const allocation of allocations) for (let to = from; to <= card.steps.length; to++) {
+      const put=(key:number,allocation:Allocation)=>{const list=next.get(key)??[];list.push(allocation);next.set(key,list);};
+      for (const [key, allocations] of dp) for (const allocation of allocations) {
+        const added=trackRegistration?Math.floor(key/stride):key,count=trackRegistration?key%stride:0;
+        if(!initial.has(id))put(key,allocation);
+        if(owned.has(id)&&!validIds.has(id))continue;
+        for (let to = from; to <= card.steps.length; to++) {
         const total = added + to - from;
         if (total > limit) break;
         const c = cost(card, to);
         const missing = Math.max(0, c.copies - (initial.has(id) ? owned.get(id)!.extraCopies! : 0)) + (initial.has(id) ? 0 : 1);
         const candidate = { xp: allocation.xp + c.xp, silver: allocation.silver + c.silver, copies: allocation.copies + c.copies,
           missing: allocation.missing + missing, levels: to > from || !initial.has(id) ? [...allocation.levels, [id, to] as [string, number]] : allocation.levels };
-        const list = next.get(total) ?? [];
-        list.push(candidate); next.set(total, list);
+        put(total*stride+(trackRegistration?Math.min(effect.requiredCount,count+1):0),candidate);
+        }
       }
       // Bound work while keeping both scarce-card and experience alternatives.
       for (const [added, list] of next) {
@@ -59,19 +72,19 @@ export function collectionCandidates(request: GrowthComparisonRequest, valid: Gr
       }
       dp = next;
     }
-    for (const threshold of thresholds) for (const allocation of dp.get(threshold) ?? []) {
+    for (const allocation of dp.get(limit*stride+(trackRegistration?effect.requiredCount:0)) ?? []) {
       const levels = new Map(initial);
       for (const [id, to] of allocation.levels) levels.set(id, to);
       // Shared-card growth must not jump over another book's intermediate reward.
       // Registration may legitimately unlock multiple already-reached thresholds.
-      if (objective.some(b => {
+      if (!goal&&objective.some(b => {
         const from = b.cardIds.reduce((n, id) => n + (initial.get(id) ?? 0), 0);
         const to = b.cardIds.reduce((n, id) => n + (levels.get(id) ?? 0), 0);
-        return new Set(b.effects.filter(e => e.target === target && e.threshold > from && e.threshold <= to)
+        return new Set(b.effects.filter(e => e.target === target && e.threshold > from && e.threshold <= to && bookEffectActive(b,e,levels))
           .map(e => e.threshold)).size > 1;
       })) continue;
       const changes = objective.map(b => ({ id: b.id, name: b.name, gain: scoreBook(b, levels) - before.get(b.id)!,
-        conditional: b.cardIds.some(id => !initial.has(id)) })).filter(b => b.gain > 0);
+        conditional: b.cardIds.some(id => !initial.has(id)&&levels.has(id)) })).filter(b => b.gain > 0);
       const gain = changes.reduce((n, b) => n + b.gain, 0);
       if (!gain) continue;
       const key = JSON.stringify([...allocation.levels].sort(([a], [b]) => a.localeCompare(b)));

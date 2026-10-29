@@ -17,38 +17,44 @@ import { ScanQuickStart, UsageGuide } from './ui/UsageGuide';
 import { ThemeToggle } from './ui/AppTheme';
 import { WorkspaceNavigation } from './ui/WorkspaceNavigation';
 import { memo, startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { deferredPanel } from './ui/DeferredPanel';
 import { createLatestPublisher } from './latest-publisher';
 import { runScanner } from "./features/card-scanner/scanner";
 import { prepareScanner } from './features/card-scanner/scanner-preparation';
 import type { PreparedScanner } from './features/card-scanner/scanner-preparation';
+import {NORMAL_SCANNER_NAME_CONFIGURATION} from './features/card-scanner/scanner-name-configuration';
+import {takeMatchingPreparedScanner} from './features/card-scanner/matching-scanner-preparation';
 import { createPreparedSlot } from './features/card-scanner/prepared-slot';
 import { createPreparationFeedback } from './features/card-scanner/preparation-feedback';
-import { ScanReadProgress } from './features/card-scanner/ScanReadProgress';
+import {createScannerFeedback} from './features/card-scanner/scanner-feedback';
+import { ScanReadProgress, ScanReadCount } from './features/card-scanner/ScanReadProgress';
 import { scrollGuidance } from './features/card-scanner/scroll-guidance';
 import {ScanActivity} from './features/card-scanner/ScanActivity';
 import {ScanMonitor} from './features/card-scanner/ScanMonitor';
 import {createScanMonitorStore} from './features/card-scanner/scan-monitor-store';
 import {ScanAttention} from './features/card-scanner/ScanAttention';
-import {ScanReplayDialog} from './features/card-scanner/ScanReplayDialog';
+import {carryUnattributedFieldReviews,unattributedFieldReviewCount} from './features/card-scanner/current-scan-fields';
 import {beginReproduction} from './features/card-scanner/scan-reproduction';
+import type {ExactRecorder} from './features/card-scanner/exact-recording';
 import type { ScannerState } from "./features/card-scanner/scanner";
 import type { ScannedCard } from "./features/card-scanner/recognizer";
 import "./App.css";
 import { CardThumbnail } from "./CardThumbnail";
 import { CardName } from './CardName';
-import { MerchantAlerts } from './features/merchants/MerchantAlerts';
-import { GrowthPlanner } from './features/growth/GrowthPlanner';
-import { RaidCards } from './features/raid/RaidCards';
 import { useLiveResults } from './features/use-live-results';
 import { completeGrowth, undoGrowth } from './features/growth/complete-growth';
 import type { GrowthMaster } from './features/growth/optimizer';
 import type { GrowthSequenceStep } from './features/growth/growth-sequence';
 import { merchantCardIssues } from './features/merchants/merchant-progress';
-import {inventoryCsv,parseInventoryCsv,parseCsvExperience,csvInventoryState} from './inventory-csv';
+import {inventoryCsv,inventoryCsvIssues,parseInventoryCsv,parseCsvExperience,csvInventoryState} from './inventory-csv';
 import type {CsvCatalogCard} from './inventory-csv';
 import { unownedInventory } from './inventory-unowned';
 import { loadScanBackup, saveScanBackup, clearScanBackup, LegacyBackupChoice } from "./features/card-scanner/scan-backup";
 const CARDS_PER_PAGE = 40;
+const MerchantAlerts = deferredPanel(async () => ({default:(await import('./features/merchants/MerchantAlerts')).MerchantAlerts}));
+const GrowthPlanner = deferredPanel(async () => ({default:(await import('./features/growth/GrowthPlanner')).GrowthPlanner}));
+const RaidCards = deferredPanel(async () => ({default:(await import('./features/raid/RaidCards')).RaidCards}));
+const ScanReplayDialog = deferredPanel(async () => ({default:(await import('./features/card-scanner/ScanReplayDialog')).ScanReplayDialog}));
 function reviewMessage(reasons: string[]) {
   return [
     ...new Set(
@@ -96,13 +102,40 @@ function App() {
   const [scanMonitorStore]=useState(createScanMonitorStore);
   const [replayOpen,setReplayOpen]=useState(false);
   const [replayBusy,setReplayBusy]=useState(false);
+  const pendingEngines=useRef(0);
+  const [engineSettling,setEngineSettling]=useState(false);
+  function beginEngineWork(){
+    pendingEngines.current++;setEngineSettling(true);let released=false;
+    return()=>{if(released)return;released=true;pendingEngines.current--;setEngineSettling(pendingEngines.current>0);};
+  }
   const [recordingStatus,setRecordingStatus]=useState('');
+  const [recordingEnabled,setRecordingEnabled]=useState(false);
+  const [recordingSaving,setRecordingSaving]=useState(false);
+  const [recordingPreparation,setRecordingPreparation]=useState('');
+  const [recordingReady,setRecordingReady]=useState(false);
+  const [recordingUnavailable,setRecordingUnavailable]=useState(false);
+  const exactPreparation=useRef<ReturnType<typeof createPreparedSlot<ExactRecorder>>|null>(null);
+  const diagnosticRun=useRef(0);
+  useEffect(()=>{
+    if(!recordingEnabled||busy||replayBusy)return;
+    let active=true;
+    queueMicrotask(()=>{if(active){setRecordingReady(false);setRecordingUnavailable(false);setRecordingPreparation('전체 입력 기록 준비 중…');}});
+    const slot=createPreparedSlot(async signal=>{
+      const {createExactRecording}=await import('./features/card-scanner/exact-recording');
+      signal.throwIfAborted();
+      return createExactRecording();
+    });
+    exactPreparation.current=slot;
+    void slot.ready.then(()=>{if(active){setRecordingReady(true);setRecordingPreparation('전체 입력 기록 준비 완료');}})
+      .catch(()=>{if(active){setRecordingReady(false);setRecordingUnavailable(true);setRecordingPreparation('무손실 기록을 준비하지 못했습니다. 스캔은 계속할 수 있으며 영상·진단 요약만 보관합니다.');}});
+    return()=>{active=false;if(exactPreparation.current===slot)exactPreparation.current=null;void slot.dispose();};
+  },[recordingEnabled,busy,replayBusy]);
   const preparation = useRef<ReturnType<typeof createPreparedSlot<PreparedScanner>> | null>(null);
   const [preparationState, setPreparationState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [preparationMessage, setPreparationMessage] = useState('');
   const [preparationAttempt, setPreparationAttempt] = useState(0);
   useEffect(() => {
-    if (busy || replayBusy) return;
+    if (busy || replayBusy || engineSettling) return;
     let active = true;
     let slot: ReturnType<typeof createPreparedSlot<PreparedScanner>> | undefined;
     const feedback = createPreparationFeedback(message => {
@@ -112,7 +145,7 @@ function App() {
     const timer = window.setTimeout(() => {
       setPreparationState('loading');
       setPreparationMessage('');
-      slot = createPreparedSlot(signal => prepareScanner(feedback.update, signal));
+      slot = createPreparedSlot(signal => prepareScanner(feedback.update, signal,NORMAL_SCANNER_NAME_CONFIGURATION));
       preparation.current = slot;
       void slot.ready.then(() => {
         feedback.dispose();
@@ -132,12 +165,13 @@ function App() {
       if (preparation.current === slot) preparation.current = null;
       void slot?.dispose();
     };
-  }, [busy, replayBusy, preparationAttempt]);
+  }, [busy, replayBusy, engineSettling,preparationAttempt]);
   const [engineReady, setEngineReady] = useState(false);
   const [scanStartedAt, setScanStartedAt] = useState(0);
   const engineReadyRef = useRef(false);
   const [sharing, setSharing] = useState(false);
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState('');
   const [backupReady, setBackupReady] = useState(false);
   const [backupStatus, setBackupStatus] = useState('목록 불러오는 중');
   const [backupError, setBackupError] = useState('');
@@ -192,7 +226,8 @@ function App() {
       const saved = await loadScanBackup(legacyKey);
       savedState.current = saved ?? null;
       inventory.current = saved?.cards ?? [];
-      setState(saved ?? null); setError(''); setBackupError(''); setLegacyChoices([]);
+      scanMonitorStore.clear();
+      setState(saved ?? null); setError(''); setActionError(''); setBackupError(''); setLegacyChoices([]);
       setBackupStatus('카드 목록은 이 브라우저에 자동 저장됩니다.');
     } catch (e) { if (e instanceof LegacyBackupChoice) setLegacyChoices(e.choices); setBackupError(e instanceof Error ? e.message : '목록 복원 실패'); }
     finally { setBackupReady(true); }
@@ -202,7 +237,7 @@ function App() {
     try {
       await clearScanBackup();
       release(); inventory.current=[]; savedState.current=null; setState(null);
-      setQuery(''); setInventoryFilter('owned'); setPage(1); setResetPending(false); setError(''); setBackupError('');
+      setQuery(''); setInventoryFilter('owned'); setPage(1); setResetPending(false); setError(''); setActionError(''); setBackupError('');
       setBackupStatus('카드 목록은 이 브라우저에 자동 저장됩니다.');
     } catch (e) { setBackupError(e instanceof Error ? e.message : '목록 초기화 실패'); }
     finally { setBackupReady(true); }
@@ -240,7 +275,12 @@ function App() {
     [],
   );
   async function start() {
-    const prepared = preparation.current?.take();
+    let unattributedFields = unattributedFieldReviewCount(state);
+    const preparedCandidate = preparation.current?.take();
+    const exact = recordingEnabled ? exactPreparation.current?.take() : undefined;
+    const thisDiagnosticRun=++diagnosticRun.current;
+    setRecordingReady(false);
+    setRecordingSaving(false);
     setPreparationState('loading');
     controller.current?.abort();
     const abort = new AbortController();
@@ -251,26 +291,37 @@ function App() {
     setResetPending(false);
     setCsvPending(null);
     setError("");
+    setActionError('');
     setState(null);
     scanMonitorStore.clear();
+    const feedbackProbe=import.meta.env.DEV?createScannerFeedback({now:()=>performance.now(),signal:abort.signal}):undefined;
+    scanMonitorStore.setFeedback(feedbackProbe);
     const presentation = createLatestPublisher<ScannerState>((next) => {
       if (controller.current !== abort) return;
       startTransition(() => setState(next));
     }, 200);
     abort.signal.addEventListener("abort", () => presentation.flush(), { once: true });
-    let recording:Awaited<ReturnType<typeof beginReproduction>>|undefined;
+    let recording:ReturnType<typeof beginReproduction>|undefined;
     let finalState:ScannerState|undefined,completed=false;
+    let scannerStarted=false;
+    const engineSettled=beginEngineWork();
     try {
+      const prepared=await takeMatchingPreparedScanner(()=>preparedCandidate,NORMAL_SCANNER_NAME_CONFIGURATION);
       try {
-        recording=await beginReproduction(inventory.current,{browser:navigator.userAgent,catalog:catalogVersion,build:import.meta.env.VITE_BUILD_REVISION??'local'});
-        setRecordingStatus('공유 화면 기록 중 · 이 브라우저에만 보관');
-      } catch {setRecordingStatus('재현 기록 저장소를 사용할 수 없습니다. 카드 스캔은 계속합니다.');}
+        recording=beginReproduction(inventory.current,{browser:navigator.userAgent,catalog:catalogVersion,build:import.meta.env.VITE_BUILD_REVISION??'local'},
+          {record:recordingEnabled,exact,nameConfiguration:NORMAL_SCANNER_NAME_CONFIGURATION,
+            ...(feedbackProbe?{feedbackReceipts:()=>feedbackProbe.stats()}:{}),});
+        setRecordingStatus(recordingEnabled?'진단용 전체 입력 기록 중':'');
+      } catch {void exact?.dispose();setRecordingStatus('진단 기록을 준비하지 못했습니다. 카드 스캔은 계속합니다.');}
+      scannerStarted=true;
       await runScanner(
         video.current!,
         "screen",
         abort.signal,
-        (next) => {
+        (result) => {
           if (controller.current === abort) {
+            unattributedFields=carryUnattributedFieldReviews(unattributedFields,result);
+            const next=unattributedFields ? {...result,unattributedFieldReviews:unattributedFields} : result;
             scanMonitorStore.publish(next);
             if(next.autoStopped)setSharing(false);
             inventory.current = next.cards;
@@ -283,8 +334,9 @@ function App() {
         "all",
         undefined,
         false,
-        recording?.options??{},
+        {...recording?.options,nameConfiguration:NORMAL_SCANNER_NAME_CONFIGURATION,onInternalSettled:engineSettled,feedbackProbe},
         prepared,
+        (feedback) => { if(controller.current === abort)scanMonitorStore.publish(feedback); },
       );
       presentation.flush();
       completed=true;
@@ -299,15 +351,28 @@ function App() {
         setSharing(false);
       }
     } finally {
+      if(!scannerStarted){engineSettled();void exact?.dispose();}
       presentation.cancel();
-      if(recording){
-        setRecordingStatus('최근 스캔 기록 보관 중');
-        try{await recording.finish(finalState,completed);setRecordingStatus('최근 공유 화면 자동 보관 · 다음 스캔 시 교체');}
-        catch(e){setRecordingStatus(e instanceof Error?e.message:'재현 기록 저장 실패');}
-      }
       if (controller.current === abort) {
         controller.current = null;
         setBusy(false);
+      }
+      // Result use and inventory autosave resume immediately. Diagnostic I/O
+      // has its own status and cannot hold the scanner in its busy state.
+      if(recording){
+        if(diagnosticRun.current===thisDiagnosticRun){
+          setRecordingSaving(true);
+          setRecordingStatus(recordingEnabled?'진단 기록 저장 중 · 카드 목록은 사용할 수 있습니다.':'');
+        }
+        void recording.finish(finalState,completed).then(file=>{
+          if(diagnosticRun.current===thisDiagnosticRun)setRecordingStatus(recordingEnabled?(file?
+            file.metadata.exact?.complete?'입력 기록 보관됨 · 스캔 진단에서 확인':'부분 입력 기록 보관됨 · 스캔 진단에서 확인':
+            '입력 없이 진단 요약만 보관되었습니다.'):'');
+        }).catch(e=>{
+          if(diagnosticRun.current===thisDiagnosticRun)setRecordingStatus(e instanceof Error?e.message:'진단 기록 저장 실패');
+        }).finally(()=>{
+          if(diagnosticRun.current===thisDiagnosticRun)setRecordingSaving(false);
+        });
       }
     }
   }
@@ -336,17 +401,17 @@ function App() {
     } catch (e) {
       next?.getTracks().forEach((t) => t.stop());
       if (next && stream.current === next) release();
-      setError(e instanceof Error ? e.message : "화면 공유 실패");
+      setActionError(e instanceof Error ? e.message : "화면 공유 실패");
     }
   }
   async function readCsv(file:File) {
-    setCsvReading(true);setCsvPending(null);setCsvExperience('');setError('');setResetPending(false);
+    setCsvReading(true);setCsvPending(null);setCsvExperience('');setActionError('');setResetPending(false);
     try {
       if(file.size>1_048_576)throw new Error('CSV 파일은 1MB 이내로 선택해 주세요.');
       const source=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());
       setCsvPending({name:file.name,cards:parseInventoryCsv(source,catalog)});
     } catch(error) {
-      setError(error instanceof TypeError?'UTF-8 형식의 CSV를 선택해 주세요.':error instanceof Error?error.message:'CSV를 읽지 못했습니다.');
+      setActionError(error instanceof TypeError?'UTF-8 형식의 CSV를 선택해 주세요.':error instanceof Error?error.message:'CSV를 읽지 못했습니다.');
     } finally {setCsvReading(false);}
   }
   function applyCsv() {
@@ -355,7 +420,7 @@ function App() {
     const next=csvInventoryState(imported,csvExperience);
     release();inventory.current=imported;
     setState(next);
-    setCsvPending(null);setQuery('');setInventoryFilter('owned');setPage(1);setResultView('cards');setError('');
+    setCsvPending(null);setQuery('');setInventoryFilter('owned');setPage(1);setResultView('cards');setError('');setActionError('');
   }
   function downloadInventory(blob:Blob,filename:string) {
     const object = URL.createObjectURL(blob);
@@ -373,49 +438,51 @@ function App() {
       const next = completeGrowth(state, master, step);
       inventory.current = next.cards;
       setState(next);
-      setError('');
-    } catch (e) { setError(e instanceof Error ? e.message : '성장을 반영하지 못했습니다.'); }
+      setActionError('');
+    } catch (e) { setActionError(e instanceof Error ? e.message : '성장을 반영하지 못했습니다.'); }
   }
   function undoLastGrowth() {
     if (busy || !state || inventory.current !== state.cards) return;
     const next = undoGrowth(state);
     inventory.current = next.cards;
     setState(next);
-    setError('');
+    setActionError('');
   }
   const cards = state?.cards ?? [];
+  const unattributedReview = unattributedFieldReviewCount(state);
   const liveResults = useLiveResults(cards, state?.growthPoints?.current, busy);
-  const merchantIssues = busy ? [] : merchantCardIssues(cards);
+  const unowned = useMemo(()=>unownedInventory(catalog,state,busy||!!error),[catalog,state,busy,error]);
+  const csvIssues = useMemo(()=>inventoryCsvIssues(state?.cards??[]),[state?.cards]);
+  const merchantIssues = busy ? [] : merchantCardIssues(cards,unowned!==null);
   const missingCards = merchantIssues.filter(card=>card.missing);
   const uncertainIds = new Set(merchantIssues.filter(card=>!card.missing).map(card=>card.id));
   const displayCards = cards.map(card=>uncertainIds.has(card.id)&&!card.review.length ? {...card,review:['각성·장수 확인']} : card);
   const reviewCards = displayCards.filter((c) => c.review.length > 0);
-  const review = reviewCards.length + missingCards.length;
-  const nameIssues = state?.expected === cards.length && !reviewCards.some(card => card.review.includes("이름 확인"))
-    ? [] : (state?.unidentified ?? []).filter(item=>!item.pending);
+  const review = Math.max(reviewCards.length,unattributedReview) + missingCards.length;
+  const csvReviewCount = Math.max(csvIssues.length,unattributedReview);
+  const nameIssues = (state?.unidentified ?? []).filter(item=>!item.pending);
   const filtered = displayCards.filter(
     (c) => c.name.includes(query),
   ).sort((a,b)=>a.name.localeCompare(b.name,'ko',{numeric:true}));
-  const unowned = useMemo(()=>unownedInventory(catalog,state,busy||!!error),[catalog,state,busy,error]);
   const filteredUnowned = (unowned ?? []).filter(card=>card.name.includes(query));
   const visibleCount = onlyUnowned ? filteredUnowned.length : filtered.length;
   const match = state?.expected !== null && state?.expected === cards.length;
   const stopped = state?.status === "스캔 중지" || !!state?.interrupted;
-  const resultsReady=!csvReading&&!stopped&&!error&&cards.length>0;
+  const resultsReady=!csvReading&&!stopped&&!error&&cards.length>0&&!unattributedReview;
   const activeView=resultsReady?resultView:'cards';
   const pageCount=Math.max(1,Math.ceil(visibleCount/CARDS_PER_PAGE));
   const currentPage=Math.min(page,pageCount);
   const pageCards=filtered.slice((currentPage-1)*CARDS_PER_PAGE,currentPage*CARDS_PER_PAGE);
   const pageUnowned=filteredUnowned.slice((currentPage-1)*CARDS_PER_PAGE,currentPage*CARDS_PER_PAGE);
   const pageCardCount=onlyUnowned?pageUnowned.length:pageCards.length;
-  const showReview=()=>{setResultView('cards');requestAnimationFrame(()=>document.getElementById('scan-attention')?.scrollIntoView({block:'start'}));};
+  const showReview=()=>{setResultView('cards');requestAnimationFrame(()=>document.getElementById(unattributedReview?'unattributed-attention':'scan-attention')?.scrollIntoView({block:'start'}));};
   const changePage=(next:number)=>{setPage(next);document.getElementById('card-results')?.scrollIntoView({block:'start'});};
   const scrollNotice = scrollGuidance({gaps:state?.scrollGaps?.length ?? 0,busy,
     expected:state?.expected ?? null,collected:state?.currentRunNames ?? cards.length,
     autoStopped:state?.autoStopped,recoverySkipped:state?.recoverySkipped});
   const finalizing = busy && state?.recoverySkipped;
   const workPhase = sharing ? 'capture' : state?.workPhase ?? 'reading';
-  const statusTitle = state?.interrupted === "stalled" ? "스캔 미완료" : error ? "입력을 확인해 주세요" : busy && !engineReady ? "스캔 준비 중" : sharing ? "화면 공유 중" : busy && workPhase==='cleanup' ? "스캔을 마무리하고 있어요" : busy && workPhase==='verifying' ? "판독 결과를 검증하고 있어요" : busy && workPhase==='recovery' ? "저장된 화면을 다시 확인하고 있어요" : finalizing ? "카드 검증 완료" : busy ? "카드를 읽고 있어요" : stopped ? "스캔 중지됨" : state?.autoStopped ? "전체 카드 수집 완료" : state?.status === "CSV 불러오기 완료" ? "CSV 불러오기 완료" : cards.length ? "카드 목록 준비됨" : "화면을 공유해 시작하세요";
+  const statusTitle = state?.interrupted === "stalled" ? "스캔 미완료" : error ? "입력을 확인해 주세요" : busy && !engineReady ? "스캔 준비 중" : sharing ? "화면 공유 중" : busy && workPhase==='cleanup' ? "스캔을 마무리하고 있어요" : busy && workPhase==='verifying' ? "판독 결과를 검증하고 있어요" : busy && workPhase==='recovery' ? "저장된 화면을 다시 확인하고 있어요" : finalizing ? "카드 검증 완료" : busy ? "카드를 읽고 있어요" : stopped ? "스캔 중지됨" : review > 0 ? "확인할 카드가 남아 있어요" : state?.autoStopped ? "전체 카드 수집 완료" : state?.status === "CSV 불러오기 완료" ? "CSV 불러오기 완료" : cards.length ? "카드 목록 준비됨" : "화면을 공유해 시작하세요";
   const statusDescription = busy && !engineReady ? `${state?.status ?? "화면 검출 모듈 준비 중"} · 준비가 끝나면 스크롤해 주세요.`
     : sharing ? (state?.located ? "성장 탭을 천천히 스크롤해 주세요. 읽은 카드는 아래에 쌓입니다." : "카드 보관함의 성장 탭을 찾고 있어요. 카드 화면을 보여 주세요.")
     : busy && workPhase==='cleanup' ? "판독 작업을 종료하고 임시 기록을 정리하고 있습니다."
@@ -429,8 +496,8 @@ function App() {
     : "로스트아크 카드 보관함의 성장 탭을 열어 주세요.";
   const scanSummary = (
     <section className="summary-grid" aria-label="스캔 요약">
-        <div className="summary-card"><span>수집한 카드</span><strong>{cards.length}<small> / {state?.expected ?? "—"}종</small></strong>
-          {state?.expected != null && <p className={match ? "verified" : "muted"}>{match ? "수량 일치" : `${Math.abs(state.expected - cards.length)}종 차이`}</p>}</div>
+        <div className="summary-card"><span>{state?.currentRunRead !== undefined ? '판독 확인' : '수집한 카드'}</span><strong><ScanReadCount completed={state?.currentRunRead ?? cards.length} expected={state?.expected ?? null} store={busy?scanMonitorStore:undefined}/></strong>
+          {state?.expected != null && <p className={match && !review ? "verified" : "muted"}>{state?.currentRunRead !== undefined && `수집 ${cards.length}종 · `}{match ? "수량 일치" : `${Math.abs(state.expected - cards.length)}종 차이`}</p>}</div>
         {(review > 0 || nameIssues.length > 0) && <div className="summary-card"><span>확인할 카드</span><strong className="needs-review">{review > 0 ? <>{review}<small>종</small></> : <>미식별<small>{nameIssues.length}건</small></>}</strong>
           {review > 0 && nameIssues.length > 0 && <p>미식별 화면 {nameIssues.length}건</p>}</div>}
         <div className="summary-card"><span>{state?.growthPointsEstimated ? '보유 경험치 (예상)' : '보유 경험치'}</span><strong>{state?.growthPoints?.current.toLocaleString('ko-KR') ?? "—"}</strong></div>
@@ -456,10 +523,11 @@ function App() {
       </header>
       <div className="app-layout">
       <WorkspaceNavigation value={activeView} onChange={setResultView} ready={resultsReady} count={cards.length}
-        hint={busy ? '읽은 카드부터 각 메뉴에 반영합니다.' : review > 0 || nameIssues.length > 0 ? '강조된 카드를 다시 보여 주세요.' : !cards.length ? '스캔하거나 CSV를 불러오면 시작할 수 있어요.' : undefined} />
+        hint={unattributedReview ? '최신 판독 확인이 필요합니다. 카드 성장 탭을 다시 공유해 주세요.' : busy ? '읽은 카드부터 각 메뉴에 반영합니다.' : review > 0 || nameIssues.length > 0 ? '강조된 카드를 다시 보여 주세요.' : !cards.length ? '스캔하거나 CSV를 불러오면 시작할 수 있어요.' : undefined} />
       <main className="workspace">
+      {actionError && <p className="error" role="alert">{actionError}<button className="text-button" onClick={() => setActionError('')}>닫기</button></p>}
       {busy && activeView!=='cards' && <div className="notice" role="status">
-        <span className="scan-spinner" aria-hidden="true" /> 스캔 중 · {state?.currentRunRead ?? 0} / {state?.expected ?? '—'}종 판독 · 결과 갱신 중
+        <span className="scan-spinner" aria-hidden="true" /> 스캔 중 · <ScanReadCount completed={state?.currentRunRead ?? 0} expected={state?.expected ?? null} store={scanMonitorStore} inline/> 판독 · 결과 갱신 중
         <p>현재까지 확인한 목록 기준입니다. 재스캔은 기존 목록을 갱신하며, 미스캔 카드는 미등록으로 확정하지 않습니다.</p>
         <button className="text-button" onClick={()=>setResultView('cards')}>스캔 진행 보기</button>
       </div>}
@@ -475,22 +543,29 @@ function App() {
           <h1>카드 스캔</h1>
           <div className="toolbar">
             {sharing ? <Button variant="contained" startIcon={<StopCircleOutlined />} onClick={stopSharing}>화면 공유 종료</Button>
-              : <Button variant="contained" startIcon={<ScreenShareOutlined />} disabled={busy || replayBusy || csvReading || !backupReady || !catalog.length || preparationState!=='ready'} onClick={() => void share()}>{!busy && preparationState==='loading' ? '스캔 준비 중' : '화면 공유 시작'}</Button>}
+              : <Button variant="contained" startIcon={<ScreenShareOutlined />} disabled={busy || replayBusy || engineSettling || csvReading || !backupReady || !catalog.length || preparationState!=='ready' || (recordingEnabled&&!recordingReady&&!recordingUnavailable)} onClick={() => void share()}>{!busy && preparationState==='loading' ? '스캔 준비 중' : recordingEnabled&&!recordingReady&&!recordingUnavailable ? '진단 기록 준비 중' : '화면 공유 시작'}</Button>}
             <Button color="inherit" startIcon={<RestartAltOutlined />} disabled={busy || !backupReady || !cards.length} aria-expanded={resetPending} onClick={() => {setResetPending(!resetPending);setCsvPending(null);}}>목록 초기화</Button>
-            <Button variant="outlined" startIcon={<FileDownloadOutlined />} disabled={busy || !cards.length} title="전체 카드의 이름·각수·카드수 저장 · 행이 있으면 보유" onClick={()=>downloadInventory(new Blob([inventoryCsv(cards)],{type:'text/csv;charset=utf-8'}),'loacard-cards.csv')}>CSV 저장</Button>
+            <Button variant="outlined" startIcon={<FileDownloadOutlined />} disabled={busy || !cards.length || csvReviewCount>0} title={csvReviewCount?`${csvReviewCount}종의 이름·각성·장수 확인 후 저장할 수 있습니다.`:'전체 카드의 이름·각수·카드수 저장 · 행이 있으면 보유'} onClick={()=>{
+              try{
+                if(unattributedFieldReviewCount(state))throw new Error('최신 판독이 확인되지 않은 입력이 있습니다. 카드 성장 탭을 다시 스캔한 뒤 저장해 주세요.');
+                downloadInventory(new Blob([inventoryCsv(cards)],{type:'text/csv;charset=utf-8'}),'loacard-cards.csv');
+              }
+              catch(e){setActionError(e instanceof Error?e.message:'CSV 저장 실패');}
+            }}>CSV 저장</Button>
             <Button component="label" role={undefined} tabIndex={-1} variant="outlined" startIcon={<FileUploadOutlined />} disabled={busy||csvReading||!backupReady||!catalog.length} sx={{ '&:focus-within': { outline: '2px solid var(--accent)', outlineOffset: 2 } }}>
               {csvReading?'CSV 읽는 중…':'CSV 불러오기'}
               <input className="visually-hidden" aria-label="CSV 불러오기" type="file" accept=".csv,text/csv" disabled={busy||csvReading||!backupReady||!catalog.length}
                 onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void readCsv(file);}} />
             </Button>
             {busy && !sharing && <button className="text-button" onClick={() => controller.current?.abort()}>스캔 중지</button>}
-            <Button color="inherit" disabled={busy||csvReading} onClick={()=>setReplayOpen(true)}>스캔 기록</Button>
           </div>
-          <small className="muted">{recordingStatus||'최근 공유 화면 한 건을 이 브라우저에 자동 보관합니다.'}</small>
+          {recordingStatus&&<small className="muted" role="status">{recordingStatus}</small>}
+          {!busy&&csvReviewCount>0&&<small className="muted">확인할 카드 {csvReviewCount}종을 다시 읽으면 CSV로 저장할 수 있습니다.</small>}
           {!busy && <div role="status" className="scan-preparation">
             {preparationState==='loading' && preparationMessage && <span className="scan-spinner" aria-hidden="true" />}
             <span>{preparationMessage}</span>
             {preparationState==='error' && <Button size="small" onClick={() => setPreparationAttempt(value => value + 1)}>준비 다시 시도</Button>}
+            {engineSettling&&!busy&&!replayBusy&&<span role="status">이전 인식 엔진 종료를 기다리고 있습니다.</span>}
           </div>}
           {csvPending && <div className="import-confirm" role="group" aria-label="CSV 불러오기 확인">
             <div><strong>{csvPending.name} · {csvPending.cards.length}종</strong>
@@ -509,10 +584,10 @@ function App() {
           </div>}
           <div className={`scan-progress ${busy ? "processing" : ""}`} role="status" aria-live="polite">
             <strong>{busy ? <span className="scan-spinner" aria-hidden="true" />
-              : !error && !stopped && cards.length ? <span className="scan-complete" aria-hidden="true">✓</span>
+              : !error && !stopped && !review && cards.length ? <span className="scan-complete" aria-hidden="true">✓</span>
               : <span className={`status-dot ${sharing ? "active" : ""}`} aria-hidden="true" />}{statusTitle}</strong>
             {(busy || stopped || error || !cards.length) && <p>{statusDescription}</p>}
-            {busy && engineReady && <ScanReadProgress completed={state?.currentRunRead ?? 0} expected={state?.expected ?? null}
+            {busy && engineReady && <ScanReadProgress store={scanMonitorStore} completed={state?.currentRunRead ?? 0} expected={state?.expected ?? null}
               collected={state?.currentRunNames ?? 0} phase={workPhase} recoveryPercent={state?.recoveryPercent} startedAt={scanStartedAt} />}
             {sharing && state?.expected != null && <p>화면 수집 {state.currentRunNames ?? 0} / {state.expected}종 · 수집 완료 시 자동 종료</p>}
             {sharing && (state?.livePerformance?.lagMs ?? 0) > 1500 && (state?.queued ?? 0) > 0 &&
@@ -531,7 +606,11 @@ function App() {
         <ScanMonitor state={state} store={scanMonitorStore} busy={busy} sharing={sharing} onStop={stopSharing}/>
         {busy&&engineReady&&<ScanActivity items={state?.activity??[]} queued={state?.queued??0}/>}
       </section>
-      {replayOpen&&<ScanReplayDialog open onClose={()=>setReplayOpen(false)} onBusy={setReplayBusy} takePrepared={()=>{setPreparationState('loading');return preparation.current?.take();}}/>}
+      {replayOpen&&<ScanReplayDialog open onClose={()=>setReplayOpen(false)} onBusy={setReplayBusy} beginEngineWork={beginEngineWork} engineBusy={engineSettling} takePrepared={configuration=>{
+        setPreparationState('loading');return takeMatchingPreparedScanner(()=>preparation.current?.take(),configuration);
+      }}
+        recordingEnabled={recordingEnabled} onRecordingChange={enabled=>{setRecordingEnabled(enabled);setRecordingReady(false);}}
+        recordingBusy={busy||recordingSaving} recordingPreparation={busy?'현재 화면을 기록하고 있습니다.':recordingSaving?'이전 진단 기록 저장 중':recordingEnabled?recordingPreparation:undefined}/>}
       {catalogError && <p className="error" role="alert">{catalogError} <button className="text-button" onClick={() => { setCatalogError(''); setCatalogAttempt(n => n + 1); }}>다시 시도</button></p>}
       {legacyChoices.length > 0 && <div className="notice" role="group" aria-label="이전 백업 선택">{legacyChoices.map((item, i) => <Button key={item.key} disabled={!backupReady || busy} onClick={() => void restoreBackup(item.key)} title={item.names}>백업 {i + 1} · {item.count}종 · 경험치 {item.xp?.toLocaleString('ko-KR') ?? '미확인'}</Button>)}</div>}
       {backupError && <div className="notice" role="alert"><p>{backupError}</p>{!!state && <button className="text-button" disabled={busy || !backupReady} onClick={() => setBackupAttempt(n => n + 1)}>저장 다시 시도</button>}<button className="text-button" disabled={busy || !backupReady} onClick={() => void restoreBackup()}>현재 목록 대신 저장 목록 불러오기</button><span> · 현재 목록은 먼저 CSV로 보관해 주세요.</span></div>}
@@ -540,6 +619,10 @@ function App() {
       {busy && state?.processingWarning && <p className="notice" role="status">{state.processingWarning}</p>}
       {!!state?.droppedFrames && <p className="notice" role="alert">일부 화면을 처리하지 못했습니다. 빠르게 지나간 구간을 다시 공유해 주세요.</p>}
       {scanSummary}
+      {unattributedReview>0&&<section id="unattributed-attention" className="notice" role="alert">
+        <strong>{state?.unresolvedFieldChanges ? `최신 필드 관측 ${state.unresolvedFieldChanges}건의 판독 확인이 필요합니다.` : `이전 목록의 ${unattributedReview}종은 최신 각성·장수 확인이 필요합니다.`}</strong>
+        <p>저장된 판독 근거만으로는 해당 카드를 특정할 수 없습니다. 전체 목록을 다시 공유해 주세요. 확인 전에는 CSV 저장과 계산 메뉴를 사용할 수 없습니다.</p>
+      </section>}
       <ScanAttention cards={reviewCards} unknown={nameIssues} missing={missingCards} artworkById={artworkById}/>
       {scrollNotice && !!state?.scrollGaps?.length && <section className="notice" aria-label={scrollNotice==='collecting'?'수집 구간 참고':'다시 보여줄 스크롤 구간'}>
         <strong>{scrollNotice==='collecting'?'빠르게 지나간 구간이 있어요':'지나간 구간을 한 번 더 보여 주세요'}</strong>
@@ -581,7 +664,7 @@ function App() {
           <span>보관함 용량 <b>{state?.capacity ?? "—"}</b></span></div>}
       </section>
       </section>
-      <section id="panel-merchants" role="tabpanel" aria-labelledby="view-merchants" hidden={activeView!=='merchants'}>{activeView==='merchants' && <MerchantAlerts cards={liveResults.cards} busy={busy} rarityById={rarityById} onReview={showReview} />}</section>
+      <section id="panel-merchants" role="tabpanel" aria-labelledby="view-merchants" hidden={activeView!=='merchants'}>{activeView==='merchants' && <MerchantAlerts cards={liveResults.cards} busy={busy} complete={unowned!==null} rarityById={rarityById} onReview={showReview} />}</section>
       <section id="panel-growth" role="tabpanel" aria-labelledby="view-growth" hidden={activeView!=='growth'}>{activeView==='growth' && <GrowthPlanner cards={liveResults.cards} growthPoints={liveResults.xp} busy={busy} complete={unowned!==null} onComplete={markGrowthComplete} />}</section>
       <section id="panel-raid" role="tabpanel" aria-labelledby="view-raid" hidden={activeView!=='raid'}>{activeView==='raid' && <RaidCards cards={liveResults.cards} complete={unowned!==null} xp={liveResults.xp} />}</section>
       <footer className="app-footer">
@@ -593,7 +676,7 @@ function App() {
         <p>© 2026 LoaCard</p>
       </footer>
       </main></div>
-      <UsageGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
+      <UsageGuide open={guideOpen} onClose={() => setGuideOpen(false)} diagnosticsDisabled={busy||csvReading} onDiagnostics={() => {setGuideOpen(false);setReplayOpen(true);}} />
     </div>
   );
 }

@@ -6,19 +6,24 @@ export interface ObservedPosition {id:string;slot:number}
 export class ObservedInventoryLayout {
   private frames=new Map<string,(number|undefined)[]>();
   private identities=new Map<number,string>();
+  private version=0;
+  get revision(){return this.version;}
   capture(groups:(number|undefined)[]) {
     if(groups.length!==40||new Set(groups.flatMap((g,i)=>g===undefined?[]:[i%10])).size<6)return;
     const key=groups.map(g=>g??'').join(',');
     if(this.frames.has(key))return;
     this.frames.set(key,[...groups]);
+    this.version++;
     while(this.frames.size>1024)this.frames.delete(this.frames.keys().next().value!);
   }
   identify(group:number,id:string) {
+    if(this.identities.get(group)===id)return;
     this.identities.set(group,id);
+    this.version++;
     while(this.identities.size>40960)this.identities.delete(this.identities.keys().next().value!);
   }
   // Sorting invalidates spatial receipts, but not an already identified crop.
-  resetPositions(){this.frames.clear();}
+  resetPositions(){this.frames.clear();this.version++;}
   resolve(confirmed:string[],anchors:ObservedPosition[],complete=true):ObservedPosition[] {
     const allowed=new Set(confirmed);
     if(!allowed.size||allowed.size!==confirmed.length||allowed.size>550)return [];

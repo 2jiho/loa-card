@@ -5,6 +5,7 @@ import { compareGrowthCandidates, currentBookProgress } from '../src/features/gr
 import type { GrowthMaster } from '../src/features/growth/optimizer';
 import type { ScannerState } from '../src/features/card-scanner/scanner';
 import { consensus } from '../src/features/card-scanner/consensus';
+import { growthDisplayRows } from '../src/features/growth/growth-display';
 
 const master: GrowthMaster = { version: 'test', targets: [{ id: 'd', name: '악마' }],
   cards: ['a', 'b'].map(id => ({ id, name: id, rarity: 0,
@@ -105,4 +106,50 @@ test('a better final reward still allows completing and undoing each intermediat
   assert.equal(two.growthPoints!.current, 20);
   assert.equal(currentBookProgress(m, two.cards).targets[0].current, 110);
   assert.deepEqual(undoGrowth(two), one);
+});
+
+test('unchanged required members are revalidated before single and bundled completion', () => {
+  const m = structuredClone(master);
+  m.cards[1].steps.forEach(step => { step.xp = 1000; });
+  m.books[0].cardIds = ['a','b'];
+  m.books[0].effects.forEach(effect => { effect.requiredCount = 2; });
+  const before = initial();before.cards[1].extraCopies = 0;
+  const sequence = compareGrowthCandidates({master:m,cards:before.cards,xp:50,target:'d'}).collectionCandidates;
+  const bundle = growthDisplayRows(sequence)[0].step;
+  assert.equal(bundle.available.cards.length,1);
+  assert.equal(bundle.available.cards[0].id,'a');
+  assert.equal(bundle.available.requirements.length,2);
+  for (const plan of [sequence[0],bundle]) {
+    for (const mutate of [
+      (state:ScannerState) => { state.cards[1].review = ['최신 각성·장수 확인'];state.cards[1].countReliable = false; },
+      (state:ScannerState) => { state.cards[1].awakening = null; },
+      (state:ScannerState) => { state.cards.pop(); },
+    ]) {
+      const stale = structuredClone(before);mutate(stale);
+      const snapshot = structuredClone(stale);
+      assert.throws(()=>completeGrowth(stale,m,plan),/도감 조건/);
+      assert.deepEqual(stale,snapshot);
+    }
+  }
+});
+
+test('optional unreadable members do not block proved single or bundled rewards', () => {
+  const m = structuredClone(master);
+  m.cards[1].steps.forEach(step => { step.xp = 1000; });
+  m.cards.push({...structuredClone(m.cards[1]),id:'c',name:'c'});
+  m.books[0].cardIds = ['a','b','c'];
+  m.books[0].effects.forEach(effect => { effect.requiredCount = 2; });
+  const before = initial();before.cards[1].extraCopies = 0;
+  before.cards.push({...before.cards[1],id:'c',name:'c'});
+  const sequence = compareGrowthCandidates({master:m,cards:before.cards,xp:50,target:'d'}).collectionCandidates;
+  const bundle = growthDisplayRows(sequence)[0].step;
+  assert.equal(bundle.available.requirements.length,2);
+  const stale = structuredClone(before);
+  stale.cards[2].review = ['최신 각성·장수 확인'];stale.cards[2].countReliable = false;
+  for (const plan of [sequence[0],bundle]) {
+    const after = completeGrowth(stale,m,plan);
+    assert.equal(after.cards[0].awakening,plan.available.cards[0].to);
+    assert.deepEqual(after.cards[2],stale.cards[2]);
+    assert.deepEqual(undoGrowth(after).cards,stale.cards);
+  }
 });

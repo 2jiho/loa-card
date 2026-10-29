@@ -47,6 +47,26 @@ export class LiveOcrSchedule {
  }
 }
 
+/** Use this at the consumer boundary, not just inside an unreachable OCR
+ * branch: a one-reader device shares its fast lane with bounded retry turns. */
+export class LiveReaderSchedule {
+ private fastStreak=0;
+ private ocr=new LiveOcrSchedule();
+ next(index:number,plan:{fast:number;readers:number},jobs:{queued:number;short:number;full:number;live:boolean}):'fast'|'short'|'full'|undefined {
+  const shared=plan.readers===plan.fast;
+  const retryWaiting=jobs.short>0||jobs.full>0;
+  if(index<plan.fast&&jobs.queued>0&&(!shared||!retryWaiting||this.fastStreak<8)) {
+   this.fastStreak=Math.min(8,this.fastStreak+1);return 'fast';
+  }
+  if(index>=plan.fast||shared||!jobs.live) {
+   const job=liveOcrLane(jobs.short,jobs.full,Math.max(0,index-plan.fast),Math.max(1,plan.readers-plan.fast),jobs.live,this.ocr);
+   if(job)this.fastStreak=0;
+   return job;
+  }
+  return undefined;
+ }
+}
+
 /** Preserve every retry; unknown identities precede known-card field checks. */
 export function shiftOcrRetry<T extends { needsIdentity?: boolean }>(queue:T[],priority?:(item:T)=>number,preferFields=false):T|undefined {
  const unknown=!preferFields&&queue.some(item=>item.needsIdentity);
@@ -80,9 +100,17 @@ export class LiveRetrySchedule {
  * separately; unknown identities and newer observations remain eligible.
  */
 export function retryWorkPriority(item:{needsIdentity?:boolean;fieldTarget?:{id:string;order:number}},
-  groupReads:number,confirmedFields:ReadonlyMap<string,number>) {
+  groupReads:number,confirmedFields:ReadonlyMap<string,number>,latestOrders?:ReadonlyMap<string,number>) {
   if(item.needsIdentity||!item.fieldTarget)return groupReads;
   const confirmed=confirmedFields.get(item.fieldTarget.id);
+  if(confirmed!==undefined&&confirmed>=item.fieldTarget.order)return 1_000_000+groupReads;
+  const latest=latestOrders?.get(item.fieldTarget.id);
+  // Resolve the newest failed field first: success can retire its older
+  // fallbacks. Keep those fallbacks eligible if the newest crop also fails.
+  // Reserve a separate finite band below the obsolete-work cutoff used above.
+  const reads=Number.isFinite(groupReads)?Math.max(0,Math.min(499_998,groupReads)):499_998;
+  if(latest!==undefined&&Number.isFinite(latest)&&Number.isFinite(item.fieldTarget.order)&&item.fieldTarget.order<latest)
+    return 500_000+reads;
   if(confirmed===undefined)return 0;
-  return confirmed>=item.fieldTarget.order ? 1_000_000+groupReads : 1+groupReads;
+  return 1+reads;
 }

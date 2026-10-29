@@ -19,7 +19,7 @@ export function unownedInventory(catalog: readonly CsvCatalogCard[], state: Inve
   // Auto-stop separately rechecks the header and every current-run identity.
   // Noisy duplicate crops can remain in diagnostics after that proof succeeds.
   const confirmedCapture = state.autoStopped && state.currentRunNames === state.expected;
-  if (state.status !== 'CSV 불러오기 완료' && (state.expected === null || state.expected !== owned.size ||
+  if (state.status !== 'CSV 불러오기 완료' && (state.expected === null || state.currentRunNames !== state.expected || state.expected !== owned.size ||
       (!!state.unidentified?.length && !confirmedCapture))) return null;
   return catalog.filter(card => !owned.has(card.id)).sort((a, b) => a.name.localeCompare(b.name, 'ko', { numeric: true }));
 }

@@ -49,8 +49,18 @@ function difference(a: ArrayLike<number>, b: ArrayLike<number>) {
  * from being mistaken for a repeated observation after scrolling. */
 export function sameFieldObservation(a: Uint8Array, b: Uint8Array) {
   if (a.length !== 3240 || b.length !== 3240) return false;
-  return [[0, 864], [864, 2016], [2016, 2592]].every(([from, to]) =>
-    difference(a.subarray(from, to), b.subarray(from, to)) < 2.5);
+  return fieldWithin(a,b,0,864,2.5)&&fieldWithin(a,b,864,2016,2.5)&&fieldWithin(a,b,2016,2592,2.5);
+}
+/** Nonnegative byte differences cannot recover after reaching the strict
+ * field budget. Avoid per-comparison views and stop mismatches early. */
+function fieldWithin(a:Uint8Array,b:Uint8Array,from:number,to:number,limit:number){
+  const budget=(to-from)*limit;
+  let sum=0;
+  for(let i=from;i<to;i++){
+    sum+=Math.abs(a[i]-b[i]);
+    if(sum>=budget)return false;
+  }
+  return true;
 }
 /** A card moves vertically in its column, including when scrolling back up. */
 export function settledFields(vector: Uint8Array, slot: number, previous: Uint8Array[]) {
@@ -63,14 +73,26 @@ export function sameCapture(a: Uint8Array, b: Uint8Array) {
   if (a.length !== 3240) return difference(a, b) < 5;
   // Preserve separate name, counter/jewels and lower-field tolerances. A small
   // changed counter must not disappear into the large unchanged portrait.
-  return [[0, 864, 2.5], [864, 2016, 2.5], [2016, 2592, 2.5], [2592, 3240, 5]].every(
-    ([from, to, limit]) => difference(a.subarray(from, to), b.subarray(from, to)) < limit,
-  );
+  return sameFieldObservation(a,b)&&fieldWithin(a,b,2592,3240,5);
 }
-/** Same-column observation groups, independent of OCR identity. */
+type CaptureGroup = { id: number; key: string; vector: Uint8Array; score: number; stable: boolean };
+/** Same-column observation groups, independent of OCR identity. Eviction only
+ * removes matching metadata: queued rasters and identity evidence are separate,
+ * and group IDs are never reused. An evicted repeat receives a fresh inspection. */
 export class CaptureObservations {
   private nextId = 0;
-  private buckets = new Map<string, { id: number; vector: Uint8Array; score: number; stable: boolean }[]>();
+  private buckets = new Map<string, CaptureGroup[]>();
+  private recent = new Map<number,CaptureGroup>();
+  private limit:number;
+  constructor(limit=4096){this.limit=Math.max(1,Math.floor(limit));}
+  get size(){return this.recent.size;}
+  private unlink(group:CaptureGroup){
+    const bucket=this.buckets.get(group.key);
+    if(!bucket)return;
+    const index=bucket.indexOf(group);if(index>=0)bucket.splice(index,1);
+    if(!bucket.length)this.buckets.delete(group.key);
+  }
+  private touch(group:CaptureGroup){this.recent.delete(group.id);this.recent.set(group.id,group);}
   offer(vector: Uint8Array, column: number, score: number, stable: boolean): "new" | "better" | "duplicate" {
     return this.offerDetailed(vector, column, score, stable).decision;
   }
@@ -91,15 +113,24 @@ export class CaptureObservations {
       if (old) break search;
     }
     if (old) {
+      this.touch(old);
       if ((!old.stable && stable) || (stable === old.stable && score > old.score * 1.15 + .5)) {
+        if(old.key!==key){
+          this.unlink(old);old.key=key;
+          const destination=this.buckets.get(key)??[];
+          destination.push(old);this.buckets.set(key,destination);
+        }
         old.vector = vector.slice(); old.score = score; old.stable = stable;
         return { id: old.id, decision: "better" };
       }
       return { id: old.id, decision: "duplicate" };
     }
     const id = ++this.nextId;
-    bucket.push({ id, vector: vector.slice(), score, stable });
-    this.buckets.set(key, bucket);
+    const group={ id, key, vector: vector.slice(), score, stable };
+    bucket.push(group);this.buckets.set(key, bucket);this.touch(group);
+    while(this.recent.size>this.limit){
+      const oldest=this.recent.values().next().value!;this.unlink(oldest);this.recent.delete(oldest.id);
+    }
     return { id, decision: "new" };
   }
 }

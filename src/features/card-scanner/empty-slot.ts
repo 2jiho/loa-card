@@ -23,6 +23,32 @@ function fit(values:ArrayLike<number>,ref:ReturnType<typeof model>) {
   return {gain:dot/ref.square,correlation:dot/Math.sqrt(ref.square*energy),
     residual:Math.sqrt(Math.max(0,energy-dot*dot/ref.square)/values.length)};
 }
+/** A bright cursor can corrupt a few samples while the fixed back is otherwise
+ * intact. Only remove one small localized region, never the name band, then
+ * require the remaining full motif to agree more strictly than a normal back.
+ * Unrelated artwork, large overlays and distributed errors remain unknown. */
+function matchesOutsideCursor(values:ArrayLike<number>,native:NonNullable<ReturnType<typeof fit>>) {
+  let mean=0;for(let i=0;i<values.length;i++)mean+=values[i];mean/=values.length;
+  const excluded=new Set<number>();let left=20,right=-1,top=28,bottom=-1,brightest=0;
+  for(let i=0;i<values.length;i++) {
+    const error=values[i]-mean-native.gain*nativeModel.centered[i];
+    if(!Number.isFinite(error))return false;
+    if(Math.abs(error)<=10)continue;
+    const x=i%20,y=Math.floor(i/20);
+    // The first seven rows retain both lines of the fixed card-name area.
+    if(y<7)return false;
+    excluded.add(i);left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);
+    brightest=Math.max(brightest,error);
+    if(excluded.size>12||right-left>=4||bottom-top>=5)return false;
+  }
+  if(!excluded.size||brightest<25)return false;
+  const remaining=new Float32Array(values.length-excluded.size),expected=new Float32Array(remaining.length);
+  for(let i=0,at=0;i<values.length;i++)if(!excluded.has(i)) {
+    remaining[at]=values[i];expected[at++]=reference[i];
+  }
+  const matched=fit(remaining,model(expected));
+  return !!matched&&matched.gain>=.6&&matched.gain<=1.5&&matched.correlation>=.97&&matched.residual<=1.5;
+}
 export function isEmptySlotVector(values: ArrayLike<number>) {
   if(values.length!==reference.length)return false;
   const native=fit(values,nativeModel);
@@ -31,9 +57,11 @@ export function isEmptySlotVector(values: ArrayLike<number>) {
   // Video block noise disturbs fine pixels in the dark card back. Compare the
   // same fixed motif at a second scale, retaining a native-detail error cap so
   // averaging cannot erase an unrelated picture into an apparent empty slot.
-  if(native.correlation<.9||native.residual>3)return false;
-  const smooth=fit(coarse(values),coarseModel);
-  return !!smooth&&smooth.correlation>=.96&&smooth.gain>=.6&&smooth.gain<=1.5&&smooth.residual<=1.75;
+  if(native.correlation>=.9&&native.residual<=3) {
+    const smooth=fit(coarse(values),coarseModel);
+    if(smooth&&smooth.correlation>=.96&&smooth.gain>=.6&&smooth.gain<=1.5&&smooth.residual<=1.75)return true;
+  }
+  return matchesOutsideCursor(values,native);
 }
 
 export function emptySlotVector(rgba: ArrayLike<number>, width: number, height: number) {

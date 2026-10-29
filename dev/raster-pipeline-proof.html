@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LoaCard 픽셀 변환 파이프라인 검증</title>
+<style>body{font:15px system-ui;margin:2rem;max-width:75rem;color:#18202a}label,button,select,input{font:inherit;margin:.4rem}button,select,input{padding:.5rem}pre{background:#f2f4f7;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere}video{width:320px;max-height:180px}</style></head>
+<body><h1>픽셀 변환 파이프라인 검증</h1><p>동일한 원본을 직접 변환한 RGBA와 기본 작업자·대체 경로의 전체 픽셀 해시를 비교합니다. 두 입력을 먼저 제출하고 세 번 반복하며, 이 검사는 스캔 전체의 실시간 처리량을 뜻하지 않습니다.</p>
+<label>영상 <select id="corpus" aria-label="검증할 영상"><option value="">합성 RGBA만 검사</option></select></label><label>영상 시각 <input id="time" type="number" value="4.5" min="0" step="0.1" aria-label="검증할 영상 시각"></label>
+<button id="run">픽셀 변환 파이프라인 검증</button><button id="stop" disabled>중지</button><p id="status" role="status">입력을 선택하세요.</p><video muted controls></video><pre id="result" aria-label="픽셀 변환 검증 결과"></pre>
+<script type="module" src="./raster-pipeline-proof.ts"></script></body></html>

@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {execFileSync} from 'node:child_process';
+import { corpusServerPlugin } from './dev/corpus-server.ts';
 let revision='local';
 try{revision=execFileSync('git',['rev-parse','--short','HEAD'],{encoding:'utf8'}).trim();if(execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim())revision+='-dirty';}catch{/* Source archives can build without Git. */}
 // Bind source, data, dependencies and pinned model hashes; computed once at build/server start.
@@ -20,9 +21,10 @@ export default defineConfig({
   worker: { format: "es" },
   // The OCR worker is loaded on first scan; prebundle now so dev does not
   // reload the page and discard the selected input during model startup.
-  optimizeDeps: { include: ["onnxruntime-web/wasm", "lz4-lite"] },
+  optimizeDeps: { include: ["onnxruntime-web/wasm", "lz4-lite", "lz4-wasm"] },
   plugins: [
     react(),
+    corpusServerPlugin(),
     {
       name: "local-video-fixture",
       configureServer(server) {
@@ -81,5 +83,5 @@ export default defineConfig({
       },
     },
   ],
-  server: { host: "127.0.0.1" },
+  server: { host: "127.0.0.1",watch:{ignored:['**/work/**','**/fixtures/local/**']} },
 });

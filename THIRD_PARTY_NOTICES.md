@@ -11,6 +11,7 @@ LoaCard 작성 코드와 문서는 [MIT](LICENSE)로 제공한다. 아래 외부
 | Google Material Icons 원본 SVG | Apache-2.0 | https://github.com/google/material-design-icons |
 | Emotion | MIT | https://github.com/emotion-js/emotion |
 | Mediabunny | MPL-2.0 | https://github.com/Vanilagy/mediabunny |
+| lz4-lite / lz4-wasm | MIT | https://github.com/alex-vukov/lz4-lite · https://github.com/PSeitz/lz4-wasm |
 | ONNX Runtime Web | MIT | https://github.com/microsoft/onnxruntime |
 | OpenCV.js / 배포 패키지 | Apache-2.0 | https://github.com/TechStark/opencv-js |
 | PaddleOCR 모델 | Apache-2.0 | https://github.com/PaddlePaddle/PaddleOCR |
@@ -29,6 +30,8 @@ Mediabunny는 수정하지 않은 npm 패키지를 사용한다. 빌드에 사�
 `licenses/third-party/manifest.json`은 사전 빌드된 워커/WASM과 모델의 추가 고지 원문·출처·SHA-256을 관리한다. `npm run notices`가 파일과 관련 패키지 버전을 검증하고 `public/licenses/supplemental/` 및 원문 모음에 포함한다. Tesseract 워커의 `buffer`, `base64-js`, `ieee754`는 상위 패키지 lockfile과 npm 무결성, source map의 소스 일치로 확인했다. `worker.min.js.LICENSE.txt`도 워커와 함께 배포한다.
 
 ONNX Runtime의 버전별 전체 ThirdPartyNotices, Tesseract core의 고정 submodule 고지, OpenCV 빌드 정보에 나온 protobuf/zlib/flatbuffers 고지와 tessdata 모델 원문을 보존한다. 상위 프로젝트의 전체 고지는 웹 빌드에 포함되지 않은 구성도 다루므로 전체 바이너리 구성표(SBOM)와 동일하지 않다. Tesseract core includes software based in part on the work of the Independent JPEG Group. Google Material Icons는 MUI가 SVG 컴포넌트로 변환한 아이콘이며 Google 원본의 Apache-2.0과 MUI 패키지 MIT를 구분한다.
+
+무손실 입력 기록은 `lz4-wasm@0.9.2`를 사용하며 초기화할 수 없는 환경은 `lz4-lite`로 처리한다. npm 패키지의 MIT·Apache 원문을 보존하고 설치된 WASM의 SHA-256을 준비 단계에서 검증한다. 공개 upstream에는 해당 사전 빌드의 `Cargo.lock`과 확인 가능한 npm `gitHead`가 없어 내부 Rust 의존성의 정확한 잠금 버전은 확정하지 않았다. 선언된 `lz4_flex`, `wasm-bindgen`, `console_error_panic_hook`, `cfg-if`의 MIT 고지를 추가 보존하며, 이는 정확한 바이너리 SBOM을 대신하지 않는다. 버전·WASM·선언이 바뀌면 재검토한다.
 
 ## 게임과 데이터
 

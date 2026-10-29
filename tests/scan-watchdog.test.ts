@@ -8,6 +8,40 @@ const snapshot=(extra:Partial<ScannerState>={}):ScannerState=>({status:'처리 �
 const never=()=>new Promise<void>(()=>{});
 const delay=(ms:number)=>new Promise<void>(r=>setTimeout(r,ms));
 
+test('watchdog return does not claim the operation settled; late teardown notifies exactly once',async()=>{
+  const controller=new AbortController();let finish!:()=>void,started!:()=>void,settled=0;
+  const began=new Promise<void>(resolve=>{started=resolve;});
+  const pending=new Promise<void>(resolve=>{finish=resolve;});
+  const run=guardScan({signal:controller.signal,update:()=>{},sharing:()=>false,cancelResources:()=>{},
+    run:async()=>{started();await pending;},onRunSettled:()=>{settled++;}});
+  await began;controller.abort(new DOMException('Stop','AbortError'));
+  await assert.rejects(run,{name:'AbortError'});assert.equal(settled,0,'a bounded stop is not a cleanup acknowledgement');
+  finish();await delay(0);assert.equal(settled,1);
+  controller.abort();await delay(0);assert.equal(settled,1);
+});
+
+test('normal operation settles before guarded return and observer failures have no authority',async()=>{
+  const order:string[]=[];
+  await guardScan({signal:new AbortController().signal,update:()=>{},sharing:()=>false,cancelResources:()=>{},
+    run:async()=>{order.push('run');},onRunSettled:()=>{order.push('settled');throw Error('diagnostic observer');}});
+  order.push('returned');assert.deepEqual(order,['run','settled','returned']);
+});
+
+test('an already cancelled scan never starts work and reports its absent operation settled',async()=>{
+  const controller=new AbortController();controller.abort();let runs=0,settled=0;
+  await assert.rejects(guardScan({signal:controller.signal,update:()=>{},sharing:()=>false,cancelResources:()=>{},
+    run:async()=>{runs++;},onRunSettled:()=>{settled++;}}),{name:'AbortError'});
+  await delay(0);assert.equal(runs,0);assert.equal(settled,1);
+});
+
+test('an asynchronous settlement observer cannot delay or reject a successful scan',async()=>{
+  let finish!:()=>void,observed=false;
+  const observer=new Promise<void>(resolve=>{finish=resolve;});
+  await guardScan({signal:new AbortController().signal,update:()=>{},sharing:()=>false,cancelResources:()=>{},run:async()=>{},
+    onRunSettled:async()=>{await observer;observed=true;throw Error('late diagnostic observer');}});
+  assert.equal(observed,false);finish();await delay(0);assert.equal(observed,true);
+});
+
 test('status/queue changes do not reset a stalled scan; actual processed frames do',()=>{
   const clock=new ScanProgressClock(0);clock.observe(snapshot(),0);clock.ready(0);
   clock.observe(snapshot({status:'다른 문구',queued:20}),10_000);

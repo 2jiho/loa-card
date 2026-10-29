@@ -1,10 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { formatScanTime, readingEstimate } from './read-progress';
 import type { ReadSample, ScanWorkPhase } from './read-progress';
+import type { ScanMonitorStore } from './scan-monitor-store';
 
-export function ScanReadProgress({completed,expected,collected=0,phase='capture',recoveryPercent,startedAt}:{
-  completed:number;expected:number|null;collected?:number;phase?:ScanWorkPhase;recoveryPercent?:number;startedAt:number;
+type ReadCountsProps = {completed:number;expected:number|null;store?:ScanMonitorStore};
+const subscribeToNothing = () => () => {};
+const emptySnapshot = () => undefined;
+
+function useReadCounts({completed,expected,store}:ReadCountsProps) {
+  // Scroll-only snapshots do not need to redraw counters or progress estimates.
+  const getCompleted=useCallback(()=>store?.getSnapshot()?.currentRunRead,[store]);
+  const getExpected=useCallback(()=>store?.getSnapshot()?.expected,[store]);
+  const subscribe=store?.subscribe??subscribeToNothing;
+  const liveCompleted=useSyncExternalStore(subscribe,getCompleted,emptySnapshot);
+  const liveExpected=useSyncExternalStore(subscribe,getExpected,emptySnapshot);
+  return {completed:liveCompleted??completed,expected:liveExpected===undefined?expected:liveExpected};
+}
+
+/** Keeps the small count current without rerendering the inventory page. */
+export function ScanReadCount({inline=false,...props}:ReadCountsProps & {inline?:boolean}) {
+  const {completed,expected}=useReadCounts(props);
+  const total=expected?.toLocaleString('ko-KR')??'—';
+  return <>{completed.toLocaleString('ko-KR')}{inline?` / ${total}종`:<small> / {total}종</small>}</>;
+}
+
+export function ScanReadProgress({completed:completedProp,expected:expectedProp,store,collected=0,phase='capture',recoveryPercent,startedAt}:ReadCountsProps & {
+  collected?:number;phase?:ScanWorkPhase;recoveryPercent?:number;startedAt:number;
 }) {
+  const {completed,expected}=useReadCounts({completed:completedProp,expected:expectedProp,store});
   const [now, setNow] = useState(() => performance.now());
   const samples = useRef<ReadSample[]>([]);
   const [estimate, setEstimate] = useState<ReturnType<typeof readingEstimate>>(null);

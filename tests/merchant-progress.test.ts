@@ -65,5 +65,19 @@ test('similar card names and edited display names cannot cross-match IDs',()=>{
 test('copy list contains only the selected regional recommendation and exact shortage',()=>{
  const group=merchants[0],cards=group.cards.map(c=>make(c.id));cards[0].awakening=4;cards[0].extraCopies=2;
  const text=merchantListText(merchantProgress(cards),'needed');
- assert.match(text,/아르테미스 \(벤\)/);assert.match(text,/시이라 3장 부족/);assert.doesNotMatch(text,/유디아/);
+ assert.match(text,/아르테미스 \(벤\)/);assert.match(text,/시이라 3장 부족/);assert.match(text,/유디아.*확인 필요/);
+});
+
+test('a missing merchant card becomes a registration plus fifteen copies only after inventory completeness',()=>{
+ const group=merchants[0],cards=group.cards.slice(1).map(c=>make(c.id));
+ assert.equal(merchantProgress(cards)[0].status,'unknown');
+ const complete=merchantProgress(cards,true)[0];
+ assert.equal(complete.status,'needed');assert.equal(complete.remaining,16);
+ assert.equal(complete.items[0].remaining,16);assert.equal(complete.unknown.length,0);
+ assert.equal(merchantCardIssues(cards,true).some(c=>c.id===group.cards[0].id),false);
+});
+
+test('duplicate rows cannot certify a completed merchant region',()=>{
+ const cards=merchants[0].cards.map(c=>make(c.id));cards.push({...cards[0]});
+ assert.equal(merchantProgress(cards,true)[0].status,'unknown');
 });

@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LoaCard 복구 영상 참조 검증</title>
+<style>body{font:15px system-ui;margin:2rem;max-width:75rem;color:#18202a}button{font:inherit;padding:.5rem;margin:.4rem .4rem .4rem 0}pre{background:#f2f4f7;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere}code{overflow-wrap:anywhere}</style></head>
+<body><h1>복구 영상 참조 검증</h1><p>비공개 준비 영상의 바이트 해시를 확인한 뒤 모든 프레임을 순서대로 디코드합니다. 기본 검사는 저장된 복구 원본 58·79·100을 비교하며, <code>?all=1</code>은 별도로 준비한 전체 복구 후보를 비교합니다. RGBA 해시로 실제 순번·PTS·프레임 길이를 찾으며 가까운 시각으로 대신하지 않습니다.</p>
+<p>먼저 저장소 루트에서 <code>node --import tsx work/encoded-reference/prepare-video5-reference.mjs</code>를 실행하고 독립 원본 픽셀 검증 자료 <code>work/video5-partial-prefix-proof.json</code>를 준비합니다. 준비한 영상만 최대 32MiB까지 메모리에 받으며 512MB 원본 재현 파일은 이 화면에서 읽지 않습니다. 영상 완전성이나 라이브 원본과의 동일성을 자동으로 증명하는 검사는 아닙니다.</p>
+<button id="run">복구 영상 참조 검증</button><button id="stop" disabled>중지</button><p id="status" role="status">검사를 시작하세요.</p><p id="progress" aria-live="polite"></p><pre id="result" aria-label="복구 영상 참조 검증 결과"></pre>
+<script type="module" src="./encoded-reference-proof.ts"></script></body></html>

@@ -5,7 +5,7 @@ import { unownedInventory } from '../src/inventory-unowned';
 const catalog = [
   { id:'b',name:'바루투',rarity:1 }, { id:'a',name:'가디언',rarity:2 }, { id:'c',name:'아만',rarity:4 },
 ];
-const completed = { status:'스캔 완료',expected:1,cards:[{id:'b',review:[],awakening:5,extraCopies:0}],unidentified:[] };
+const completed = { status:'스캔 완료',expected:1,currentRunNames:1,cards:[{id:'b',review:[],awakening:5,extraCopies:0}],unidentified:[] };
 
 test('completed inventory uses row presence, including zero extra copies, and sorts missing names',()=>{
   const before=structuredClone(catalog);
@@ -28,12 +28,16 @@ test('CSV row absence is explicit unowned evidence without an in-game inventory 
   assert.deepEqual(unownedInventory(catalog,{...completed,status:'CSV 불러오기 완료',expected:null},false)?.map(c=>c.id),['a','c']);
 });
 
+test('a partial rescan cannot certify absent cards from a seeded inventory total',()=>{
+ for(const currentRunNames of [0,undefined])assert.equal(unownedInventory(catalog,{...completed,currentRunNames},false),null);
+});
+
 test('awakening or count review does not turn an identified card into an unowned one',()=>{
   assert.deepEqual(unownedInventory(catalog,{...completed,cards:[{id:'b',review:['장수 확인']}]},false)?.map(c=>c.id),['a','c']);
 });
 
 test('complete catalog ownership returns an empty list',()=>{
-  assert.deepEqual(unownedInventory(catalog,{...completed,expected:3,cards:catalog.map(c=>({id:c.id,review:[]}))},false),[]);
+  assert.deepEqual(unownedInventory(catalog,{...completed,expected:3,currentRunNames:3,cards:catalog.map(c=>({id:c.id,review:[]}))},false),[]);
 });
 
 test('identity reviews cannot certify missing catalog entries even when the count matches', () => {

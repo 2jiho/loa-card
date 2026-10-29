@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LoaCard 네이티브 평면 반복 검사</title>
+<style>body{font:15px/1.5 system-ui;margin:24px;max-width:76rem;color-scheme:light dark;background:Canvas;color:CanvasText}button{font:inherit;padding:.5rem;margin:0 .5rem .5rem 0}pre{font-size:12px;padding:1rem;background:color-mix(in srgb,CanvasText 7%,Canvas);white-space:pre-wrap;overflow-wrap:anywhere}@media(max-width:420px){body{margin:12px}}</style></head>
+<body><h1>네이티브 평면 반복 검사</h1>
+<p>같은 개인 복구 영상을 두 번 순차 디코딩해 RGB 변환 전의 네이티브 I420/NV12 바이트·평면 레이아웃·색 정보를 비교합니다. 두 번째 검사는 일부 프레임 사이에 짧은 지연을 넣지만 입력 순서를 바꾸거나 프레임을 건너뛰지 않습니다.</p>
+<p>준비 자료와 32MiB 이하의 고정 영상만 읽습니다. 운영 스캐너·기록 형식은 바꾸지 않으며, 부분 기록에서 추출한 영상의 전체성이나 모든 기기의 디코더 결정성을 증명하는 검사가 아닙니다. 앱이 유지하는 복사 버퍼 하나와 디코더 내부 큐·GPU 메모리는 구분합니다.</p>
+<p>같은 버퍼를 재사용해 표준 <code>copyTo({format:'RGBA',colorSpace:'srgb'})</code> 복사도 두 번씩 비교합니다. 이는 Canvas 경로를 우회하는 별도 검사이며 고정 CPU 변환을 보장하지 않습니다.</p>
+<p><label><input id="software" type="checkbox"> 소프트웨어 디코더 우선 힌트</label> · 실제 디코더 선택은 브라우저가 결정합니다.</p>
+<button id="run">네이티브 평면 반복 검사</button><button id="client-run">표준 RGBA 입력 경로 검사</button><button id="stop" disabled>중지</button>
+<p id="status" role="status">검사를 시작하세요.</p><p id="progress" aria-live="polite"></p>
+<pre id="result" aria-label="네이티브 평면 검사 결과"></pre><pre id="client-result" aria-label="표준 RGBA 입력 경로 결과"></pre><script type="module" src="./native-plane-proof.ts"></script></body></html>

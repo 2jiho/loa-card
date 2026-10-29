@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LoaCard 기록 픽셀 검증</title>
+<style>body{font:15px system-ui;margin:2rem;max-width:75rem;color:#18202a}label,button,select{font:inherit;margin:.4rem}button,select{padding:.5rem}pre{background:#f2f4f7;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere}video{width:320px;max-height:180px}table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:.5rem;border:1px solid #ccd1d7;text-align:left}.ok{color:#087344}.bad{color:#ae2535}</style></head>
+<body><h1>기록 픽셀 검증</h1><p>같은 원본을 직접 그린 값, 실제 획득 Worker의 검출 화면, 기록 Worker 변환의 RGBA 해시를 비교합니다. 속도 검사는 별도 실행합니다.</p>
+<label>추가 영상 <select id="corpus" aria-label="검증할 영상"><option value="">합성 RGBA만 검사</option></select></label><label>영상 시각 <input id="time" type="number" value="4.5" min="0" step="0.1" aria-label="검증할 영상 시각"></label>
+<button id="run">픽셀 변환 비교</button><button id="png">PNG 기록 비용 비교</button><p id="status" role="status">입력을 선택하세요.</p><video muted controls></video>
+<table><thead><tr><th>입력</th><th>변환 경로</th><th>결과</th></tr></thead><tbody id="rows"></tbody></table><pre id="result" aria-label="픽셀 검증 결과"></pre>
+<h2>PNG 기록 비용</h2><p>동일 입력 한 장의 PNG 왕복 무손실 여부와 현재 LZ4 키프레임의 비용을 비교합니다. 연속 영상 처리량 검사는 별도입니다.</p><pre id="png-result" aria-label="PNG 기록 비용 결과"></pre>
+<script type="module" src="./recording-raster-proof.ts"></script></body></html>

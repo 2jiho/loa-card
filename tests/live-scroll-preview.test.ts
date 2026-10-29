@@ -14,6 +14,13 @@ test('preview reads only tiny strips without waiting for card jobs, and limits p
  assert.equal(p.read(10,100,1000,125),undefined);assert.equal(calls(),2);
  assert.ok(p.read(10,100,1000,150));assert.equal(calls(),3);
 });
+
+test('fresh 60 fps frames can update the guarded strip every two frames',()=>{
+ const {p,calls}=setup();p.bind(10,100,1000,layout,0);
+ let reads=0;
+ for(let frame=0;frame<120;frame++)if(p.read(10,100,1000,frame*1000/60)!==undefined)reads++;
+ assert.equal(reads,60);assert.equal(calls(),61);
+});
 test('moved or resized windows hide immediately, transient cover can recover at the next read',()=>{
  const {p}=setup();p.bind(10,100,1000,layout,0);
  assert.equal(p.read(100,100,1000,100),null);

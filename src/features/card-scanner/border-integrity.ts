@@ -4,20 +4,27 @@ import type { Box } from "./detector";
  * A dark but present edge differs from a missing edge behind a tooltip. */
 export function borderIntegrity(rgba: ArrayLike<number>, width: number, height: number, box: Box, scale = 1) {
   const contrast = (x: number, y: number, nx: number, ny: number) => {
-    x = Math.round(x); y = Math.round(y); nx = Math.round(nx); ny = Math.round(ny);
     if (Math.min(x, nx) < 0 || Math.min(y, ny) < 0 || Math.max(x, nx) >= width || Math.max(y, ny) >= height) return false;
     const a = (y * width + x) * 4, b = (ny * width + nx) * 4;
     return Math.max(Math.abs(rgba[a] - rgba[b]), Math.abs(rgba[a + 1] - rgba[b + 1]),
       Math.abs(rgba[a + 2] - rgba[b + 2])) >= 10;
   };
+  // The along-edge samples do not depend on the candidate offset. Round the
+  // original expressions once, retaining their exact Canvas pixel positions.
+  const xs:number[]=[],ys:number[]=[];
+  for(let i=0;i<24;i++){
+    const fraction=.12+.76*i/23;
+    xs.push(Math.round(box.x+box.width*fraction));
+    ys.push(Math.round(box.y+box.height*fraction));
+  }
   const side = (axis: "x" | "y", delta: number, end: boolean) => {
     let visible = 0;
+    const edge=axis==='x'?box.x+delta+(end?box.width-2*scale:0):box.y+delta+(end?box.height-3*scale:2*scale);
+    const neighbor=edge+(axis==='x'?(end?3:-3)*scale:(end?4:-4)*scale);
+    const roundedEdge=Math.round(edge),roundedNeighbor=Math.round(neighbor);
     for (let i = 0; i < 24; i++) {
-      const fraction = .12 + .76 * i / 23;
-      const x = axis === "x" ? box.x + delta + (end ? box.width - 2 * scale : 0) : box.x + box.width * fraction;
-      const y = axis === "y" ? box.y + delta + (end ? box.height - 3 * scale : 2 * scale) : box.y + box.height * fraction;
-      visible += Number(contrast(x, y, x + (axis === "x" ? (end ? 3 : -3) * scale : 0),
-        y + (axis === "y" ? (end ? 4 : -4) * scale : 0)));
+      visible += Number(axis==='x'?contrast(roundedEdge,ys[i],roundedNeighbor,ys[i]):
+        contrast(xs[i],roundedEdge,xs[i],roundedNeighbor));
     }
     return visible / 24;
   };

@@ -46,3 +46,51 @@ test('frame snapshots survive overwriting and eviction of source slots',()=>{
  assert.equal(previous.get(0,'a',px),'old-zero');assert.equal(previous.get(1,'b',px),'old-one');
  assert.equal(cache.get(0,'a',px),'new-zero');assert.equal(cache.get(1,'b',px),undefined);
 });
+
+test('region selection compares all bytes including sparse changes and alpha without borrowing full-pixel identity',()=>{
+ const cache=new ExactPixelCache<string>(),pixels=new Uint8ClampedArray(8*6*4).fill(20);
+ const regions=[{x:1,y:1,width:3,height:2},{x:5,y:4,width:2,height:1}];
+ cache.setOwned(0,'geometry',pixels,'fields');const before=pixels.slice();
+ const portrait=pixels.slice();portrait[0]^=1;
+ assert.equal(cache.getRegions(0,'geometry',portrait,8,regions,()=>true),'fields');
+ assert.equal(cache.get(0,'geometry',portrait),undefined,'a subset match is never a whole-crop cache hit');
+ for(const box of regions)for(let y=box.y;y<box.y+box.height;y++)for(let x=box.x;x<box.x+box.width;x++)for(let channel=0;channel<4;channel++){
+  const changed=pixels.slice();changed[(y*8+x)*4+channel]^=1;
+  assert.equal(cache.getRegions(0,'geometry',changed,8,regions,()=>true),undefined);
+ }
+ assert.deepEqual(pixels,before,'comparisons do not change the immutable cache snapshot');
+ assert.deepEqual(portrait.slice(1),before.slice(1));
+});
+
+test('region selection rejects missing geometry, invalid masks, cache eviction and failed content guards',()=>{
+ const cache=new ExactPixelCache<string>(1),pixels=new Uint8ClampedArray(8*6*4);
+ const box={x:1,y:1,width:3,height:2},match=()=>true;
+ cache.setOwned(0,'geometry',pixels,'old');
+ for(const regions of [[],[{...box,x:-1}],[{...box,x:.5}],[{...box,width:0}],[{...box,height:6}],[box,{...box,x:8}]])
+  assert.equal(cache.getRegions(0,'geometry',pixels,8,regions,match),undefined);
+ assert.equal(cache.getRegions(0,'other',pixels,8,[box],match),undefined);
+ assert.equal(cache.getRegions(0,'geometry',pixels,7,[box],match),undefined);
+ assert.equal(cache.getRegions(0,'geometry',pixels,8,[box],()=>false),undefined);
+ const snapshot=cache.snapshot();cache.setOwned(1,'geometry',pixels,'replacement');
+ assert.equal(cache.getRegions(0,'geometry',pixels,8,[box],match),undefined);
+ assert.equal(snapshot.getRegions(0,'geometry',pixels,8,[box],match),'old');
+});
+
+test('region equality preserves every channel for independently offset source views',()=>{
+ const width=7,height=5,size=width*height*4,regions=[{x:1,y:1,width:5,height:3}];
+ for(const leftOffset of [0,1,2,3,4])for(const rightOffset of [0,1,2,3,4]){
+  const left=new Uint8ClampedArray(size+leftOffset+4).subarray(leftOffset,leftOffset+size);
+  const right=new Uint8ClampedArray(size+rightOffset+4).subarray(rightOffset,rightOffset+size);
+  for(let i=0;i<size;i++)left[i]=right[i]=(i*73)%256;
+  const cache=new ExactPixelCache<number>();cache.setOwned(0,'g',left,17);
+  assert.equal(cache.getRegions(0,'g',right,width,regions,()=>true),17);
+  for(let index=0;index<size;index++){
+   right[index]^=1;
+   const pixel=Math.floor(index/4),x=pixel%width,y=Math.floor(pixel/width);
+   const inside=x>=1&&x<6&&y>=1&&y<4;
+   assert.equal(cache.getRegions(0,'g',right,width,regions,()=>true),inside?undefined:17,
+     `${leftOffset}/${rightOffset} byte ${index}`);
+   right[index]^=1;
+  }
+ }
+});

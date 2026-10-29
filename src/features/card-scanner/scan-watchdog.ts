@@ -41,6 +41,9 @@ export async function guardScan(options:{
   update:(state:ScannerState)=>void;
   sharing:()=>boolean;
   cancelResources:()=>void;
+  /** Actual injected operation settlement, independent of the watchdog's
+   * bounded return. This is not a guarantee of OS/native resource reclamation. */
+  onRunSettled?:()=>void;
   limits?:typeof scanLimits;
   intervalMs?:number;
 }) {
@@ -72,7 +75,7 @@ export async function guardScan(options:{
   },options.intervalMs??1000);
   try {
     if(options.signal.aborted)abort();
-    const operation=active?Promise.resolve().then(()=>{
+    const operation=(active?Promise.resolve().then(()=>{
       controller.signal.throwIfAborted();
       return options.run(controller.signal,state=>{
         if(!active)return;
@@ -80,7 +83,7 @@ export async function guardScan(options:{
         warned=ready&&clock.delayed(performance.now());
         options.update({...state,processingWarning:warned?'처리가 지연되고 있어요. 진척이 없으면 자동으로 중단합니다.':undefined});
       },()=>{ready=true;clock.ready(performance.now());});
-    }):stopped;
+    }):stopped).finally(()=>{try{void Promise.resolve(options.onRunSettled?.()).catch(()=>{});}catch{/* Optional lifecycle observer cannot change the scan outcome. */}});
     await Promise.race([operation,stopped]);
   } catch(error){
     if(active)interrupt(error,'failed');

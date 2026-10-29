@@ -148,8 +148,16 @@ export function createCaptureEncoder(record: (frame: DebugFrame) => void, report
           if (failed) throw new Error("원본 캡처 읽기 실패");
           // All future originals must already be accounted for. An absent or
           // evicted analysis always keeps replay alive, even at matching totals.
-          if(completion?.ready()&&analyses.coveredFrom(id,nextId,completion.covered)) {
+          const ready=completion?.ready()??false;
+          if(ready&&completion&&analyses.coveredFrom(id,nextId,completion.covered)) {
             completion.skipped(nextId-id+1);break;
+          }
+          // A later unknown receipt still needs replay, but must not force an
+          // already covered original through disk read/rasterization again.
+          // The same global readiness check retains final-header/metadata and
+          // latest-field requirements; a covered crop alone cannot skip a frame.
+          if(ready&&completion?.covered(analyses.get(id))) {
+            analyses.delete(id);completion.skipped(1);continue;
           }
           const value = await new Promise<RawCapture>((resolve, reject) => {
             read = { id, resolve, reject, timer: setTimeout(() => fail("원본 픽셀 읽기 시간 초과"), 30000) };
@@ -164,7 +172,10 @@ export function createCaptureEncoder(record: (frame: DebugFrame) => void, report
           // The caller must copy the frame before advancing this iterator.
           const analysis=analyses.get(id);
           analyses.delete(id);
-          yield { element: canvas, time: value.time, percent: id / nextId * 100,
+          // This ID names the exact raw read request whose Worker response
+          // matched read.id. Keep it independent of the optional/evictable
+          // analysis; it is not a canonical ID or a PNG/video provenance claim.
+          yield { element: canvas, time: value.time, percent: id / nextId * 100, rawSourceFrameId:id,
             analysis:analysis?.width===value.width&&analysis.height===value.height?analysis:undefined };
         }
       } finally {

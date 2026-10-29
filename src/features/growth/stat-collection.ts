@@ -9,15 +9,15 @@ export function statCollectionPlans(master: GrowthMaster, cards: OwnedCard[], st
   const registered = new Set(valid.map(c => c.id));
   const catalog = new Map(master.cards.map(c => [c.id, c]));
   const relevant = master.books.filter(b => b.collectionEffects?.some(e => e.stats.some(s => s.stat === stat && s.value > 0)));
-  const excluded = relevant.filter(b => b.cardIds.some(id => owned.has(id) && !registered.has(id)));
-  const excludedIds = new Set(excluded.map(b => b.id));
-  const books = relevant.filter(b => !excludedIds.has(b.id));
+  const excluded = relevant.filter(b => b.collectionEffects?.some(e=>e.stats.some(s=>s.stat===stat)&&
+    e.requiredCount>b.cardIds.filter(id=>registered.has(id)||!owned.has(id)).length));
+  const books = relevant;
   const count = (ids: string[], added: Set<string>) => ids.filter(id => registered.has(id) || added.has(id)).length;
   const effectValue = (values: { stat: string; value: number }[]) => values.filter(s => s.stat === stat).reduce((n, s) => n + s.value, 0);
   const unique = new Map<string, string[]>();
   let limited = false;
   for (const book of books) {
-    const missing = book.cardIds.filter(id => !registered.has(id) && catalog.has(id));
+    const missing = book.cardIds.filter(id => !owned.has(id) && catalog.has(id));
     const confirmed = count(book.cardIds, new Set());
     for (const effect of book.collectionEffects ?? []) {
       if (effectValue(effect.stats) <= 0 || effect.requiredCount <= confirmed) continue;

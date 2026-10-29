@@ -15,12 +15,12 @@ import {MerchantSchedule} from './MerchantSchedule';
 import {useMerchantClock} from './use-merchant-clock';
 import {merchantSchedule,relativeKoreanTime,sessionTime} from './merchant-schedule';
 
-export function MerchantAlerts({cards,busy,rarityById,onReview}:{cards:ScannedCard[];busy:boolean;rarityById?:ReadonlyMap<string,number>;onReview?:()=>void}) {
+export function MerchantAlerts({cards,busy,complete=false,rarityById,onReview}:{cards:ScannedCard[];busy:boolean;complete?:boolean;rarityById?:ReadonlyMap<string,number>;onReview?:()=>void}) {
   const now=useMerchantClock();
   const [filter,setFilter]=useState<'needed'|'complete'>('needed');
   const [copyMessage,setCopyMessage]=useState('');
-  const groups=useMemo(()=>merchantProgress(cards),[cards]);
-  const selected=groups.filter(group=>group.status===filter);
+  const groups=useMemo(()=>merchantProgress(cards,complete),[cards,complete]);
+  const selected=groups.filter(group=>filter==='needed'?group.status!=='complete':group.status==='complete');
   const held=groups.filter(group=>group.status==='unknown');
   if(!cards.length)return null;
   return <section className="panel merchant-panel" aria-label="떠돌이 상인">
@@ -33,10 +33,10 @@ export function MerchantAlerts({cards,busy,rarityById,onReview}:{cards:ScannedCa
       <MerchantSchedule now={now} />
       <ToggleButtonGroup className="merchant-tabs" value={filter} exclusive size="small" aria-label="떠돌이 상인 수집 현황 필터"
         onChange={(_, value) => { if(value) { setFilter(value); setCopyMessage(''); } }}>
-        {(['needed','complete'] as const).map(status=><ToggleButton key={status} value={status}>{merchantStatusLabel[status]} · {groups.filter(g=>g.status===status).length}</ToggleButton>)}
+        {(['needed','complete'] as const).map(status=><ToggleButton key={status} value={status}>{merchantStatusLabel[status]} · {groups.filter(g=>status==='needed'?g.status!=='complete':g.status==='complete').length}</ToggleButton>)}
       </ToggleButtonGroup>
       {groups.some(group=>group.unknown.length>0)&&<p className="merchant-guidance">{held.length ? `${held.length}개 지역 확인 필요` : '일부 카드 미확인'} · <a href="#card-results" onClick={onReview}>카드 확인</a></p>}
-      <p className="merchant-guidance">{busy ? '확인된 카드 기준 · 스캔이 끝나면 알림 설정을 결정해 주세요.' : filter==='needed' ? '게임에서 아래 지역의 카드 알림을 켜 주세요.' : '수집 완료 · 카드 알림을 꺼도 됩니다.'}</p>
+      <p className="merchant-guidance">{busy ? '확인된 카드 기준 · 스캔이 끝나면 알림 설정을 결정해 주세요.' : filter==='needed' ? '부족한 카드가 있는 지역의 카드 알림을 켜 주세요.' : '수집 완료 · 카드 알림을 꺼도 됩니다.'}</p>
       <div className="merchant-grid" key={filter}>{[selected.slice(0,Math.ceil(selected.length/2)),selected.slice(Math.ceil(selected.length/2))].map((column,index)=><div className="merchant-column" key={index}>
         {column.map(group=><MerchantRegion key={group.id} group={group} rarityById={rarityById} now={now} />)}
       </div>)}</div>
@@ -55,7 +55,7 @@ function MerchantRegion({group,rarityById,now}:{group:ReturnType<typeof merchant
       <span className="merchant-name"><strong>{group.region}</strong><small>{group.merchant}{schedule ? ` · ${schedule.group}그룹` : ''}</small>
         <small className={`merchant-region-time ${schedule?.current?'is-active':''}`}>{schedule?.current ? `판매 시간 · ${relativeKoreanTime(schedule.current.end,now)}까지` : schedule?.next ? `다음 · ${relativeKoreanTime(schedule.next.start,now)}` : '시간표 미확인'}</small>
       </span>
-      <span className="merchant-result">{group.status==='complete'?'수집 완료':`${group.needed.length}종 · ${group.remaining}장 부족`}
+      <span className="merchant-result">{group.status==='complete'?'수집 완료':group.status==='unknown'?'수집 여부 확인 중':`${group.needed.length}종 · ${group.remaining}장 부족`}
         <small>{group.complete}/{group.items.length}종 수집 완료{group.unknown.length?` · ${group.unknown.length}종 미확인`:''}</small>
       </span>
     </AccordionSummary>

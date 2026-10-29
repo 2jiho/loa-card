@@ -6,11 +6,15 @@ import { readSortArrow } from "./capture-metadata";
 import type { Layout } from "./detector";
 import type { Box } from "./detector";
 import { createNameReader } from "./name-reader";
+import type {NameOcrMetrics,NameRawResultPolicy,NameReading} from './name-reader';
 import { prepareContrastPattern, matchCountPattern } from "./count-pattern";
 import type { CountPattern, CountPatternReading } from "./count-pattern";
 import { nameMask } from "./name-pattern";
 import { createPortraitMatcher } from "./portrait-matcher";
+import type {PortraitMatchDiagnostic} from './portrait-matcher';
+import type {PortraitDiagnosticCall,PortraitDiagnostics} from './portrait-diagnostics';
 import { areaGray } from "./area-gray";
+import type {NameLabelObserver} from './recognition-input-observer';
 export interface Reference {
   id: string;
   name: string;
@@ -24,6 +28,7 @@ export interface CountDiagnostics {
   ocrConfirmedValue?: number;
   patternOcrAgreed?: boolean;
   iconPresent?: boolean;
+  emptyEvidence?: import('./count-pattern').CountEmptyEvidence;
   reliability?: import("./count-confidence").CountReliability;
   maximum: number;
   reason: string;
@@ -44,7 +49,7 @@ export interface NameEvidence {
   score: number;
   gap: number;
   exact: boolean;
-  preprocessing?: "soft-rarity";
+  preprocessing?: "soft-rarity" | "gray-first-line-v1" | "stretch-first-v1";
   artwork?: import("./artwork-verifier").ArtworkEvidence;
   ctc?: { relativeLikelihood: number; margin: number };
 }
@@ -145,7 +150,10 @@ export function sameObservation(a: Uint8Array, b: Uint8Array) {
       difference(a.subarray(from, to), b.subarray(from, to)) < limit,
   );
 }
-export async function createRecognizer(status: (message: string) => void, signal?: AbortSignal) {
+export async function createRecognizer(status: (message: string) => void, signal?: AbortSignal,
+  options:{nameRawResultPolicy?:NameRawResultPolicy;contrastNameFallback?:boolean}={}) {
+  const nameRawResultPolicy=options.nameRawResultPolicy??'resample';
+  if(nameRawResultPolicy!=='resample'&&nameRawResultPolicy!=='continue')throw Error('Invalid name raw-result policy');
   status("카드 이름 사전·OCR 준비 중");
   const initializationSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000);
   const response = await fetch(`${import.meta.env.BASE_URL}scanner/cards.json`, { signal: initializationSignal });
@@ -157,13 +165,32 @@ export async function createRecognizer(status: (message: string) => void, signal
   const screenResponse=await fetch(`${import.meta.env.BASE_URL}scanner/screen-artwork-details.json`, { signal: initializationSignal });
   if(!screenResponse.ok)throw new Error('보조 카드 그림 기준 로드 실패');
   const screen=await screenResponse.json() as {cards:Record<string,string>};
-  const matchPortrait = createPortraitMatcher(cards, await portraitResponse.json(), screen.cards);
+  const portraitAtlas=await portraitResponse.json();
+  const matchPortrait = createPortraitMatcher(cards,portraitAtlas,screen.cards);
+  let refinePortrait:ReturnType<typeof createPortraitMatcher>|undefined;
   const portraits = new WeakMap<HTMLCanvasElement, ReturnType<typeof matchPortrait>>();
+  const cachedPortraitDiagnostics=new WeakMap<HTMLCanvasElement,PortraitMatchDiagnostic>();
+  // Each immutable crop owns at most one packet per evaluated path. A cache
+  // hit reuses the original measurement and is never a new similarity pass.
+  const portraitAttempts=new WeakMap<HTMLCanvasElement,PortraitDiagnosticCall[]>();
+  function notePortrait(canvas:HTMLCanvasElement,mode:PortraitDiagnosticCall['mode'],source:PortraitDiagnosticCall['source'],diagnostic:PortraitMatchDiagnostic){
+    const attempts=portraitAttempts.get(canvas)??[];
+    const entry=Object.freeze({mode,source,diagnostic}),index=attempts.findIndex(old=>old.mode===mode);
+    if(index>=0)attempts[index]=entry;else if(attempts.length<3)attempts.push(entry);
+    portraitAttempts.set(canvas,attempts);
+  }
   function portrait(canvas: HTMLCanvasElement, text?: import("./portrait-matcher").PortraitTextEvidence & { id: string }) {
-    if (!text && portraits.has(canvas)) return portraits.get(canvas)!;
+    if (!text && portraits.has(canvas)) {
+      const diagnostic=cachedPortraitDiagnostics.get(canvas);
+      if(diagnostic)notePortrait(canvas,'visual','cached',diagnostic);
+      return portraits.get(canvas)!;
+    }
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-    const result = matchPortrait(areaGray(pixels, canvas.width, canvas.height), text);
+    const result = matchPortrait(areaGray(pixels, canvas.width, canvas.height), text,diagnostic=>{
+      if(!text)cachedPortraitDiagnostics.set(canvas,diagnostic);
+      notePortrait(canvas,text?'text':'visual','computed',diagnostic);
+    });
     if (!text) portraits.set(canvas, result);
     return result;
   }
@@ -179,18 +206,9 @@ export async function createRecognizer(status: (message: string) => void, signal
   native.width = 140;
   native.height = 210;
   const context = native.getContext("2d", { willReadFrequently: true })!;
-  const inspected = new WeakMap<
-    HTMLCanvasElement,
-    {
-      labelPixels: number;
-      blankName: boolean;
-      awakening: number | null;
-      offsetY: number;
-      hasIcon: boolean;
-      hasNameBand: boolean;
-    }
-  >();
+  const inspected = new WeakMap<HTMLCanvasElement,ReturnType<typeof inspectVisual>>();
   const nameAttempts = new WeakMap<HTMLCanvasElement, import("./name-diagnostics").NameAttempt[]>();
+  const namePerformances=new WeakMap<HTMLCanvasElement,NameOcrMetrics>();
   function inspect(canvas: HTMLCanvasElement) {
     const previous = inspected.get(canvas);
     if (previous) return previous;
@@ -199,7 +217,7 @@ export async function createRecognizer(status: (message: string) => void, signal
     return result;
   }
   signal?.throwIfAborted();
-  const reader = createNameReader(cards, status, signal);
+  const reader = createNameReader(cards, status, signal,{rawResultPolicy:nameRawResultPolicy,contrastNameFallback:options.contrastNameFallback});
   try { await reader.ready(); signal?.throwIfAborted(); }
   catch (error) { await reader.dispose(); throw error; }
   status("이름·장수 OCR / 각성 보석 인식 준비 완료");
@@ -210,35 +228,58 @@ export async function createRecognizer(status: (message: string) => void, signal
     catalog: cards,
     portrait,
     identifyVisual(canvas: HTMLCanvasElement) {
+      portraitAttempts.set(canvas,[]);
       const artwork = portrait(canvas);
       return artwork ? portraitIdentity(artwork) : null;
     },
     nameDiagnostics(canvas: HTMLCanvasElement) { return nameAttempts.get(canvas)?.slice() ?? []; },
-    async identify(canvas: HTMLCanvasElement, full = true, captureStable = false, structural = false,budget?:import('./card-read-budget').CardReadBudget) {
-      budget?.check();
-      const fields = inspect(canvas);
+    portraitDiagnostics(canvas:HTMLCanvasElement):PortraitDiagnostics|null {
+      const attempts=portraitAttempts.get(canvas);
+      return attempts?Object.freeze(attempts.slice()):null;
+    },
+    namePerformance(canvas:HTMLCanvasElement){return namePerformances.get(canvas);},
+    nameOcrMetrics:()=>reader.nameOcrMetrics(),
+    async identify(canvas: HTMLCanvasElement, full = true, captureStable = false, structural = false,budget?:import('./card-read-budget').CardReadBudget,allowPortraitRefinement=false,observeLabel?:NameLabelObserver,allowGrayNameFallback=false) {
       const attempts: import("./name-diagnostics").NameAttempt[] = [];
       nameAttempts.set(canvas, attempts);
+      namePerformances.delete(canvas);
+      portraitAttempts.set(canvas,[]);
+      // Even a timeout at entry belongs to this invocation, never to the
+      // previous short/full read of the same retained canvas.
+      budget?.check();
+      const fields = inspect(canvas);
       const artwork = portrait(canvas);
       if (artwork) return portraitIdentity(artwork);
-      if (fields.blankName) return null;
-      if (fields.labelPixels < 35 && !structural) return null;
+      // The fast visual lanes keep the integer-only matcher. Spend the extra
+      // registration work only on an explicitly admitted full retry,
+      // before that retry starts its substantially longer OCR work.
+      if(full&&allowPortraitRefinement&&structural){
+        budget?.check();
+        const pixels=canvas.getContext('2d',{willReadFrequently:true})!.getImageData(0,0,canvas.width,canvas.height).data;
+        const refined=(refinePortrait??=createPortraitMatcher(cards,portraitAtlas,screen.cards,{fractionalRegistration:true}))(
+          areaGray(pixels,canvas.width,canvas.height),undefined,diagnostic=>notePortrait(canvas,'refined','computed',diagnostic));
+        budget?.check();
+        if(refined)return portraitIdentity(refined);
+      }
+      const rejectBeforeOcr=(reason:string)=>{attempts.push({text:'',confidence:0,engine:'quality',
+        variant:'이름 영역 사전 검사',reason,candidates:[]});return null;};
+      if (fields.blankName) return rejectBeforeOcr('이름 첫 줄이 가려짐 · OCR 미실행');
+      if (fields.labelPixels < 35 && !structural) return rejectBeforeOcr('이름 픽셀 부족 · OCR 미실행');
       const onAttempt = (attempt: import("./name-diagnostics").NameAttempt) => {
         attempts.push(attempt);
         if (attempts.length > 24) attempts.splice(8, 1);
       };
-      let text = await reader.match(canvas, true, fields.offsetY, structural, onAttempt,budget);
       const corroborate = (reading: NonNullable<Awaited<ReturnType<typeof reader.match>>>) =>
         !confirmCatalogName(reading, captureStable) ? portrait(canvas, { id: reading.card.id, rawText: reading.rawText,
           complete: reading.complete, canonicalName: reading.card.name,
           ocrConfidence: reading.ocrConfidence, score: reading.score, gap: reading.gap }) : null;
-      let corroborated = text ? corroborate(text) : null;
-      if (!text || (!confirmCatalogName(text, captureStable) && !corroborated)) {
-        if (full) {
-          text = await reader.match(canvas, false, fields.offsetY, structural, onAttempt,budget);
-          corroborated = text ? corroborate(text) : null;
-        }
-      }
+      let quickReading:NameReading|null|undefined,quickCorroborated:ReturnType<typeof portrait>|null=null;
+      const text=await reader.matchForIdentify(canvas,{full,offsetY:fields.offsetY,allowRaw:structural,onAttempt,budget,observeLabel,allowGrayNameFallback,
+        acceptQuick:reading=>{
+          quickReading=reading;quickCorroborated=reading?corroborate(reading):null;
+          return !!reading&&(confirmCatalogName(reading,captureStable)||!!quickCorroborated);
+        },onMetrics:metrics=>{namePerformances.set(canvas,metrics);}});
+      const corroborated=text===quickReading?quickCorroborated:text?corroborate(text):null;
       if (!text) return null;
       if (corroborated?.card.id === text.card.id) return {
         ...portraitIdentity(corroborated),
@@ -328,15 +369,16 @@ export async function createRecognizer(status: (message: string) => void, signal
         level = fields.awakening;
       const full = readFullAwakening(canvas, context, fields, countPatterns);
       if (full) return full;
-      if (!fields.hasIcon)
+      if (fields.hasIcon === false)
         return { awakening: level, extraCopies: level === null ? null : 0,
           countDiagnostics: { maximum: level === null ? 15 : 15 - level * (level + 1) / 2,
-            reason: level === null ? "추가 카드 표시 없음 · 각성 영역 미확정" : "추가 카드 표시 없음 · 0장 후보",
-            readings: [], iconPresent: false } satisfies CountDiagnostics };
+            reason: fields.emptyEvidence ? '회색 카드 표식 · 빈 장수 배경 확인'+(level===null?' · 각성 영역 미확정':' · 0장 후보')
+              : level === null ? "추가 카드 표시 없음 · 각성 영역 미확정" : "추가 카드 표시 없음 · 0장 후보",
+            readings: [], iconPresent: false,...(fields.emptyEvidence?{emptyEvidence:fields.emptyEvidence}:{}) } satisfies CountDiagnostics };
       const maximum = level === null ? 15 : 15 - (level * (level + 1)) / 2;
       context.drawImage(canvas, 0, 0, 140, 210);
       const pattern = matchCountPattern(context.getImageData(0, 0, 140, 210).data, countPatterns, fields.offsetY, maximum);
-      const diagnostic: CountDiagnostics = { maximum, reason: pattern.reason, readings: [], pattern, iconPresent: true };
+      const diagnostic: CountDiagnostics = { maximum, reason: fields.hasIcon === null ? '추가 장수 영역 가림 또는 불명확' : pattern.reason, readings: [], pattern, iconPresent: fields.hasIcon ?? undefined };
       if (pattern.value !== null && !corroborate)
         return { awakening: level, extraCopies: pattern.value, countDiagnostics: diagnostic };
       if (!allowOcr)

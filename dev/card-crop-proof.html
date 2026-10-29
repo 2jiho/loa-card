@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LoaCard 카드 크롭 전체 판독 비교</title>
+<style>html{color-scheme:light dark}body{font:15px/1.55 system-ui;margin:24px;max-width:90rem;background:Canvas;color:CanvasText}h1{font-size:1.5rem}button{font:inherit;padding:.45rem .7rem;margin:0 8px 8px 0}:focus-visible{outline:3px solid Highlight;outline-offset:3px}pre{font:12px/1.5 ui-monospace,monospace;background:color-mix(in srgb,CanvasText 6%,Canvas);padding:12px;white-space:pre-wrap;overflow-wrap:anywhere}.table{overflow:auto}table{border-collapse:collapse;font-size:13px}th,td{padding:6px;border:1px solid GrayText;text-align:left;vertical-align:top}td{overflow-wrap:anywhere;max-width:18rem}@media(max-width:420px){body{margin:12px}}</style></head>
+<body><h1>카드 크롭 전체 판독 비교</h1>
+<p>고정 로컬 입력의 140×210 PNG 바이트와 실제 디코드 RGBA 해시를 확인한 뒤 실제 카드 판독기로 이름·각성·장수를 읽습니다. 기본 비교는 원본과 회색 첫 줄 재시도입니다. URL에서 portrait-registration 비교를 선택하면 회색 보완 없이 정수 위치와 분수 위치 등록을 같은 3초 카드 예산으로 비교합니다.</p>
+<p>각 입력·모드마다 새 판독기를 준비합니다. 준비 시간과 판독 시간을 따로 기록하며, 알려지지 않은 캡처 안정성은 false로 처리합니다. 후보 주석은 진단용이며, 결과를 정답으로 확인하거나 사전 후보를 제한하지 않습니다.</p>
+<p>이 검사는 잘라낸 카드의 전체 판독 비교입니다. 원래 획득·재시도 스케줄, 목록 병합, 실제 공유 처리량을 재현하지 않습니다. 입력과 결과에는 개인 화면이 포함될 수 있으므로 work/ 안에 보관합니다.</p>
+<button id="run" type="button">카드 전체 판독 비교 시작</button><button id="stop" type="button" disabled>중지</button><button id="download" type="button" disabled>결과 JSON 저장</button>
+<p id="status" role="status" aria-live="polite">기본 입력은 work/card-crop-inputs.json입니다. 해시가 고정된 로컬 실패 입력도 URL로 선택할 수 있습니다. 최대 8개, PNG당 128KiB입니다.</p>
+<div class="table"><table aria-label="카드 크롭 모드별 실제 판독 결과"><thead><tr><th>입력</th><th>모드</th><th>이름</th><th>각성</th><th>추가 장수</th><th>확인 항목</th><th>판독 ms</th><th>남은 예산 ms</th><th>오류</th></tr></thead><tbody id="rows"></tbody></table></div>
+<pre id="result" aria-label="소스·입력 해시와 전체 판독 진단 JSON"></pre>
+<script type="module" src="./card-crop-proof.ts"></script></body></html>

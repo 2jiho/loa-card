@@ -36,6 +36,13 @@ test('subset requirements recommend only the remaining needed registrations', ()
   assert.equal(done.candidates.length, 0); assert.equal(done.stat!.current, done.stat!.maximum);
 });
 
+test('an uncertain optional member does not block a sufficient known collection subset',()=>{
+ const m=structuredClone(master);
+ m.books=[{id:'abc',name:'abc',cardIds:['a','b','c'],effects:[],collectionEffects:[{requiredCount:2,stats:[{stat:'3',value:2}]}]}];
+ const p=statCollectionPlans(m,[owned('a'),{...owned('c'),awakening:null,review:['이름 확인']}],'3');
+ assert.deepEqual(p.candidates.map(c=>c.cards.map(card=>card.id)),[['b']]);assert.deepEqual(p.excluded,[]);
+});
+
 test('multiple collection thresholds reward only newly crossed effects', () => {
   const m = structuredClone(master);
   m.books = [{ id: 'abc', name: 'abc', cardIds: ['a', 'b', 'c'], effects: [], collectionEffects: [1, 2, 3].map(requiredCount => ({ requiredCount, stats: [{ stat: '3', value: requiredCount }] })) }];

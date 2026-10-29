@@ -5,7 +5,7 @@ import type {ScanActivityItem} from './scan-activity';
 import {FILM_PITCH,FILM_STEP_MS,ScanFilm} from './scan-film';
 import './scan-activity.css';
 
-const labels={reading:'읽는 중',waiting:'추가 판독',read:'판독됨',review:'확인 필요'};
+const labels={reading:'판독 중',waiting:'판독 대기',read:'완료',review:'확인 필요'};
 export function ScanActivity({items,queued}:{items:ScanActivityItem[];queued:number}){
   const strip=useRef<HTMLDivElement>(null),track=useRef<HTMLDivElement>(null);
   const film=useRef(new ScanFilm()),animation=useRef<Animation|null>(null);

@@ -10,20 +10,51 @@ import { integerCropPixels } from './integer-crop-pixels';
 import { hasNamePixels } from './name-pattern';
 import { createGridScrollProbe } from './grid-scroll-probe';
 import { pixelRegion } from './pixel-region';
+import { opaqueCardPixels, ownedCardRaster, requireMeasuredRaster } from './measured-raster';
+import type { MeasuredRaster } from './measured-raster';
+import type { PixelRaster } from './pixel-raster';
+import { observationPixels } from './observation-pixels';
+import { fieldPixelRegions } from './field-pixel-regions';
+
+export type AcquisitionRasterReuse = { measuredRaster:MeasuredRaster; ownCardPixels?:boolean };
 
 /** Geometry/pixels only. No names, OCR, counts, inventory or duplicate decisions. */
 export function createCardAcquirer<T extends Raster>(make: (width:number,height:number)=>T, reuseExact = false, reusePixels = true, reuseScroll = true) {
  const raster=createAcquisitionRaster(make);
- const pixelNamespace=crypto.randomUUID();let pixelSequence=0;
- type Cell = { slot:number; content:Box; preview:Box; alignment:number; intact:boolean;
-   borderSides:number[]; image:T; labelVisible:boolean; quality:CaptureQuality; pixelKey:string } & ReturnType<typeof raster.features>;
- const cache = new ExactPixelCache<Omit<Cell,'image'>>();
+ const pixelNamespace=crypto.randomUUID();let pixelSequence=0,fieldSequence=0;
+ type Cell = { slot:number; content:Box; preview:Box; alignment:number; intact:boolean;complete:boolean;
+   borderSides:number[]; image:T; ownedPixels?:PixelRaster; labelVisible:boolean; quality:CaptureQuality; pixelKey:string;
+   /** Scheduling hint only, never identity, source or confirmed field evidence. */
+   fieldRevision?:string } & ReturnType<typeof raster.features>;
+ type LocalCell = Omit<Cell,'image'|'ownedPixels'>&{image?:never;ownedPixels:PixelRaster};
+ const cache = new ExactPixelCache<Omit<Cell,'image'|'ownedPixels'>>();
  const probe=reuseExact&&reuseScroll?createGridScrollProbe():undefined;
- let stats={rowShift:null as number|null,exact:0,moved:0,inspected:0,probeMs:0};
+ let stats={rowShift:null as number|null,shifted:0,moveCompared:0,moveMatched:0,exact:0,moved:0,inspected:0,probeMs:0,gridReadbacksSaved:0,cropReadbacksSaved:0,localPixelCrops:0};
  let label: ReturnType<typeof createLabelReader<T>> | undefined;
- const acquire=(frame:T, layout:Layout) => {
+ const acquireInternal=(frame:T, layout:Layout, reuse?:AcquisitionRasterReuse,localCropPixels=false):(Cell|LocalCell)[] => {
   label ??= createLabelReader(make);
   const context = rasterContext(frame);
+  const measured=reuse?requireMeasuredRaster(reuse.measuredRaster,frame.width,frame.height):undefined;
+  const extract=(region:{data:Uint8ClampedArray;width:number;height:number}|undefined,content:Box,left:number,top:number)=>
+    reusePixels&&region?integerCropPixels(region.data,region.width,region.height,
+      {...content,x:content.x-left,y:content.y-top}):undefined;
+  // Local output is only a lossless subset of this call's actual Canvas ROI.
+  // It carries no source binding or receipt and never bypasses label resampling.
+  const localPixels=(pixels:Uint8ClampedArray|undefined,content:Box,box:Box)=>
+    localCropPixels&&layout.scale===1&&content.width===140&&content.height===210&&
+    Object.values(box).every(Number.isInteger)&&insideCard(content,{x:0,y:0,width:frame.width,height:frame.height})&&
+    insideCard(box,layout.area)&&pixels&&opaqueCardPixels(pixels)?pixels:undefined;
+  const deliver=(fields:Omit<Cell,'image'|'ownedPixels'>,region:{data:Uint8ClampedArray;width:number;height:number}|undefined,left:number,top:number):Cell|LocalCell=>{
+    const extracted=localCropPixels||reuse?.ownCardPixels?extract(region,fields.content,left,top):undefined;
+    const local=localPixels(extracted,fields.content,layout.cells[fields.slot]);
+    if(local){stats.localPixelCrops++;return {...fields,ownedPixels:ownedCardRaster(local,140,210)};}
+    const image=raster.crop(frame,fields.content);
+    if(!reuse?.ownCardPixels)return {...fields,image};
+    const opaque=extracted&&opaqueCardPixels(extracted);
+    const pixels=opaque?extracted:rasterContext(image).getImageData(0,0,image.width,image.height).data;
+    if(opaque)stats.cropReadbacksSaved++;
+    return {...fields,image,ownedPixels:ownedCardRaster(pixels,image.width,image.height)};
+  };
   const geometry=(box:Box)=>{
     const padding=Math.ceil(6*layout.scale);
     const left=Math.max(0,Math.floor(box.x)-padding),top=Math.max(0,Math.floor(box.y)-padding);
@@ -35,10 +66,12 @@ export function createCardAcquirer<T extends Raster>(make: (width:number,height:
   const valid=regions.filter((r,i)=>r.width>0&&r.height>0&&insideCard(layout.cells[i],{x:0,y:0,width:frame.width,height:frame.height}));
   const origin={x:Math.min(...valid.map(r=>r.left)),y:Math.min(...valid.map(r=>r.top))};
   const right=Math.max(...valid.map(r=>r.left+r.width)),bottom=Math.max(...valid.map(r=>r.top+r.height));
-  // One readback serves both the cheap row probe and all forty padded crops.
-  const shared=probe&&valid.length?context.getImageData(origin.x,origin.y,right-origin.x,bottom-origin.y):undefined;
-  const started=performance.now(),rowShift=shared?probe!(shared,origin,layout,frame.width,frame.height):null;
-  stats={rowShift,exact:0,moved:0,inspected:0,probeMs:performance.now()-started};
+  // Reuse the actual full readback when available. Ordinary probe-enabled
+  // acquisition reads one shared grid, then owns each padded pixel subregion.
+  const shared=probe&&valid.length?measured??context.getImageData(origin.x,origin.y,right-origin.x,bottom-origin.y):undefined;
+  const started=performance.now(),rowShift=shared?probe!(shared,measured?{x:0,y:0}:origin,layout,frame.width,frame.height):null;
+  stats={rowShift,shifted:Number(rowShift!==null&&rowShift!==0),moveCompared:0,moveMatched:0,exact:0,moved:0,inspected:0,probeMs:performance.now()-started,
+    gridReadbacksSaved:Number(!!(measured&&probe&&valid.length)),cropReadbacksSaved:0,localPixelCrops:0};
   // Keep the preceding grid alive until all source slots have been consulted.
   const prior=rowShift?cache.snapshot():undefined;
   return layout.cells.map((box, slot) => {
@@ -48,26 +81,28 @@ export function createCardAcquirer<T extends Raster>(make: (width:number,height:
     let sourcePixels: Uint8ClampedArray | undefined, key = '';
     let region: {data:Uint8ClampedArray;width:number;height:number} | undefined;
     if (width > 0 && height > 0 && insideCard(box, { x: 0, y: 0, width: frame.width, height: frame.height })) {
-      region = (shared?pixelRegion(shared,left-origin.x,top-origin.y,width,height):undefined)??context.getImageData(left, top, width, height);
+      region = (measured?pixelRegion(measured,left,top,width,height):shared?pixelRegion(shared,left-origin.x,top-origin.y,width,height):undefined)??context.getImageData(left, top, width, height);
       if (reuseExact) {
         sourcePixels = region.data;
         key = bounds.key;
         const previous = cache.get(slot,key,sourcePixels);
-        if(previous){stats.exact++;return {...previous,image:raster.crop(frame,previous.content)};}
+        if(previous){stats.exact++;return deliver(previous,region,left,top);}
         const oldSlot=slot+(rowShift??0)*10,oldBox=layout.cells[oldSlot];
         if(prior&&oldBox&&oldBox.x===box.x&&oldBox.width===box.width&&oldBox.height===box.height&&
           insideCard(box,layout.area)&&insideCard(oldBox,layout.area)){
           const oldBounds=regions[oldSlot];
           const samePadding=oldBounds.width===width&&oldBounds.height===height&&
             oldBox.x-oldBounds.left===box.x-left&&oldBox.y-oldBounds.top===box.y-top;
+          if(samePadding)stats.moveCompared++;
           const old=samePadding?prior.get(oldSlot,oldBounds.key,sourcePixels):undefined;
+          if(old)stats.moveMatched++;
           const dy=box.y-oldBox.y;
           // An integer pixel translation preserves Canvas resampling phase.
           // Full padded RGBA equality also covers names, counters and overlays.
           if(old&&old.intact&&Number.isInteger(dy)){
             const moved={...old,slot,content:{...old.content,y:old.content.y+dy},preview:{...old.preview,y:old.preview.y+dy}};
             cache.setOwned(slot,key,sourcePixels,moved);stats.moved++;
-            return {...moved,image:raster.crop(frame,moved.content)};
+            return deliver(moved,region,left,top);
           }
         }
       }
@@ -78,28 +113,61 @@ export function createCardAcquirer<T extends Raster>(make: (width:number,height:
       alignment = aligned.alignment;
       intact = aligned.intact; borderSides = aligned.borderSides;
     }
-    const image = raster.crop(frame, content);
     // Integer, unscaled crops are already present in the border readback.
     // Fractional coordinates, resampling and clipped edges retain Canvas.
-    const extracted = reusePixels && region ? integerCropPixels(region.data,region.width,region.height,
-      {...content,x:content.x-left,y:content.y-top}) : undefined;
-    const pixels=extracted ?? rasterContext(image).getImageData(0,0,image.width,image.height).data;
-    const labelVisible=reusePixels && image.width===140 && image.height===210
-      ? hasNamePixels(pixels,(14*140+6)*4,140) : label!(image);
+    const extracted = extract(region,content,left,top);
+    const local=localPixels(extracted,content,box),image=local?undefined:raster.crop(frame,content);
+    const imageWidth=image?.width??140,imageHeight=image?.height??210;
+    const pixels=extracted ?? rasterContext(image!).getImageData(0,0,imageWidth,imageHeight).data;
+    const labelVisible=reusePixels && imageWidth===140 && imageHeight===210
+      ? hasNamePixels(pixels,(14*140+6)*4,140) : label!(image!);
     const complete=insideCard(content,{x:0,y:0,width:frame.width,height:frame.height})&&insideCard(box,layout.area);
-    const quality=inspectCapture(pixels,image.width,image.height,complete,labelVisible,intact,alignment>=.8);
+    const quality=inspectCapture(pixels,imageWidth,imageHeight,complete,labelVisible,intact,alignment>=.8);
     if(complete&&!intact&&quality.reason!=='미보유 카드 뒷면 · 빈 슬롯') {
       quality.usable=false;
       const sides=['왼쪽','오른쪽','위','아래'].filter((_,side)=>borderSides[side]<.85);
       quality.reason='카드 테두리 불완전 · '+sides.join('/')+' · 재관측 대기';
     }
+    // Compare raw field pixels in the already-owned bounded padded cache. The
+    // portrait may animate without reopening fields, while even one changed
+    // digit/alpha byte gets a new scheduling revision. No image is copied/read
+    // back here and this subset match never reuses the full crop's pixelKey.
+    let fieldRevision:string|undefined;
+    const fieldRegions=region&&fieldPixelRegions({...content,x:content.x-left,y:content.y-top},region.width,region.height);
+    if(sourcePixels&&fieldRegions) {
+      const sameContent=(old:Omit<Cell,'image'|'ownedPixels'>,dy=0)=>old.intact&&intact&&
+        old.content.x===content.x&&old.content.y+dy===content.y&&
+        old.content.width===content.width&&old.content.height===content.height;
+      const oldSlot=slot+(rowShift??0)*10,oldBox=layout.cells[oldSlot];
+      if(prior&&oldBox&&oldBox.x===box.x&&oldBox.width===box.width&&oldBox.height===box.height&&
+        insideCard(box,layout.area)&&insideCard(oldBox,layout.area)) {
+        const oldBounds=regions[oldSlot],dy=box.y-oldBox.y;
+        const samePadding=oldBounds.width===width&&oldBounds.height===height&&
+          oldBox.x-oldBounds.left===box.x-left&&oldBox.y-oldBounds.top===box.y-top;
+        if(samePadding&&Number.isInteger(dy))fieldRevision=prior.getRegions(oldSlot,oldBounds.key,sourcePixels,width,
+          fieldRegions,old=>sameContent(old,dy))?.fieldRevision;
+      }
+      fieldRevision??=cache.getRegions(slot,key,sourcePixels,width,fieldRegions,sameContent)?.fieldRevision;
+    }
     // This key survives only the exact RGBA/geometry cache above, never fuzzy
     // portrait deduplication. A changed byte or crop creates a different key.
-    const result:Cell = { slot, content, preview, alignment, intact, borderSides, image, labelVisible, quality,
-      pixelKey:`${pixelNamespace}/${++pixelSequence}`, ...raster.features(image,pixels) };
+    const fields={ slot, content, preview, alignment, intact, complete, borderSides, labelVisible, quality,
+      pixelKey:`${pixelNamespace}/${++pixelSequence}`,fieldRevision:fieldRevision??`${pixelNamespace}/fields/${++fieldSequence}`,
+      ...(image?raster.features(image,pixels):observationPixels(pixels,imageWidth,imageHeight)) };
+    const result:Cell|LocalCell=local?{...fields,ownedPixels:ownedCardRaster(local,140,210)}:{...fields,image:image!};
+    if(local)stats.localPixelCrops++;
+    if(reuse?.ownCardPixels) {
+      // Fractional/scaled/clipped crops already used the actual cropped Canvas.
+      // For transparent integer crops preserve that Canvas transport as well.
+      const needsReadback=extracted&&!opaqueCardPixels(extracted);
+      const transportPixels=needsReadback
+        ?rasterContext(image!).getImageData(0,0,imageWidth,imageHeight).data:pixels;
+      result.ownedPixels=ownedCardRaster(transportPixels,imageWidth,imageHeight);
+      if(!needsReadback)stats.cropReadbacksSaved++;
+    }
     if (sourcePixels && content.x >= left+1 && content.y >= top+1 &&
         content.x+content.width <= left+width-1 && content.y+content.height <= top+height-1) {
-      const {image: _image,...fields}=result;
+      const {image: _image,ownedPixels: _ownedPixels,...fields}=result;
       // getImageData allocated this region. Nothing mutates or transfers it;
       // let the bounded cache own it instead of copying every fresh card again.
       cache.setOwned(slot,key,sourcePixels,fields);
@@ -107,7 +175,9 @@ export function createCardAcquirer<T extends Raster>(make: (width:number,height:
     return result;
   });
  };
- return Object.assign(acquire,{stats:()=>({...stats})});
+ const acquire=(frame:T,layout:Layout,reuse?:AcquisitionRasterReuse)=>acquireInternal(frame,layout,reuse) as Cell[];
+ return Object.assign(acquire,{stats:()=>({...stats}),
+  localPixels:(frame:T,layout:Layout)=>acquireInternal(frame,layout,undefined,true)});
 }
 export const acquireCards=createCardAcquirer((width,height)=>{
  const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;return canvas;

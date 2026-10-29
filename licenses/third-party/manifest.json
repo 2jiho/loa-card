@@ -178,6 +178,46 @@
       "source": "https://raw.githubusercontent.com/google/material-design-icons/737e3324305806514d7909874fa1818ae1808232/LICENSE",
       "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
       "bundledBy": "@mui/icons-material (SVG conversions; separate MIT package license)"
+    },
+    {
+      "component": "lz4_flex",
+      "version": "0.9.2 upstream declaration; prebuilt lock unavailable",
+      "license": "MIT",
+      "file": "recording-lz4_flex-LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/PSeitz/lz4_flex/f6251928e30af958243a3ef8f22e3071d241543d/LICENSE",
+      "sha256": "0982c33390159842ecce8e9d6ce2e5e39961fe0e0ffbb2eec39c9ba46db6db10",
+      "reviewedCrateSha256": "42c51df9d8d4842336c835df1d85ed447c4813baa237d033d95128bf5552ad8a",
+      "bundledBy": "lz4-wasm@0.9.2; upstream declared source notices, not exact binary SBOM"
+    },
+    {
+      "component": "wasm-bindgen",
+      "version": "0.2.80 upstream declaration; prebuilt lock unavailable",
+      "license": "MIT",
+      "file": "recording-wasm-bindgen-LICENSE-MIT.txt",
+      "source": "https://static.crates.io/crates/wasm-bindgen/wasm-bindgen-0.2.80.crate",
+      "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+      "reviewedCrateSha256": "27370197c907c55e3f1a9fbe26f44e937fe6451368324e009cba39e139dc08ad",
+      "bundledBy": "lz4-wasm@0.9.2; upstream declared source notices, not exact binary SBOM"
+    },
+    {
+      "component": "console_error_panic_hook",
+      "version": "0.1.7 upstream declaration; prebuilt lock unavailable",
+      "license": "MIT",
+      "file": "recording-console_error_panic_hook-LICENSE-MIT.txt",
+      "source": "https://static.crates.io/crates/console_error_panic_hook/console_error_panic_hook-0.1.7.crate",
+      "sha256": "77674336af8ded214dc3ae07da631c7dd35cc8205f39298474ba98a889e57272",
+      "reviewedCrateSha256": "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc",
+      "bundledBy": "lz4-wasm@0.9.2; upstream declared source notices, not exact binary SBOM"
+    },
+    {
+      "component": "cfg-if",
+      "version": "1.0.0 upstream declaration; prebuilt lock unavailable",
+      "license": "MIT",
+      "file": "recording-cfg-if-LICENSE-MIT.txt",
+      "source": "https://static.crates.io/crates/cfg-if/cfg-if-1.0.0.crate",
+      "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+      "reviewedCrateSha256": "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd",
+      "bundledBy": "lz4-wasm@0.9.2; upstream declared source notices, not exact binary SBOM"
     }
   ],
   "upstreamTesseractCoreCommit": "3d12e9b2d4e0e9e64bd0793e2c55b2d8f6404884",
@@ -186,7 +226,15 @@
     "tesseract.js-core": "6.1.2",
     "onnxruntime-web": "1.30.0",
     "@techstark/opencv-js": "5.0.0-release.1",
-    "@mui/icons-material": "9.4.0"
+    "@mui/icons-material": "9.4.0",
+    "lz4-wasm": "0.9.2"
   },
-  "opencvSha256": "b873c8211421da7b9bf41ae157a923f05a46a0b8d3e5904c44c6f3ad6d39a1bd"
+  "opencvSha256": "b873c8211421da7b9bf41ae157a923f05a46a0b8d3e5904c44c6f3ad6d39a1bd",
+  "lz4WasmSha256": "c858f9884d964ec49294b0c09d3330d6b0a640da850dbeb5f9c491e1a3dd58cb",
+  "lz4WasmReview": {
+    "reviewed": "2026-10-24",
+    "upstreamCargo": "https://github.com/PSeitz/lz4-wasm/blob/main/Cargo.toml",
+    "scope": "Pinned npmWASM reviewed with upstream declared dependency ranges; no public Cargo.lock or matching npmgitHead available. Supplemental license texts are conservative upstream notices, not an exact binary SBOM.",
+    "features": "lz4_flex default-features=false, checked-decode; frame-only twox-hash source excluded by this declaration."
+  }
 }

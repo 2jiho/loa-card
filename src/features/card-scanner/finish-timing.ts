@@ -1,4 +1,7 @@
 export interface FinishTiming {
+  /** Name coverage only; does not attest unobscured/latest field input. */
+  measurementBasis: 'first-identified-card-captures';
+  sufficientInputVerified: false;
   expected: number;
   lastCardInputMs: number;
   namesReadyMs: number;
@@ -20,10 +23,13 @@ export class FinishTimer {
         ids.some(id => !this.firstInputs.has(id))) return;
     const lastCardInputMs = Math.max(...ids.map(id => this.firstInputs.get(id)!));
     if (!Number.isFinite(now) || now < lastCardInputMs) return;
-    return { expected, lastCardInputMs, namesReadyMs: now, targetMs: 10_000 };
+    return { measurementBasis: 'first-identified-card-captures', sufficientInputVerified: false,
+      expected, lastCardInputMs, namesReadyMs: now, targetMs: 10_000 };
   }
   finish(timing: FinishTiming, now: number): FinishTiming {
-    const afterLastCardMs = Math.max(0, now - timing.lastCardInputMs);
+    if (!Number.isFinite(now) || now < timing.namesReadyMs || now < timing.lastCardInputMs)
+      throw new RangeError('Finish timestamp precedes coverage or is not finite.');
+    const afterLastCardMs = now - timing.lastCardInputMs;
     return { ...timing, finishedMs: now, afterLastCardMs, withinTarget: afterLastCardMs <= timing.targetMs };
   }
 }

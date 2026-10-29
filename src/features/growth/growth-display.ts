@@ -49,6 +49,8 @@ function mergeReady(rows: GrowthDisplayRow[]): GrowthDisplayRow | null {
     }
   }
   const upgrades = [...cards.values()];
+  const requirements = [...new Map(rows.flatMap(({step})=>step.available.requirements)
+    .map(requirement=>[JSON.stringify(requirement),requirement])).values()];
   return { rank: rows[0].rank, stages: rows.flatMap(row => row.stages), step: {
     ...first, key: `bundle:${rows.map(row => row.step.key).join('|')}`,
     cards: upgrades, xp, silver, copies, gain, efficiency: xp ? gain * 100 / xp : null,
@@ -58,6 +60,6 @@ function mergeReady(rows: GrowthDisplayRow[]): GrowthDisplayRow | null {
     milestones: [], conditional: false, missingCopies: 0, xpShortfall: 0,
     cumulativeXp: last.cumulativeXp, cumulativeGain: last.cumulativeGain,
     cumulativeMissingCopies: last.cumulativeMissingCopies, remainingXp: last.remainingXp,
-    available: { ...last.available, cards: upgrades, xp, silver, copies, gain },
+    available: { ...last.available, cards: upgrades, requirements, xp, silver, copies, gain },
   } };
 }

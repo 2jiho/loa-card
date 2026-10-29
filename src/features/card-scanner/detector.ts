@@ -2,6 +2,7 @@ import type * as OpenCV from "@techstark/opencv-js";
 import { rasterContext } from './acquisition-raster';
 import type { Raster } from './acquisition-raster';
 import { ExactPixelCache } from './exact-pixel-cache';
+import { createDetectorTemplateCache } from './detector-template-cache';
 type CV = typeof OpenCV;
 export interface Box {
   x: number;
@@ -65,21 +66,39 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
   const growthAnchor = new cv.Mat();
   cv.cvtColor(growthOriginal, growthAnchor, cv.COLOR_RGBA2GRAY);
   growthOriginal.delete();
+  const templates=createDetectorTemplateCache((width,height)=>{
+    const template=new cv.Mat();
+    try {cv.resize(grayAnchor,template,new cv.Size(width,height),0,0,cv.INTER_AREA);return template;}
+    catch(error){template.delete();throw error;}
+  });
   const growthCanvas = makeCanvas();
   const canvas = makeCanvas();
   // This canvas is read back by OpenCV every frame. Keep it on the CPU;
   // repeatedly uploading the full source to the GPU stalls live delivery.
   rasterContext(canvas);
-  let previous: { x: number; y: number; scale: number } | null = null;
+  let previous: { x: number; y: number; scale: number; width:number; height:number } | null = null;
+  const dimension=(value:number)=>Number.isSafeInteger(value)&&value>0&&value<=0xffffffff;
+  const located=(value:{x:number;y:number;scale:number},width:number,height:number)=>
+    Number.isFinite(value.x)&&value.x>=0&&value.x<width&&Number.isFinite(value.y)&&value.y>=0&&value.y<height&&
+    Number.isFinite(value.scale)&&value.scale>0;
   const trackedCache = new ExactPixelCache<{score:number;x:number;y:number;scale:number}>(1);
+  // Cache only the coarse proposal (including a miss), never final acceptance.
+  // Tall sources must not grow this optional working set without a bound.
+  let globalCache = new ExactPixelCache<{score:number;x:number;y:number;scale:number}>(1);
+  const globalCacheBytes = 8 * 1024 * 1024;
   const refinementCache = new ExactPixelCache<{score:number;x:number;y:number;scale:number}>(1);
   const growthCache = new ExactPixelCache<{score:number;gold:number}>(1);
   return {
     detect(video: HTMLVideoElement | HTMLImageElement | Raster): Layout | null {
+      const coarseStarted=trace?performance.now():0;
       const mediaWidth =
         "videoWidth" in video ? video.videoWidth : "naturalWidth" in video ? video.naturalWidth : video.width;
       const mediaHeight =
         "videoHeight" in video ? video.videoHeight : "naturalHeight" in video ? video.naturalHeight : video.height;
+      // Tracking coordinates belong to one source geometry. A smaller next
+      // source can otherwise make mediaWidth-offsetX negative before matching.
+      if(!dimension(mediaWidth)||!dimension(mediaHeight)){previous=null;return null;}
+      if(previous&&(previous.width!==mediaWidth||previous.height!==mediaHeight||!located(previous,mediaWidth,mediaHeight)))previous=null;
       const tracked = previous;
       const ratio = tracked ? 1 : Math.min(1, 1280 / mediaWidth);
       const offsetX = tracked ? Math.max(0, tracked.x - 32) : 0;
@@ -90,10 +109,15 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
       const height = tracked
         ? Math.min(mediaHeight - offsetY, grayAnchor.rows * tracked.scale + 64)
         : mediaHeight;
-      canvas.width = Math.round(width * ratio);
-      canvas.height = Math.round(height * ratio);
-      rasterContext(canvas)
-        .drawImage(
+      const rasterWidth=Math.round(width*ratio),rasterHeight=Math.round(height*ratio);
+      if(!dimension(rasterWidth)||!dimension(rasterHeight)){previous=null;return null;}
+      if(canvas.width!==rasterWidth)canvas.width=rasterWidth;
+      if(canvas.height!==rasterHeight)canvas.height=rasterHeight;
+      const context=rasterContext(canvas);
+      // Same-size canvases retain pixels and state. Replace the full raster,
+      // including transparent input, without resetting the backing store.
+      context.globalCompositeOperation='copy';
+      context.drawImage(
           video,
           offsetX,
           offsetY,
@@ -106,7 +130,9 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
         );
       const trackedPixels = rasterContext(canvas).getImageData(0,0,canvas.width,canvas.height);
       const trackedKey = JSON.stringify([tracked?.x,tracked?.y,tracked?.scale,mediaWidth,mediaHeight,offsetX,offsetY,width,height,canvas.width,canvas.height]);
-      const cached = reuseExact && tracked ? trackedCache.get(0,trackedKey,trackedPixels.data) : undefined;
+      const proposalCache = tracked ? trackedCache : globalCache;
+      const cacheable = reuseExact && (!!tracked || trackedPixels.data.byteLength <= globalCacheBytes);
+      const cached = cacheable ? proposalCache.get(0,trackedKey,trackedPixels.data) : undefined;
       let best = cached ? {...cached} : { score: 0, x: 0, y: 0, scale: 1 };
       if (!cached) {
         const src = cv.matFromImageData(trackedPixels);
@@ -117,20 +143,9 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
           for (const scale of tracked
             ? [tracked.scale]
             : [1, 0.85, 1.15, 0.7, 1.3, 0.55, 1.5]) {
-            const template = new cv.Mat();
-            const result = new cv.Mat();
+            const lease=templates.acquire(Math.round(grayAnchor.cols*scale*ratio),Math.round(grayAnchor.rows*scale*ratio));
+            const template=lease.value,result=new cv.Mat();
             try {
-              cv.resize(
-                grayAnchor,
-                template,
-                new cv.Size(
-                  Math.round(grayAnchor.cols * scale * ratio),
-                  Math.round(grayAnchor.rows * scale * ratio),
-                ),
-                0,
-                0,
-                cv.INTER_AREA,
-              );
               if (template.cols >= gray.cols || template.rows >= gray.rows)
                 continue;
               cv.matchTemplate(gray, template, result, cv.TM_CCOEFF_NORMED);
@@ -146,7 +161,7 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
                 };
               if (best.score > 0.92) break;
             } finally {
-              template.delete();
+              lease.release();
               result.delete();
             }
           }
@@ -154,7 +169,12 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
           gray.delete();
         }
       }
-      trace?.({stage:'coarse',tracked:!!tracked,...best});
+      trace?.({stage:'coarse',tracked:!!tracked,cached:!!cached,elapsedMs:performance.now()-coarseStarted,...best});
+      if(cacheable&&!tracked&&!cached&&Number.isFinite(best.score)&&located(best,mediaWidth,mediaHeight))
+        globalCache.setOwned(0,trackedKey,trackedPixels.data,{...best});
+      if(!Number.isFinite(best.score)||!located(best,mediaWidth,mediaHeight)){
+        previous=null;return tracked?this.detect(video):null;
+      }
       // Half-resolution glyphs change phase after odd-pixel window movement.
       // A coarse candidate is only a location proposal; validate at native
       // resolution before accepting it, with the original final threshold.
@@ -162,25 +182,31 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
         previous = null;
         return tracked ? this.detect(video) : null;
       }
-      // Refinement reads a different region: cache only tracked matches that
-      // do not need refinement. Any byte/geometry change uses the full matcher.
-      if (reuseExact && tracked && !cached && best.score >= .88)
+      // Cache the tracked proposal, not the refined/final decision. A weaker
+      // proposal still enters native refinement below, whose different pixels
+      // and geometry are checked independently on every input.
+      if (reuseExact && tracked && !cached)
         trackedCache.set(0,trackedKey,trackedPixels.data,{...best});
       // Coarse downsampling estimates the scale. Refine at native resolution so
       // fractional scale errors do not accumulate across the ten-column grid.
       if (!tracked || best.score < 0.88) {
+        const refinementStarted=trace?performance.now():0;
         const left = Math.max(0, Math.floor(best.x - 16));
         const top = Math.max(0, Math.floor(best.y - 16));
-        canvas.width = Math.min(
+        const refineWidth = Math.min(
           mediaWidth - left,
           Math.ceil(grayAnchor.cols * (best.scale + 0.09) + 32),
         );
-        canvas.height = Math.min(
+        const refineHeight = Math.min(
           mediaHeight - top,
           Math.ceil(grayAnchor.rows * (best.scale + 0.09) + 32),
         );
-        rasterContext(canvas)
-          .drawImage(
+        if(!dimension(refineWidth)||!dimension(refineHeight)){previous=null;return null;}
+        if(canvas.width!==refineWidth)canvas.width=refineWidth;
+        if(canvas.height!==refineHeight)canvas.height=refineHeight;
+        const nativeContext=rasterContext(canvas);
+        nativeContext.globalCompositeOperation='copy';
+        nativeContext.drawImage(
             video,
             left,
             top,
@@ -204,20 +230,9 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
           try {
             for (let step = -8; step <= 8; step++) {
               const scale = Math.round((best.scale + step * 0.01) * 100) / 100;
-              const template = new cv.Mat(),
-                result = new cv.Mat();
+              const lease=templates.acquire(Math.round(grayAnchor.cols*scale),Math.round(grayAnchor.rows*scale));
+              const template=lease.value,result=new cv.Mat();
               try {
-                cv.resize(
-                  grayAnchor,
-                  template,
-                  new cv.Size(
-                    Math.round(grayAnchor.cols * scale),
-                    Math.round(grayAnchor.rows * scale),
-                  ),
-                  0,
-                  0,
-                  cv.INTER_AREA,
-                );
                 if (template.cols >= gray.cols || template.rows >= gray.rows)
                   continue;
                 cv.matchTemplate(gray, template, result, cv.TM_CCOEFF_NORMED);
@@ -232,7 +247,7 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
                     scale,
                   };
               } finally {
-                template.delete();
+                lease.release();
                 result.delete();
               }
             }
@@ -244,8 +259,9 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
             if(reuseExact)refinementCache.setOwned(0,refinementKey,nativePixels.data,{...best});
           }
         }
+        trace?.({stage:'refinement-work',cached:!!cachedRefinement,elapsedMs:performance.now()-refinementStarted});
       }
-      if (best.score < 0.75) return null;
+      if (!Number.isFinite(best.score)||!located(best,mediaWidth,mediaHeight)||best.score < 0.75){previous=null;return null;}
       // The inventory title also appears outside Growth. Validate the selected tab.
       trace?.({stage:'refined',...best});
       const gx = best.x - 150 * best.scale,
@@ -257,9 +273,11 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
         gy + 48 * best.scale > mediaHeight
       )
         return null;
-      growthCanvas.width = 256;
-      growthCanvas.height = 48;
+      const growthStarted=trace?performance.now():0;
+      if(growthCanvas.width!==256)growthCanvas.width=256;
+      if(growthCanvas.height!==48)growthCanvas.height=48;
       const gc = rasterContext(growthCanvas);
+      gc.globalCompositeOperation='copy';
       gc.drawImage(
         video,
         gx,
@@ -302,9 +320,9 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
         }
         if(reuseExact)growthCache.set(0,growthKey,gp,{score:growthScore,gold});
       }
-      trace?.({stage:'growth',growthScore,gold:gold/(256*48),gx,gy});
+      trace?.({stage:'growth',cached:!!cachedGrowth,elapsedMs:performance.now()-growthStarted,growthScore,gold:gold/(256*48),gx,gy});
       if (growthScore < 0.8 || gold / (256 * 48) < 0.2) return null;
-      previous = best;
+      previous = {x:best.x,y:best.y,scale:best.scale,width:mediaWidth,height:mediaHeight};
       const { x, y, scale: s } = best;
       const cells: Box[] = [];
       for (let row = 0; row < 4; row++)
@@ -358,9 +376,13 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
       };
     },
     dispose() {
+      templates.dispose();
       grayAnchor.delete();
       growthAnchor.delete();
       growthCanvas.width = 0;
+      growthCanvas.height = 0;
+      canvas.width=canvas.height=0;previous=null;
+      globalCache = new ExactPixelCache(1);
     },
   };
 }

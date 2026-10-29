@@ -36,9 +36,9 @@ function better(a: RaidPlan, b: RaidPlan | undefined) {
 /** Exact 6-slot DP: minimize additional copies first, then XP, for one next milestone.
  * Alternatives are independent plans, not a shared spending schedule across sets. */
 export function nextRaidPlan(members: RaidMember[], target: number, slots = 6): RaidPlan | null {
-  if (members.some(m => m.status === 'unknown' || (m.status === 'known' && m.copies === null))) return null;
   let states = new Map<string, RaidPlan>([['0:0', { missing: 0, xp: 0, selected: [] }]]);
   for (const member of members) {
+    if (member.status === 'unknown') continue;
     const next = new Map(states); // Leaving a candidate out consumes no slot.
     const from = member.awakening!;
     const register = member.status === 'missing';
@@ -47,8 +47,11 @@ export function nextRaidPlan(members: RaidMember[], target: number, slots = 6): 
       if (count === slots) continue;
       let copies = 0, xp = 0;
       for (let to = from; to <= member.card.steps.length; to++) {
+        // An unknown reserve can still contribute its observed awakening; it
+        // must not fund upgrades or block the other six confirmed members.
+        if (member.copies === null && to > from) break;
         if (to > from) { copies += member.card.steps[to - 1].copies; xp += member.card.steps[to - 1].xp; }
-        const missing = Math.max(0, copies - member.copies!) + (register ? 1 : 0);
+        const missing = Math.max(0, copies - (member.copies ?? 0)) + (register ? 1 : 0);
         const candidate: RaidPlan = { missing: plan.missing + missing, xp: plan.xp + xp,
           selected: [...plan.selected, { id: member.card.id, from, to, register, missing }] };
         const nextKey = `${count + 1}:${Math.min(target, total + to)}`;

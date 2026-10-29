@@ -6,6 +6,7 @@ import { BookOverview } from './BookOverview';
 import { CollectionCandidates } from './CollectionCandidates';
 import { StatCollection } from './StatCollection';
 import type { GrowthSequenceStep } from './growth-sequence';
+import { runGrowthWorker } from './worker-calculation';
 import './growth.css';
 
 export function GrowthPlanner({ cards: observations, growthPoints, onComplete, busy = false, complete = true }: {
@@ -23,11 +24,12 @@ export function GrowthPlanner({ cards: observations, growthPoints, onComplete, b
     cards: OwnedCard[]; master: GrowthMaster; xp: number; target: string; attempt: number;
     result?: GrowthComparison; error?: string;
   } | null>(null);
+  const [lastResult,setLastResult]=useState<{master:GrowthMaster;target:string;result:GrowthComparison}|null>(null);
   const [loadError, setLoadError] = useState('');
   const current = completed?.cards === cards && completed.master === master && completed.xp === xp &&
     completed.target === target && completed.attempt === calculationAttempt ? completed : null;
   const canCalculate = !!master && !selectedStat && cards.length > 0 && xp !== null;
-  const previous = busy && completed?.master === master && completed.target === target && completed.attempt === calculationAttempt ? completed.result : null;
+  const previous = lastResult?.master === master && lastResult.target === target ? lastResult.result : null;
   const result = canCalculate ? current?.result ?? previous : null;
   const running = canCalculate && !current;
   const error = loadError || (!selectedStat ? current?.error : '') || '';
@@ -42,7 +44,7 @@ export function GrowthPlanner({ cards: observations, growthPoints, onComplete, b
   }, [loadAttempt]);
   useEffect(() => {
     if (!master || selectedStat) return;
-    let cancelled = false, worker: Worker | null = null;
+    let cancelled = false, worker: Worker | null = null, cancelWorker:(()=>void)|undefined;
     let processed: typeof latest.current | undefined;
     // One calculation at a time. Continuous scan updates replace the pending input,
     // never terminate useful in-flight work or build an unbounded worker queue.
@@ -53,7 +55,8 @@ export function GrowthPlanner({ cards: observations, growthPoints, onComplete, b
       const { cards, xp } = input;
       const finish = (data: { result?: GrowthComparison; error?: string }) => {
         if (cancelled) return;
-        worker?.terminate(); worker = null;
+        worker = null;cancelWorker=undefined;
+        if(data.result)setLastResult({master,target,result:data.result});
         setCompleted({ cards, master, xp, target, attempt: calculationAttempt, ...data });
       };
       try {
@@ -61,15 +64,12 @@ export function GrowthPlanner({ cards: observations, growthPoints, onComplete, b
           cards: cards.map(({ id, awakening, extraCopies, review, countReliable }) => ({ id, awakening, extraCopies, review, countReliable })),
           xp, target };
         worker = new Worker(new URL('./optimizer.worker.ts', import.meta.url), { type: 'module' });
-        worker.onmessage = (message: MessageEvent<{ result?: GrowthComparison; error?: string }>) =>
-          finish(message.data.result ? { result: message.data.result } : { error: message.data.error ?? '성장 계산에 실패했습니다.' });
-        worker.onerror = () => finish({ error: '계산을 완료하지 못했습니다. 다시 시도해 주세요.' });
-        worker.postMessage(request);
+        cancelWorker=runGrowthWorker(worker,request,finish);
       } catch (e) { finish({ error: e instanceof Error ? e.message : '계산을 시작하지 못했습니다.' }); }
     };
     const initial = setTimeout(calculate, 300);
     const timer = setInterval(calculate, 1000);
-    return () => { cancelled = true; clearTimeout(initial); clearInterval(timer); worker?.terminate(); };
+    return () => { cancelled = true; clearTimeout(initial); clearInterval(timer); cancelWorker?.(); };
   }, [master, target, selectedStat, calculationAttempt]);
   const targetName = master?.targets.find(t => t.id === target)?.name ?? '악마';
   return <section className="panel growth-planner" aria-label="도감작 성장 계산">
@@ -90,7 +90,8 @@ export function GrowthPlanner({ cards: observations, growthPoints, onComplete, b
       {current?.error && !selectedStat && <button onClick={() => setCalculationAttempt(n => n + 1)}>다시 계산</button>}</p>}
     {running && <p role="status" className="growth-working"><span className="growth-spinner" />성장 순서 계산 중…</p>}
     {result && <div className="growth-result">
-      <CollectionCandidates candidates={result.collectionCandidates} targetName={targetName} disabled={busy || !current} onComplete={step => onComplete(master!, step)} />
+      {!current?.result&&<p className="growth-assumption">이전 계산 결과 · {current?.error?'다시 계산해 주세요.':'현재 목록으로 다시 확인 중'}</p>}
+      <CollectionCandidates candidates={result.collectionCandidates} targetName={targetName} disabled={busy || !current?.result} onComplete={step => onComplete(master!, step)} />
     </div>}
   </section>;
 }

@@ -11,6 +11,13 @@ export type OwnedCard = { id: string; awakening: number | null; extraCopies: num
 export type GrowthComparisonRequest = { master: GrowthMaster; cards: OwnedCard[]; xp: number; target: string };
 export type GrowthComparison = { collectionCandidates: GrowthSequenceStep[] };
 
+/** Missing optional members cannot erase a reward proved by enough confirmed members. */
+export function bookEffectActive(book: GrowthBook, effect: BookEffect, levels: ReadonlyMap<string, number>): boolean {
+  let count=0,sum=0;
+  for(const id of book.cardIds){const level=levels.get(id);if(level!==undefined){count++;sum+=level;}}
+  return count>=effect.requiredCount && sum>=effect.threshold;
+}
+
 /** Plan sequential upgrades, carrying forward spent resources and activated effects. */
 export function compareGrowthCandidates(request: GrowthComparisonRequest): GrowthComparison {
   if (!Number.isSafeInteger(request.xp) || request.xp < 0 || !request.master.targets.some(t => t.id === request.target)) {
@@ -51,13 +58,13 @@ export function currentBookProgress(master: GrowthMaster, cards: OwnedCard[]) {
     const sum = missing.length ? null : confirmedSum;
     return { ...book, missing, unregistered, unreadable, sum, confirmedSum, confirmedCards: book.cardIds.length - missing.length,
       collectionEffects: (book.collectionEffects ?? []).map(effect => ({ ...effect, active: book.cardIds.length - missing.length >= effect.requiredCount ? true : null })),
-      effects: book.effects.map(effect => ({ ...effect, active: sum === null ? null : sum >= effect.threshold && book.cardIds.length >= effect.requiredCount })) };
+      effects: book.effects.map(effect => ({ ...effect, active: book.cardIds.length-missing.length >= effect.requiredCount && confirmedSum >= effect.threshold ? true : sum === null ? null : false })) };
   });
   const targets = master.targets.map(target => {
     const relevant = books.filter(book => book.effects.some(e => e.target === target.id));
     return { ...target, current: relevant.reduce((n, book) => n + book.effects.reduce((v, e) => v + (e.target === target.id && e.active === true ? e.value : 0), 0), 0),
       maximum: relevant.reduce((n, book) => n + book.effects.reduce((v, e) => v + (e.target === target.id ? e.value : 0), 0), 0),
-      unknownBooks: relevant.filter(book => book.unreadable.length > 0).length, totalBooks: relevant.length };
+      unknownBooks: relevant.filter(book => book.unreadable.length > 0 && book.effects.some(e=>e.target===target.id && e.active===null)).length, totalBooks: relevant.length };
   });
   const stats = (master.stats ?? []).map(stat => ({ ...stat,
     current: books.reduce((sum, book) => sum + book.collectionEffects.reduce((n, effect) =>

@@ -3,10 +3,13 @@ export class CandidateQueue<T extends { group: number }> {
   private values = new Map<number, T>();
   private capacity: number;
   private release: (item: T) => void;
-  constructor(capacity: number, release: (item: T) => void) { this.capacity = capacity; this.release = release; }
+  private replace:(previous:T,next:T)=>boolean;
+  constructor(capacity: number, release: (item: T) => void,
+    replace:(previous:T,next:T)=>boolean=()=>true) { this.capacity = capacity; this.release = release;this.replace=replace; }
   get length() { return this.values.size; }
   push(item: T): boolean {
     const previous = this.values.get(item.group);
+    if(previous&&!this.replace(previous,item))return false;
     if (!previous && this.values.size >= this.capacity) return false;
     if (previous) this.release(previous);
     this.values.set(item.group, item);

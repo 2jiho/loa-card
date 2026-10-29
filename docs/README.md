@@ -6,6 +6,7 @@
 |---|---|
 | 처음 실행하거나 수정 | [README](../README.md), [AGENTS](../AGENTS.md), [개발·검증](development.md) |
 | 스캐너 인식·성능 | [스캐너 구조](scanner-pipeline.md) |
+| 입력 누적·재현 구조 전환 | [입력 기록과 재현 설계](scanner-session-design.md), [입력 코퍼스 사용](development.md#입력-코퍼스) |
 | UI·테마 | [UI 설계](ui-design.md) |
 | 도감 계산 | [성장 계산](growth-optimizer.md) |
 | 레이드 비교 | [레이드 계산](raid-cards.md) |
