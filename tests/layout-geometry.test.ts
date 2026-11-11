@@ -6,8 +6,8 @@ test('reference 1440p anchor yields the fixed 10x4 grid and chrome boxes', () =>
   const layout = normalizeLayoutGeometry({x: 1000, y: 100, scale: 1}, 2560, 1440);
   assert.equal(layout.cells.length, 40);
   assert.deepEqual(layout.cells[0], {x: 338, y: 286, width: 140, height: 210});
-  assert.deepEqual(layout.cells[9], {x: 1756, y: 286, width: 140, height: 210});
-  assert.deepEqual(layout.cells[39], {x: 1756, y: 1015, width: 140, height: 210});
+  assert.deepEqual(layout.cells[9], {x: 1754, y: 286, width: 140, height: 210});
+  assert.deepEqual(layout.cells[39], {x: 1754, y: 1015, width: 140, height: 210});
   assert.deepEqual(layout.header, {x: 1126, y: 98, width: 200, height: 34});
   assert.deepEqual(layout.growthPoints, {x: 1710, y: 94, width: 230, height: 34});
   assert.deepEqual(layout.sort, {x: 1718, y: 201, width: 210, height: 40});
@@ -18,7 +18,17 @@ test('reference 1440p anchor yields the fixed 10x4 grid and chrome boxes', () =>
   assert.equal(layout.geometry?.columns, DEFAULT_LAYOUT.columns);
   assert.equal(layout.geometry?.rows, DEFAULT_LAYOUT.rows);
   assert.equal(layout.geometry?.cardAspect, 2 / 3);
-  assert.deepEqual(layout.geometry?.bounds, {x: 338, y: 286, width: 1558, height: 939});
+  assert.deepEqual(layout.geometry?.bounds, {x: 338, y: 286, width: 1556, height: 939});
+});
+
+test('the card grid has the measured column pitch of 472/3; the rows keep 243 for now', () => {
+  // The anchor of the 2560x1440 share the pitch was measured on (docs/card-image-structure.md).
+  const layout = normalizeLayoutGeometry({x: 800, y: 206, scale: 1}, 2560, 1440);
+  assert.deepEqual(layout.cells.slice(0, 10).map(cell => cell.x), [138, 295, 453, 610, 767, 925, 1082, 1239, 1397, 1554]);
+  assert.deepEqual([0, 10, 20, 30].map(index => layout.cells[index].y), [392, 635, 878, 1121]);
+  // The chrome around the grid keeps its place.
+  assert.deepEqual(layout.scrollbar, {x: 1710, y: 392, width: 16, height: 942});
+  assert.deepEqual(layout.area, {x: 138, y: 392, width: 1562, height: 942});
 });
 
 test('1080p, 720p and 4K holdout scales keep the same relative grid', () => {

@@ -8,6 +8,8 @@ import {analyzeReads,summarizeReadProfiles,comparabilityIssues,diffRuns,summariz
 import type {RunCard,RunDeliveryLike,RunReport,RunSummary} from './recording-runs';
 import {compareLean,runLeanScan} from './lean-scan';
 import {runRowScan} from './row-scan';
+import {runCardMap} from './card-map';
+import {runGridFit} from './grid-fit';
 import {runRowRead} from './row-read';
 import {runRowLight} from './row-light';
 import {analyzeRows} from './row-analysis';
@@ -201,6 +203,30 @@ async function run():Promise<void> {
         sourceSignature:String(import.meta.env.VITE_REPLAY_SIGNATURE??'').slice(0,16),
         summary:{build:import.meta.env.VITE_BUILD_REVISION??'local',read:readCards.length,expected:null,unidentified:0,meanLateMs:0,maxLateMs:0,lateOver33Ms:0,deliveredRatio:1,mode:modeValue,faithful:true}})})).json() as {name:string};
       statusLine.textContent=`완료 · 저장됨 ${saved.name}`;
+      await loadRuns();
+      return;
+    }
+    if(modeValue==='gridfit'){
+      // Grid measurement from the border outline, not a scan (dev/grid-fit.ts).
+      const result=await runGridFit({recordingId,signal,onProgress:text=>{progress.textContent=text;}});
+      const saved=await (await fetch(BASE+'/'+encodeURIComponent(recordingId)+'/runs',{method:'POST',body:JSON.stringify({
+        kind:'grid-fit',version:1,startedAt,finishedAt:new Date().toISOString(),recording:{id:recordingId},
+        status:'격자 맞춤 측정 · 장면 '+result.sampledFrames,cards:[],measurement:result,
+        sourceSignature:String(import.meta.env.VITE_REPLAY_SIGNATURE??'').slice(0,16),
+        summary:{build:import.meta.env.VITE_BUILD_REVISION??'local',read:result.cellsMeasured,expected:null,unidentified:0,meanLateMs:0,maxLateMs:0,lateOver33Ms:0,deliveredRatio:1,mode:'gridfit',faithful:true}})})).json() as {name:string};
+      statusLine.textContent='완료 · 저장됨 '+saved.name;
+      await loadRuns();
+      return;
+    }
+    if(modeValue==='cardmap'){
+      // Card layout measurement, not a scan (dev/card-map.ts).
+      const result=await runCardMap({recordingId,signal,onProgress:text=>{progress.textContent=text;}});
+      const saved=await (await fetch(BASE+'/'+encodeURIComponent(recordingId)+'/runs',{method:'POST',body:JSON.stringify({
+        kind:'card-map',version:1,startedAt,finishedAt:new Date().toISOString(),recording:{id:recordingId},
+        status:'카드 배치 측정 · 크롭 '+result.crops,cards:[],measurement:result,
+        sourceSignature:String(import.meta.env.VITE_REPLAY_SIGNATURE??'').slice(0,16),
+        summary:{build:import.meta.env.VITE_BUILD_REVISION??'local',read:result.crops,expected:null,unidentified:0,meanLateMs:0,maxLateMs:0,lateOver33Ms:0,deliveredRatio:1,mode:'cardmap',faithful:true}})})).json() as {name:string};
+      statusLine.textContent='완료 · 저장됨 '+saved.name;
       await loadRuns();
       return;
     }

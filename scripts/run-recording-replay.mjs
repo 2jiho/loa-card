@@ -18,7 +18,9 @@
 //        lean (prototype measurement of the acquisition and visual workers alone; not a scan),
 //        rows (per-frame row observations for the row-centred design feasibility measurement; not a scan),
 //        rowread (row-centred reading prototype: reads only the rows the list table lacks; not a scan),
-//        rowlight (rowread with a light per-frame check that skips frames needing nothing; not a scan).
+//        rowlight (rowread with a light per-frame check that skips frames needing nothing; not a scan),
+//        gridfit (grid measurement: the client border outline laid over every visible card; needs the private work/ extracts),
+//        cardmap (card layout measurement: crops lined up with the client border and stacked; needs the private work/ extracts).
 import {spawn,spawnSync} from 'node:child_process';
 import {closeSync,existsSync,mkdtempSync,openSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -34,7 +36,7 @@ const extraQuery=value('--query',null); // extra page parameters for experiments
 const cpuProfile=value('--cpuprofile',null),debugPort=Number(value('--debug-port','9339'));
 const logFile=value('--log',null); // browser console and error output, for diagnosing a failed run
 if(!ids.length){console.error('usage: node scripts/run-recording-replay.mjs --id <recording-id> [--mode sequential|realtime|realtime-detailed|realtime-batch]');process.exit(2);}
-if(!['sequential','realtime','realtime-detailed','realtime-batch','lean','rows','rowread','rowlight'].includes(mode)&&!mode.startsWith('skip:')){console.error(`unknown mode: ${mode}`);process.exit(2);}
+if(!['sequential','realtime','realtime-detailed','realtime-batch','lean','rows','rowread','rowlight','cardmap','gridfit'].includes(mode)&&!mode.startsWith('skip:')){console.error(`unknown mode: ${mode}`);process.exit(2);}
 
 function findBrowser() {
   const explicit=value('--browser',process.env.CHROME_PATH);

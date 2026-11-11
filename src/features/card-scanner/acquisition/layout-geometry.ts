@@ -56,8 +56,14 @@ export const DEFAULT_LAYOUT = Object.freeze({
   columns: 10,
   rows: 4,
   gridX: -662,
+  // Column pitch measured against the client's card border on 1,433 crops of a 2560x1440 share
+  // (docs/card-image-structure.md, "격자 간격 실측"): columns are 472/3 apart, not 157.5, which put
+  // the right-hand columns up to 3px right. The UI is laid out for 1080p and drawn at 4/3 there.
+  // The rows measure 728/3 apart with the first one 1px lower (393, 636, 878, 1121), but moving
+  // them changed scan results (the per-crop border alignment then moves the second row), so the
+  // rows keep their earlier values until the grid is fitted to the borders as a whole.
   gridY: 186,
-  columnStep: 157.5,
+  columnStep: 472 / 3,
   rowStep: 243,
   cardWidth: 140,
   cardHeight: 210,
