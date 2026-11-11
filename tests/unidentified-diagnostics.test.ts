@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {MAX_RETAINED_DIAGNOSTIC_IMAGES,MAX_UNIDENTIFIED_DIAGNOSTIC_BYTES,MAX_UNIDENTIFIED_DIAGNOSTIC_ENTRIES,MAX_UNIDENTIFIED_NAME_ATTEMPTS,summarizeUnidentified} from '../src/features/card-scanner/unidentified-diagnostics';
+import {MAX_RETAINED_DIAGNOSTIC_IMAGES,MAX_UNIDENTIFIED_DIAGNOSTIC_BYTES,MAX_UNIDENTIFIED_DIAGNOSTIC_ENTRIES,MAX_UNIDENTIFIED_NAME_ATTEMPTS,summarizeUnidentified} from '../src/features/card-scanner/session/unidentified-diagnostics';
 
 const uri=(index:number)=>`data:image/png;base64,${index}privatePixels`;
 const source=(index:number)=>({sessionId:'session-1',frameId:100+index,observationId:`observation-${index}`,captureOrder:200+index,

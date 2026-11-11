@@ -1,10 +1,10 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import{mkdtemp,readFile,readdir,rm,symlink,writeFile,mkdir,open}from'node:fs/promises';import{tmpdir}from'node:os';import{join}from'node:path';import{createHash}from'node:crypto';
 import{addCorpusCase,verifyCorpus}from'../scripts/scan-corpus-core.mjs';
-import{parseHumanExpected,importHumanExpected,listHumanExpected,verifyHumanExpected,compareHumanExpected,runHumanExpectedCli,MAX_HUMAN_LABEL_BYTES}from'../scripts/scan-human-expected.mjs';
+import{parseHumanExpected,importHumanExpected,listHumanExpected,verifyHumanExpected,compareHumanExpected,quarantineHumanExpected,runHumanExpectedCli,MAX_HUMAN_LABEL_BYTES}from'../scripts/scan-human-expected.mjs';
 import{runCorpusCli}from'../scripts/scan-corpus.mjs';
-import{InventoryEvidence,hashInventoryEvidence,inventoryEventData}from'../src/features/card-scanner/inventory-evidence';
-import{RunStateTrace}from'../dev/run-state-trace';import type{ScannedCard}from'../src/features/card-scanner/recognizer';
+import{InventoryEvidence,hashInventoryEvidence,inventoryEventData,CURRENT_INVENTORY_CONSENSUS_POLICY}from'../src/features/card-scanner/session/inventory-evidence';
+import{RunStateTrace}from'../dev/run-state-trace';import type{ScannedCard}from'../src/features/card-scanner/recognition/recognizer';
 
 const hash=(v:string|Buffer)=>createHash('sha256').update(v).digest('hex'),clone=<T>(v:T):T=>JSON.parse(JSON.stringify(v));
 type Manifest={id:string;inputs:{index:number;sha256:string;bytes:number;name:string}[]};
@@ -24,10 +24,17 @@ function card(order:number,extra:Partial<ScannedCard>={}):ScannedCard{return{id:
  confidence:1,review:[],image:'',time:order/10,observations:1,captureOrder:order,countReliable:true,
  capturePosition:{frame:source(order).frame,slot:0,stable:true,sort:null},...extra};}
 async function report(manifest:Manifest,mode='fresh'){
- const trace=new RunStateTrace();let clock=0;trace.record('inventory-seed',{version:1,cards:[]},clock++);
- const inv=new InventoryEvidence([],{onEvent:e=>trace.record('inventory-event',inventoryEventData(e),clock++)});
- const record=(order:number,changes:Partial<ScannedCard>={})=>{const s=source(order);inv.acceptIdentity(s,'card');if(mode!=='no-name')inv.confirmName(s,'card');inv.recordObservation(s,card(order,changes),1);};
- record(10);
+ const trace=new RunStateTrace();let clock=0;const isV3=mode==='v3-name-conflict',isV4=mode==='v4-name-conflict',isV5=mode==='v5-fresh',isV6=mode==='v6-fresh'||mode==='v6-count-conflict',isBound=isV3||isV4;
+ const seedPolicy=isV4||isV5||isV6?'prior-run-v3' as const:isV3?'prior-run-v2' as const:undefined;
+ const countConflictPolicy={version:2 as const,sessionId:'test'};
+ trace.record('inventory-seed',isV6?{version:6,seedPolicy,consensusPolicy:CURRENT_INVENTORY_CONSENSUS_POLICY,countConflictPolicy,cards:[]}:
+  isV5?{version:5,seedPolicy,consensusPolicy:CURRENT_INVENTORY_CONSENSUS_POLICY,cards:[]}:
+  seedPolicy?{version:isV4?4:3,seedPolicy,cards:[]}:{version:1,cards:[]},clock++);
+ const inv=new InventoryEvidence([],{...(seedPolicy?{seedPolicy}:{}),...(isV5||isV6?{consensusPolicy:CURRENT_INVENTORY_CONSENSUS_POLICY}:{}),...(isV6?{countConflictPolicy}:{}),onEvent:e=>trace.record('inventory-event',inventoryEventData(e),clock++)});
+ const record=(order:number,changes:Partial<ScannedCard>={})=>{const s=source(order),value=card(order,changes);inv.acceptIdentity(s,'card');if(mode!=='no-name')inv.confirmName(s,'card',value.name);inv.recordObservation(s,value,1);};
+ record(10,mode==='v6-count-conflict'?{extraCopies:4,countDiagnostics:{maximum:15,reason:'test',readings:[],reliability:'clear-pattern'}}:isBound?{manual:['name']}:{});
+ if(mode==='v6-count-conflict')record(20,{countDiagnostics:{maximum:15,reason:'test',readings:[],reliability:'empty-counter'}});
+ if(isBound)record(20,{name:'다른 이름'});
  if(mode==='unresolved'){record(30,{extraCopies:null,countReliable:false,review:['추가 장수 확인']});record(20);}
  if(mode==='impossible')record(30,{awakening:4,extraCopies:10});
  if(mode==='identity-only'){inv.acceptIdentity(source(40),'card');inv.confirmName(source(40),'card');}
@@ -57,7 +64,9 @@ test('import requires an operator assertion and preserves manifests; repeated la
   const first=await importHumanExpected(manifest.id,file,{root,operatorConfirmed:true});
   await writeFile(file,JSON.stringify(value,null,5));const again=await importHumanExpected(manifest.id,file,{root,operatorConfirmed:true});
   assert.equal(first.sha256,again.sha256);assert.equal(first.created,true);assert.equal(again.created,false);
-  assert.deepEqual(await readFile(manifestPath),before);assert.equal((await verifyHumanExpected(first.sha256,{root})).verified,true);
+  assert.deepEqual(await readFile(manifestPath),before);const verification=await verifyHumanExpected(first.sha256,{root});
+  assert.equal(verification.verified,true);assert.equal(verification.verificationScope,'stored-bytes-and-structure-only');
+  assert.equal(verification.comparisonStatus,'not-quarantined');
   const input=join(dir,'other.mp4');await writeFile(input,'different bytes');const secondCase=(await addCorpusCase([input],{root})).manifest;
   const secondFile=join(dir,'second.json');await writeFile(secondFile,JSON.stringify(label(secondCase)));
   const second=await importHumanExpected(secondCase.id,secondFile,{root,operatorConfirmed:true});
@@ -116,15 +125,60 @@ test('private flat labels require explicit migration and bind a copied PNG witho
 test('compare keeps zero tuple equality separate from unresolved latest evidence and from unsupported traces',async()=>{
  await fixture(async({dir,root,manifest,file})=>{
   const imported=await importHumanExpected(manifest.id,file,{root,operatorConfirmed:true}),actual=join(dir,'actual.json');
-  for(const mode of ['fresh','unresolved','identity-only','late-fact','impossible']){
+  for(const mode of ['fresh','v5-fresh','v6-fresh','v6-count-conflict','unresolved','identity-only','late-fact','impossible']){
    await writeFile(actual,JSON.stringify(await report(manifest,mode)));const result=await compareHumanExpected(imported.sha256,actual,{root});
-   assert.equal(result.valueMatches,true,mode);assert.equal(result.fieldProofPassed,mode==='fresh'?true:mode==='late-fact'?null:false,mode);
-   assert.equal(result.exitCode,mode==='fresh'?0:3,mode);
+   assert.equal(result.valueMatches,true,mode);assert.equal(result.fieldProofPassed,mode==='fresh'||mode==='v5-fresh'||mode==='v6-fresh'?true:mode==='late-fact'?null:false,mode);
+   assert.equal(result.exitCode,mode==='fresh'||mode==='v5-fresh'||mode==='v6-fresh'?0:3,mode);
   }
   const value=await report(manifest);delete (value as any).execution;await writeFile(actual,JSON.stringify(value));
   const unsupported=await compareHumanExpected(imported.sha256,actual,{root});assert.equal(unsupported.fieldProofPassed,null);assert.equal(unsupported.exitCode,3);
   value.result.cards[0].extraCopies=1;await writeFile(actual,JSON.stringify(value));assert.equal((await compareHumanExpected(imported.sha256,actual,{root})).exitCode,2);
   value.validation.input[0].sha256='f'.repeat(64);await writeFile(actual,JSON.stringify(value));await assert.rejects(compareHumanExpected(imported.sha256,actual,{root}),/input hash/);
+ });
+});
+
+test('unknown source-change state cannot certify a human-label comparison',async()=>{
+ await fixture(async({dir,root,manifest,file})=>{
+  const imported=await importHumanExpected(manifest.id,file,{root,operatorConfirmed:true}),actual=join(dir,'actual.json');
+  for(const state of [null,true,'missing'] as const){
+   const value=await report(manifest);
+   if(state==='missing')delete (value.validation as {sourceChanged?:boolean|null}).sourceChanged;
+   else (value.validation as {sourceChanged?:boolean|null}).sourceChanged=state;
+   await writeFile(actual,JSON.stringify(value));
+   const result=await compareHumanExpected(imported.sha256,actual,{root});
+   assert.equal(result.valueMatches,true);
+   assert.equal(result.latestEvidenceSupported,false);
+   assert.equal(result.fieldProofPassed,null);
+   assert.equal(result.exitCode,3);
+  }
+ });
+});
+
+test('quarantining an invalid label preserves evidence and blocks even values-only comparisons',async()=>{
+ await fixture(async({dir,root,manifest,file})=>{
+  const imported=await importHumanExpected(manifest.id,file,{root,operatorConfirmed:true}),actual=join(dir,'actual.json');
+  await writeFile(actual,JSON.stringify(await report(manifest)));
+  assert.equal((await compareHumanExpected(imported.sha256,actual,{root})).exitCode,0);
+  const original=await readFile(imported.file),reason='Identity was supplied in the question and is not independently confirmed.';
+  assert.equal((await quarantineHumanExpected(imported.sha256,reason,{root})).created,true);
+  assert.equal((await quarantineHumanExpected(imported.sha256,reason,{root})).created,false);
+  await assert.rejects(quarantineHumanExpected(imported.sha256,'Different reason',{root}),/different quarantine reason/);
+  assert.deepEqual(await readFile(imported.file),original,'original label remains intact');
+  const verified=await verifyHumanExpected(imported.sha256,{root});
+  assert.equal(verified.verified,true,'storage verification is still available');
+  assert.equal(verified.verificationScope,'stored-bytes-and-structure-only');
+  assert.equal(verified.comparisonStatus,'quarantined','storage verification cannot imply label eligibility');
+  assert.equal(verified.quarantine.reason,reason,'storage integrity must not conceal quarantine');
+  assert.equal((await listHumanExpected({root})).labels[0].quarantine.reason,reason);
+  await assert.rejects(compareHumanExpected(imported.sha256,actual,{root}),/Human label quarantined/);
+  await assert.rejects(compareHumanExpected(imported.sha256,actual,{root,valuesOnly:true}),/Human label quarantined/);
+  const variant=JSON.parse(original.toString('utf8'));
+  variant.migration={format:'private-flat-v1',sourceSha256:hash('different metadata')};
+  await writeFile(file,JSON.stringify(variant));
+  const copied=await importHumanExpected(manifest.id,file,{root,operatorConfirmed:true});
+  assert.notEqual(copied.sha256,imported.sha256,'metadata variation creates a distinct immutable label');
+  assert.equal((await listHumanExpected({root})).labels.find(v=>v.sha256===copied.sha256)!.quarantine.kind,'loacard-human-confirmation-quarantine');
+  await assert.rejects(compareHumanExpected(copied.sha256,actual,{root,valuesOnly:true}),/Human label quarantined/);
  });
 });
 
@@ -154,7 +208,7 @@ test('name-only labels require current confirmed name evidence without demanding
   await writeFile(actual,JSON.stringify(await report(manifest,'unresolved')));let result=await compareHumanExpected(imported.sha256,actual,{root});
   assert.equal(result.checkedFields,1);assert.equal(result.valueMatches,true);assert.equal(result.fieldProofPassed,true);assert.equal(result.exitCode,0);
   assert.equal(result.cards[0].latestEvidence.jointFieldContract,false);assert.equal(result.cards[0].latestEvidence.jointFieldsConfirmed,false);
-  for(const mode of ['identity-only','no-name']){await writeFile(actual,JSON.stringify(await report(manifest,mode)));result=await compareHumanExpected(imported.sha256,actual,{root});assert.equal(result.fieldProofPassed,false,mode);assert.equal(result.exitCode,3,mode);}
+  for(const mode of ['identity-only','no-name','v3-name-conflict','v4-name-conflict']){await writeFile(actual,JSON.stringify(await report(manifest,mode)));result=await compareHumanExpected(imported.sha256,actual,{root});assert.equal(result.fieldProofPassed,false,mode);assert.equal(result.exitCode,3,mode);}
  });
 });
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createBitmapDispatch } from "../src/features/card-scanner/bitmap-dispatch.ts";
+import { createBitmapDispatch } from "../src/features/card-scanner/acquisition/bitmap-dispatch.ts";
 
 const metadata = (id: number) => ({ id, width: 140, height: 210, time: id, elapsed: id * 1000 });
 test("bitmap snapshots begin before waiting and transfer in capture order even when copies resolve out of order", async () => {

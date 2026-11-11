@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {hasPanelOverlay} from '../src/features/card-scanner/overlay-quality';
-import {inspectCapture} from '../src/features/card-scanner/capture-quality';
+import {hasPanelOverlay} from '../src/features/card-scanner/acquisition/overlay-quality';
+import {inspectCapture} from '../src/features/card-scanner/acquisition/capture-quality';
 type Sample={name:string;intact:boolean;width:number;height:number;rgba:string;box:{x:number;y:number;width:number;height:number}};
 const samples:Sample[]=JSON.parse(readFileSync('tests/fixtures/border-integrity-samples.json','utf8'));
 test('real intact rarity crops survive while a text-bearing panel inside their borders is rejected',()=>{

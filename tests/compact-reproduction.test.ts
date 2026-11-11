@@ -1,13 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
-import {createReproductionBundle,openReproduction,beginReproduction,createReproductionSessionAccess} from '../src/features/card-scanner/scan-reproduction';
-import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction-session-store';
-import {prepareNativeStorage,rgbaFrameStorage} from '../src/features/card-scanner/native-frame-storage';
-import {planNativeYuvFrame,type NativeYuvFrameMetadata} from '../src/features/card-scanner/native-yuv-recipe';
-import {entryParts,fastCompress,packPixels,pixelHash,exactPixels,executionSummary} from '../src/features/card-scanner/exact-recording-codec';
-import type {ExactRecordingStats} from '../src/features/card-scanner/exact-recording';
-import type {ReproductionFile} from '../src/features/card-scanner/scan-reproduction';
+import {createReproductionBundle,openReproduction,beginReproduction,createReproductionSessionAccess} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction/reproduction-session-store';
+import {prepareNativeStorage,rgbaFrameStorage} from '../src/features/card-scanner/reproduction/native-frame-storage';
+import {planNativeYuvFrame,type NativeYuvFrameMetadata} from '../src/features/card-scanner/acquisition/native-yuv-recipe';
+import {entryParts,fastCompress,packPixels,pixelHash,exactPixels,executionSummary} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import type {ExactRecordingStats} from '../src/features/card-scanner/reproduction/exact-recording';
+import type {ReproductionFile} from '../src/features/card-scanner/reproduction/scan-reproduction';
 
 const signal=()=>new AbortController().signal;
 async function fixture(){

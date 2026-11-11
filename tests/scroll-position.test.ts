@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { inflateSync } from "node:zlib";
-import { readScrollPosition, readScrollGeometry } from "../src/features/card-scanner/scroll-position.ts";
+import { readScrollPosition, readScrollGeometry } from "../src/features/card-scanner/session/scroll-position.ts";
 
 test("actual scrollbar captures distinguish the first page and later pages without treating empty slots as the end", async () => {
   const samples = JSON.parse(await readFile("tests/fixtures/scrollbar-samples.json", "utf8"));

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CanonicalStorageAttestationReplay,parseCanonicalStorageAttestationContract} from '../src/features/card-scanner/canonical-storage-attestation';
-import {prepareNativeStorage,rgbaFrameStorage} from '../src/features/card-scanner/native-frame-storage';
-import {verifyAttestedPreparedNative,type AuthorizedPreparedNativeAttestation,type PreparedNativeAttestation} from '../src/features/card-scanner/prepared-native-attestation';
-import type {ExactEntry,ExactFrame} from '../src/features/card-scanner/exact-recording-codec';
-import type {NativeYuvFrameMetadata} from '../src/features/card-scanner/native-yuv-recipe';
+import {CanonicalStorageAttestationReplay,parseCanonicalStorageAttestationContract} from '../src/features/card-scanner/reproduction/canonical-storage-attestation';
+import {prepareNativeStorage,rgbaFrameStorage} from '../src/features/card-scanner/reproduction/native-frame-storage';
+import {verifyAttestedPreparedNative,type AuthorizedPreparedNativeAttestation,type PreparedNativeAttestation} from '../src/features/card-scanner/acquisition/prepared-native-attestation';
+import type {ExactEntry,ExactFrame} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import type {NativeYuvFrameMetadata} from '../src/features/card-scanner/acquisition/native-yuv-recipe';
 
 const sessionId='storage-session',producerId='storage-producer';
 const contract={version:1,mode:'prepared-native-attestation-v1',sessionId,producerId} as const;

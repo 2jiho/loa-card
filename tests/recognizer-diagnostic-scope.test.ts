@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
-import {CardReadBudget,CardReadTimeout} from '../src/features/card-scanner/card-read-budget';
+import {CardReadBudget,CardReadTimeout} from '../src/features/card-scanner/recognition/card-read-budget';
 
 test('recognizer policies preserve evidence and isolate invocation diagnostics and request metrics',async()=>{
   // Node does not supply Vite's build constant. Provide only that constant to
@@ -9,7 +9,7 @@ test('recognizer policies preserve evidence and isolate invocation diagnostics a
   let providedBase=false;
   const hooks=registerHooks({load(url,context,nextLoad){
     const result=nextLoad(url,context);
-    if(url.endsWith('/src/features/card-scanner/recognizer.ts')){
+    if(url.endsWith('/src/features/card-scanner/recognition/recognizer.ts')){
       const source=String(result.source);
       assert.ok(source.includes('import.meta.env.BASE_URL'));
       providedBase=true;
@@ -65,6 +65,7 @@ test('recognizer policies preserve evidence and isolate invocation diagnostics a
     '/scanner/cards.json':{cards:[{id:'saika',name:'사이카',rarity:2},{id:'belu',name:'벨루마테',rarity:2}]},
     '/scanner/artwork-details.json':{},
     '/scanner/screen-artwork-details.json':{cards:{}},
+    '/scanner/portrait-competitors.json':{version:1,kind:'client-atlas-competitor-only',cards:{}},
     '/scanner/stars.json':{gray:[new Array(170).fill(0)],gold:[new Array(170).fill(255)]},
     '/scanner/counter-patterns.json':{patterns:[]},
   };
@@ -74,9 +75,9 @@ test('recognizer policies preserve evidence and isolate invocation diagnostics a
     const value=responses[String(input)];assert.notEqual(value,undefined,`Unexpected fetch ${String(input)}`);
     return {ok:true,json:async()=>structuredClone(value)} as Response;
   }) as typeof fetch;
-  let recognizer:Awaited<ReturnType<typeof import('../src/features/card-scanner/recognizer').createRecognizer>>|undefined;
+  let recognizer:Awaited<ReturnType<typeof import('../src/features/card-scanner/recognition/recognizer').createRecognizer>>|undefined;
   try{
-    const {createRecognizer}=await import('../src/features/card-scanner/recognizer');
+    const {createRecognizer}=await import('../src/features/card-scanner/recognition/recognizer');
     assert.equal(providedBase,true);
     recognizer=await createRecognizer(()=>{});
     const first=new FakeCanvas(),other=new FakeCanvas();

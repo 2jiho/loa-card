@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {opaqueCardPixels,ownedCardRaster,requireMeasuredRaster} from '../src/features/card-scanner/measured-raster';
-import {integerCropPixels} from '../src/features/card-scanner/integer-crop-pixels';
+import {opaqueCardPixels,ownedCardRaster,requireMeasuredRaster} from '../src/features/card-scanner/acquisition/measured-raster';
+import {integerCropPixels} from '../src/features/card-scanner/acquisition/integer-crop-pixels';
 
 test('measured raster borrows only a complete fixed matching readback without copying or granting authority',()=>{
   const data=new Uint8ClampedArray(7*5*4),raster={data,width:7,height:5};

@@ -1,20 +1,20 @@
 import {useLayoutEffect,useSyncExternalStore} from 'react';
 import {createRoot} from 'react-dom/client';
-import {ScanMonitorPanel} from '../src/features/card-scanner/ScanMonitor';
-import {createScanMonitorStore} from '../src/features/card-scanner/scan-monitor-store';
-import type {ScanMonitorState,ScanMonitorStore} from '../src/features/card-scanner/scan-monitor-store';
+import {ScanMonitorPanel} from '../src/features/card-scanner/ui/ScanMonitor';
+import {createScanMonitorStore} from '../src/features/card-scanner/ui/scan-monitor-store';
+import type {ScanMonitorState,ScanMonitorStore} from '../src/features/card-scanner/ui/scan-monitor-store';
 import styles from '../src/features/card-scanner/scan-monitor.css?inline';
 import {createMonitorLatencyProbe} from './monitor-latency';
 import type {MonitorLatencyProbe} from './monitor-latency';
-import type {ScannerFeedback} from '../src/features/card-scanner/scanner-feedback';
+import type {ScannerFeedback} from '../src/features/card-scanner/ui/scanner-feedback';
 
-type MonitorStatus={busy:boolean;sharing:boolean};
+type MonitorStatus={busy:boolean;sharing:boolean;preparing?:boolean};
 
 // oxlint-disable-next-line react/only-export-components -- this dev adapter owns its root outside React Fast Refresh
-function Preview({store,latency,busy,sharing,onStop}:{store:ScanMonitorStore;latency:MonitorLatencyProbe<ScanMonitorState>;onStop:()=>void}&MonitorStatus) {
+function Preview({store,latency,busy,sharing,preparing,onStop}:{store:ScanMonitorStore;latency:MonitorLatencyProbe<ScanMonitorState>;onStop:()=>void}&MonitorStatus) {
   const state=useSyncExternalStore(store.subscribe,store.getSnapshot);
   useLayoutEffect(()=>{latency.commit(state);},[latency,state]);
-  return <><style>{styles}</style><ScanMonitorPanel state={state} busy={busy} sharing={sharing} onStop={onStop} feedback={store.getFeedback()}/></>;
+  return <><style>{styles}</style><ScanMonitorPanel state={state} busy={busy} sharing={sharing} engineReady={!preparing} onStop={onStop} feedback={store.getFeedback()}/></>;
 }
 
 /** Dev-only view of the production monitor. clear() clears display data only;
@@ -35,8 +35,8 @@ export function createMonitorPreview(host:HTMLElement,onStop:()=>void) {
     setFeedback(feedback:ScannerFeedback|undefined){if(!disposed)store.setFeedback(feedback);},
     feedbackStats:()=>store.getFeedback()?.stats()??null,
     setStatus(next:MonitorStatus){
-      if(disposed||status.busy===next.busy&&status.sharing===next.sharing)return;
-      status={busy:next.busy,sharing:next.sharing};render();
+      if(disposed||status.busy===next.busy&&status.sharing===next.sharing&&status.preparing===next.preparing)return;
+      status={busy:next.busy,sharing:next.sharing,...(next.preparing===undefined?{}:{preparing:next.preparing})};render();
     },
     clear(){if(!disposed){store.clear();latency.reset();}},
     stats:latency.stats,

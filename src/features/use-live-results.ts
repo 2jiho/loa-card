@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ScannedCard } from './card-scanner/recognizer';
-import { resultCardsKey } from './live-results';
+import type { ScannedCard } from './card-scanner/recognition/recognizer';
+import { resultCardsKey } from './growth/live-results';
 
 /** Sample, rather than debounce, so a continuous stream cannot postpone updates forever. */
 export function useLiveResults(cards: ScannedCard[], xp: number | undefined, busy: boolean) {

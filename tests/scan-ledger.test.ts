@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ScanLedger } from "../src/features/card-scanner/scan-ledger";
+import { ScanLedger } from "../src/features/card-scanner/session/scan-ledger";
 const source = { frame: 1, time: 1.25, slot: 12, box: { x: 200, y: 300, width: 140, height: 210 }, phase: "input" as const };
 test("every observation keeps its original crop and final pipeline outcome", () => {
   const ledger = new ScanLedger(); ledger.frame(true); ledger.frame(false);
@@ -39,6 +39,18 @@ test("unresolved group counts are complete even when detailed traces are capped"
   assert.equal(snapshot.truncated, true); assert.equal(snapshot.retained,1);
   assert.equal(snapshot.unresolvedGroups,1); assert.equal(snapshot.stages.deferred,0);
   assert.equal(Object.values(snapshot.stages).reduce((a,b) => a+(b??0),0),2);
+});
+
+test('constant-time unresolved group count follows each group transition once',()=>{
+ const ledger=new ScanLedger(1),a=ledger.acquire(source),b=ledger.acquire(source),c=ledger.acquire(source);
+ ledger.finish(a,'deferred',{group:1});assert.equal(ledger.unresolvedGroups,1);
+ ledger.finish(a,'unidentified',{group:1});assert.equal(ledger.unresolvedGroups,1);
+ ledger.finish(b,'dropped',{group:2});assert.equal(ledger.unresolvedGroups,2);
+ ledger.finish(c,'unidentified',{group:2});assert.equal(ledger.unresolvedGroups,2);
+ ledger.finish(a,'identified',{group:1});assert.equal(ledger.unresolvedGroups,1);
+ ledger.finish(b,'identified',{group:2});assert.equal(ledger.unresolvedGroups,0);
+ ledger.finish(c,'unidentified',{group:2});assert.equal(ledger.unresolvedGroups,0,'already identified group keeps existing semantics');
+ assert.equal(ledger.snapshot().unresolvedGroups,ledger.unresolvedGroups);
 });
 
 test('read timings distinguish queue delay from OCR work and snapshots stay immutable',()=>{

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {decodedRgbaFrames,DecodedRgbaError,DECODED_RGBA_RECIPE} from '../src/features/card-scanner/decoded-rgba-client';
-import type {DecodedRgbaMetadata,DecodedRgbaOptions,DecodedRgbaWorker} from '../src/features/card-scanner/decoded-rgba-client';
+import {decodedRgbaFrames,DecodedRgbaError,DECODED_RGBA_RECIPE} from '../src/features/card-scanner/acquisition/decoded-rgba-client';
+import type {DecodedRgbaMetadata,DecodedRgbaOptions,DecodedRgbaWorker} from '../src/features/card-scanner/acquisition/decoded-rgba-client';
 
 type Message={kind:string;id:number;[key:string]:unknown};
 const source=new Blob(['encoded']),hash='a'.repeat(64);

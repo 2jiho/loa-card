@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createNativeYuvProofRuntime,MAX_NATIVE_YUV_SOURCE_BYTES,compareNativeYuvPasses} from '../dev/native-yuv-proof-worker';
 import type {NativeYuvProofFrame,NativeYuvProofSample,NativeYuvProofPlatform,NativeYuvProofTrack,NativeYuvProofReport} from '../dev/native-yuv-proof-worker';
-import {pixelHash} from '../src/features/card-scanner/exact-recording-codec';
+import {pixelHash} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 import {nativeYuvDescriptorJson} from '../dev/native-yuv-recipe';
 
 function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(yes=>{resolve=yes;});return {promise,resolve};}

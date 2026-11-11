@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fastCompress,packPixels} from '../src/features/card-scanner/exact-recording-codec';
-import {createGenericBoundedInput} from '../src/features/card-scanner/generic-bounded-input';
-import type {BoundedReadSource,GenericInputSpec} from '../src/features/card-scanner/generic-bounded-input';
-import {decodeFastPixelPatchFromSource} from '../src/features/card-scanner/streaming-delta-source';
+import {fastCompress,packPixels} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {createGenericBoundedInput} from '../src/features/card-scanner/capture/generic-bounded-input';
+import type {BoundedReadSource,GenericInputSpec} from '../src/features/card-scanner/capture/generic-bounded-input';
+import {decodeFastPixelPatchFromSource} from '../src/features/card-scanner/capture/streaming-delta-source';
 
 const noWait=async()=>{};
 const tick=()=>new Promise<void>(resolve=>setImmediate(resolve));

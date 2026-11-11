@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {appendObservation} from '../src/features/card-scanner/observation-history';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+import {appendObservation} from '../src/features/card-scanner/session/observation-history';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 
 test('same-frame retries do not accumulate identical evidence; changes and fresh captures stay separate',()=>{
   const card={id:'a',name:'A',awakening:0,extraCopies:1,countReliable:true,confidence:1,review:[],observations:1,

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {rankPortraitPair} from '../src/features/card-scanner/portrait-ranking';
+import {rankPortraitPair} from '../src/features/card-scanner/recognition/portrait-ranking';
 
 type Candidate={card:{id:string};correlation:number;reference:number};
 function original(values:Candidate[]) {

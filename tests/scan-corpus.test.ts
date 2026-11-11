@@ -1,18 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, readFile, readdir, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, open, readFile, readdir, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { addCorpusCase, corpusCaseId, listCorpusCases, readCorpusBytes, readCorpusJson, storeCorpusRun, verifyCorpus, MAX_CORPUS_RUN_BYTES } from '../scripts/scan-corpus-core.mjs';
+import { addCorpusCase, corpusCaseId, inspectCorpusWriterLock, listCorpusCases, readCorpusBytes, readCorpusJson, storeCorpusRun, verifyCorpus, MAX_CORPUS_RUN_BYTES } from '../scripts/scan-corpus-core.mjs';
 import type { CorpusManifest } from '../scripts/scan-corpus-core.mjs';
 import { runCorpusCli } from '../scripts/scan-corpus.mjs';
-import { RunStateTrace, MAX_RUN_STATE_TRACE_BLOB_BYTES } from '../dev/run-state-trace';
-import { ScanGrid } from '../src/features/card-scanner/scan-grid';
-import { recordScanGrid, hashScanGridReplay, scanGridReplaySnapshot } from '../src/features/card-scanner/scan-grid-command';
+import { RunStateTrace, MAX_RUN_STATE_TRACE_BLOB_BYTES,drainReplayScope } from '../dev/run-state-trace';
+import { ScanGrid } from '../src/features/card-scanner/session/scan-grid';
+import { recordScanGrid, hashScanGridReplay, scanGridReplaySnapshot } from '../src/features/card-scanner/session/scan-grid-command';
+import {UnidentifiedObstructionFence} from '../src/features/card-scanner/session/completion-obstruction-debt';
+import {hashObstructionEvidence} from '../src/features/card-scanner/reproduction/obstruction-evidence-replay';
+import {parseAcquisitionCapture} from '../src/features/card-scanner/capture/capture-provenance';
 
 const execFileAsync = promisify(execFile);
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
@@ -195,6 +198,57 @@ test('writer lock prevents concurrent mutation and is not deleted by another inv
   });
 });
 
+test('lock diagnostics are read-only and interrupted real writer retains its lock', {timeout:20_000}, async () => {
+  await fixture(async (directory, root) => {
+    assert.deepEqual(await inspectCorpusWriterLock({ root }), { state: 'absent' });
+    const baseline=await source(directory,'baseline.png','baseline');
+    const previous=await addCorpusCase([baseline],{root});
+    const large=join(directory,'long.mp4'),file=await open(large,'wx');
+    try { await file.truncate(256 * 1024 * 1024); } finally { await file.close(); }
+    const moduleUrl=pathToFileURL(resolve('scripts/scan-corpus-core.mjs')).href;
+    const child=spawn(process.execPath,['--input-type=module','-e',
+      `const {addCorpusCase}=await import(${JSON.stringify(moduleUrl)}); await addCorpusCase([process.argv[1]],{root:process.argv[2]});`,large,root],
+      {stdio:'ignore'});
+    const exited=new Promise<void>(resolveExit=>child.once('exit',()=>resolveExit()));
+    try {
+      const deadline=Date.now()+10_000;
+      let state=await inspectCorpusWriterLock({root});
+      while(state.state!=='owned'&&child.exitCode===null&&Date.now()<deadline){
+        await new Promise(done=>setTimeout(done,2));state=await inspectCorpusWriterLock({root});
+      }
+      assert.equal(state.state,'owned','real child should acquire the lock while copying');
+      if(state.state!=='owned')throw Error('writer lock unavailable');
+      assert.equal(state.owner.pid,child.pid);assert.equal(state.owner.action,'add');
+      assert.equal(state.processState,'present');
+      const before=await readFile(join(root,'.write.lock'));
+      await assert.rejects(addCorpusCase([baseline],{root}),/Corpus is busy/);
+      assert.deepEqual(await readFile(join(root,'.write.lock')),before,'a competing writer must not remove or modify the lock');
+      assert.equal(child.kill(),true);await exited;
+      const after=await inspectCorpusWriterLock({root});
+      assert.equal(after.state,'owned');
+      if(after.state==='owned')assert.equal(after.processState,'absent');
+      const output:string[]=[];
+      await runCorpusCli(['lock-status','--root',root],line=>output.push(line));
+      assert.equal(JSON.parse(output[0]).state,'owned');
+      assert.deepEqual(await readFile(join(root,'.write.lock')),before,'dead owner diagnosis must not remove the lock');
+      await assert.rejects(addCorpusCase([baseline],{root}),/Corpus is busy/);
+      assert.deepEqual(await verifyCorpus({root,id:previous.manifest.id}),{verified:true,cases:1,inputs:1,objects:1,bytes:8});
+    } finally { if(child.exitCode===null&&child.signalCode===null){child.kill();await exited;} }
+  });
+});
+
+test('legacy and malformed locks remain unknown and are not overwritten',async()=>{
+  await fixture(async(directory,root)=>{
+    const input=await source(directory,'a.png');await mkdir(root);
+    for(const data of ['', 'not-json', '{"version":1,"pid":999999999}']){
+      await writeFile(join(root,'.write.lock'),data);
+      assert.deepEqual(await inspectCorpusWriterLock({root}),{state:'unknown'});
+      await assert.rejects(addCorpusCase([input],{root}),/Corpus is busy/);
+      assert.equal(await readFile(join(root,'.write.lock'),'utf8'),data);
+    }
+  });
+});
+
 test('CLI add/list/verify emit concise JSON, preserve order and reject incorrect arguments', async () => {
   await fixture(async (directory, root) => {
     const a = await source(directory, 'a.png'); const b = await source(directory, 'b.png');
@@ -313,15 +367,84 @@ test('replay-state verifies captured grid commands and observation facts without
     assert.equal(replay.scope, 'display-and-observation-state');
     assert.equal(replay.complete, true); assert.equal(replay.grid.supported, true);
     assert.equal(replay.grid.hash, report.executionExpected.gridHash);
-    assert.equal(replay.expectedHash, report.executionExpected.gridHash); assert.equal(replay.matchesCapturedState, true);
+    assert.equal(replay.expectedHash, report.executionExpected.gridHash);
+    assert.equal(replay.componentChecks.grid.matchesCapturedState, true, 'the recorded grid hash is still checked');
+    assert.equal(replay.inventory.supported, false, 'the legacy fixture has no inventory seed');
+    assert.equal(replay.matchesCapturedState, null); assert.equal(replay.verificationStatus, 'partial');
     assert.equal(replay.observations.read, 1); assert.equal(replay.observations.review, 0);
-    assert.equal(replay.interpretation, 'not OCR/live scheduler/recognition accuracy');
+    assert.match(replay.interpretation, /Not OCR\/live scheduler\/recognition accuracy/);
+    assert.match(replay.interpretation, /absent legacy channels are not proof of absence/);
+    assert.deepEqual(replay.excludedFromHash, ['capture-time estimated viewport hint (v1 grid hash)']);
     assert.equal(output.join('\n').includes('privateInput'), false); assert.equal(output.join('\n').includes(directory), false);
     assert.equal(process.exitCode, previousExitCode);
     const cli = resolve('scripts/scan-corpus.mjs');
     const command = await execFileAsync(process.execPath, ['--import', 'tsx', cli, 'replay-state', path]);
     assert.deepEqual(JSON.parse(command.stdout), replay); assert.equal(command.stderr, '');
   });
+});
+
+test('replay-state validates obstruction reducer checkpoint and leaves legacy absence unknown',async()=>{
+ await fixture(async directory=>{
+  const trace=new RunStateTrace();let time=0;const add=(name:string,value:unknown)=>assert.equal(trace.record(name,value,time++),true);
+  const seed={version:1,sessionId:'session',seedOrder:0};
+  const acquisition=parseAcquisitionCapture({version:1,sessionId:'session',observationId:'obs',processingFrame:2,acquisitionFrameId:2,
+   canonicalSourceFrameId:2,captureTime:1,phase:'input',slot:2,pixelKey:'pixel',sourceWidth:400,sourceHeight:400,
+   cropState:'materialized',cropWidth:140,cropHeight:210,nominalBox:{x:0,y:0,width:140,height:210},contentBox:{x:0,y:0,width:140,height:210},
+   previewBox:{x:0,y:0,width:140,height:210},capture:{stable:true,stabilitySource:'settled-fields',complete:true,intact:false,labelVisible:false,
+   borderAlignment:.5,borderSides:[1,1,0,1],preBorder:{kind:'tooltip',reason:'tooltip'}},quality:{usable:false,reason:'border',sharpness:5}});
+  const notice={version:1,kind:'notice',sessionId:'session',processingFrame:2,acquisitionFrameId:2,observationId:'obs',captureTime:1,slot:2,preBorderKind:'tooltip'};
+  const fence=new UnidentifiedObstructionFence();fence.notice(1,0);const snapshot=fence.snapshot(),maps=new Map<string,number>();
+  const obstructionHash=await hashObstructionEvidence(snapshot,1,maps,maps,maps);
+  add('inventory-seed',{version:1,cards:[]});add('obstruction-seed',seed);add('acquisition-capture',acquisition);add('obstruction-event',notice);
+  add('obstruction-checkpoint',{version:1,complete:true,events:1,...snapshot,expected:1,pending:1,hash:obstructionHash});
+  const execution=JSON.parse(await (await trace.snapshotBlob()).text()),report={execution,executionExpected:{obstructionHash},validation:{obstructionFenceRequested:true}};
+  const path=await source(directory,'obstruction.json',JSON.stringify(report));let output='';
+  assert.equal(await runCorpusCli(['replay-state',path],line=>{output=line;}),0);
+  let result=JSON.parse(output);assert.equal(result.obstructionCheck.status,'verified-reducer-state');assert.equal(result.obstruction.scope,'reducer-state-only');
+  assert.equal(result.obstruction.physicalInputVerified,false);assert.equal(result.obstruction.matchesCapturedState,true);
+  report.executionExpected.obstructionHash='0'.repeat(64);await writeFile(path,JSON.stringify(report));
+  assert.equal(await runCorpusCli(['replay-state',path],line=>{output=line;}),2);result=JSON.parse(output);assert.equal(result.obstructionCheck.status,'unverified');
+  delete (report.executionExpected as {obstructionHash?:string}).obstructionHash;await writeFile(path,JSON.stringify(report));
+  assert.equal(await runCorpusCli(['replay-state',path],line=>{output=line;}),2);result=JSON.parse(output);assert.equal(result.obstructionCheck.status,'unverified');
+  const legacy=await recordedState();await writeFile(path,JSON.stringify(legacy));assert.equal(await runCorpusCli(['replay-state',path],line=>{output=line;}),0);
+  result=JSON.parse(output);assert.equal(result.obstruction.supported,false);assert.equal(result.obstructionCheck.status,'unknown');assert.equal(result.obstructionCheck.requested,null);
+ });
+});
+
+test('replay-state separates component hashes from unverified drain loss and automatic stop',async()=>{
+ await fixture(async directory=>{
+  const original=await recordedState();
+  const path=await source(directory,'drain-scope.json','{}');let output='';
+  const run=async(report:unknown)=>{await writeFile(path,JSON.stringify(report));output='';
+   assert.equal(await runCorpusCli(['replay-state',path],line=>{output=line;}),0);return JSON.parse(output);};
+  const legacy=await run(original);
+  assert.equal(legacy.componentChecks.grid.matchesCapturedState,true);assert.equal(legacy.inventory.supported,false);
+  assert.equal(legacy.matchesCapturedState,null);assert.equal(legacy.componentMatchesCapturedState,null);
+  assert.equal(legacy.verificationStatus,'partial');
+  assert.equal(legacy.fullScannerReplaySupported,false);assert.equal(legacy.drainReplay.supported,false);
+  assert.equal(legacy.drainReplay.autoStopSupported,false);assert.equal(legacy.drainReplay.matchesCapturedState,null);
+  assert.equal(legacy.drainReplay.requested,null);assert.equal(legacy.drainReplay.lossStatus,'not-recorded');
+  assert.equal(legacy.drainReplay.reportedLoss,null,'legacy absence is not evidence of no loss');
+  const reported=await run({...original,validation:{completionDrainRequested:true},diagnosticSummary:{drainInputLoss:{reason:'buffer-rejected',replaySupported:false}}});
+  assert.equal(reported.componentChecks.grid.matchesCapturedState,true,'loss does not rewrite the independent grid-hash result');
+  assert.equal(reported.matchesCapturedState,null,'grid-only state remains partial');
+  assert.equal(reported.drainReplay.requested,true);assert.equal(reported.drainReplay.lossStatus,'reported');
+  assert.equal(reported.drainReplay.reportedLoss,true);assert.equal(reported.drainReplay.reason,'buffer-rejected');
+  assert.equal(reported.drainReplay.supported,false);assert.equal(reported.drainReplay.autoStopSupported,false);
+  const malformed=await run({...original,validation:{completionDrainRequested:true},diagnosticSummary:{drainInputLoss:{reason:'invented',replaySupported:false}}});
+  assert.equal(malformed.drainReplay.lossStatus,'invalid');assert.equal(malformed.drainReplay.reportedLoss,null);
+  assert.equal(malformed.drainReplay.reason,null);assert.equal(malformed.matchesCapturedState,null);
+  const unreported=await run({...original,validation:{completionDrainRequested:false},diagnosticSummary:{}});
+  assert.equal(unreported.drainReplay.requested,false);assert.equal(unreported.drainReplay.lossStatus,'not-recorded');
+  assert.equal(unreported.drainReplay.reportedLoss,null);
+ });
+});
+
+test('drain replay scope treats getter-backed diagnostics as invalid without evaluating them',()=>{
+ let calls=0;const summary=Object.defineProperty({},'drainInputLoss',{get(){calls++;throw Error('unexpected getter');}});
+ const result=drainReplayScope(true,summary);
+ assert.equal(calls,0);assert.equal(result.lossStatus,'invalid');assert.equal(result.reportedLoss,null);
+ assert.equal(result.supported,false);assert.equal(result.autoStopSupported,false);
 });
 
 test('replay-state without captured hash is explicitly unverified, including empty event boundaries', async () => {

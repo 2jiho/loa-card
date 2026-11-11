@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {compareGrowthCandidates,currentBookProgress,type GrowthMaster,type OwnedCard} from '../src/features/growth/optimizer';
 import {completeGrowth,undoGrowth} from '../src/features/growth/complete-growth';
-import type {ScannerState} from '../src/features/card-scanner/scanner';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+import type {ScannerState} from '../src/features/card-scanner/orchestration/scanner';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 
 const full:GrowthMaster=JSON.parse(readFileSync(new URL('../public/growth/master.json',import.meta.url),'utf8'));
 const only=(id:string):GrowthMaster=>{const book=full.books.find(b=>b.id===id)!;return {...full,books:[book],cards:full.cards.filter(c=>book.cardIds.includes(c.id))};};

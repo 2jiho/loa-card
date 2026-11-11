@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {reproductionInput} from '../src/features/card-scanner/reproduction-input';
-import type {ReproductionFile} from '../src/features/card-scanner/scan-reproduction';
-import {entryParts,fastCompress,packPixels,pixelHash} from '../src/features/card-scanner/exact-recording-codec';
-import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/scanner-name-configuration';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+import {reproductionInput} from '../src/features/card-scanner/reproduction/reproduction-input';
+import type {ReproductionFile} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import {entryParts,fastCompress,packPixels,pixelHash} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/session/scanner-name-configuration';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 async function withReplayCanvas(run:(canvas:HTMLCanvasElement,draws:number[][])=>Promise<void>){
  const oldDocument=Object.getOwnPropertyDescriptor(globalThis,'document'),oldImageData=Object.getOwnPropertyDescriptor(globalThis,'ImageData');
  const draws:number[][]=[];
@@ -23,8 +23,8 @@ async function fixture(){
  const pixels=new Uint8Array([4,3,2,255]),hash=await pixelHash(pixels);
  const exact=new Blob(entryParts({kind:'frame',id:7,time:12.5,width:1,height:1,key:true,hash,phase:'recovery',codec:'lz4'},fastCompress(packPixels(pixels))));
  const metadata={version:4,createdAt:'2026-01-01T00:00:00Z',browser:'test',catalog:'test',build:'test',completed:true,warnings:[],
- duration:1,type:'video/webm',bytes:0,seed:[{id:'seed',review:[]} as unknown as ScannedCard],result:null,
- exact:{complete:true,frames:1,bytes:exact.size},nameConfiguration:NORMAL_SCANNER_NAME_CONFIGURATION} as ReproductionFile['metadata'];
+ duration:1,type:'video/webm',bytes:0,seed:[{id:'seed',review:[]} as unknown as ScannedCard],result:null,recordState:'complete',
+ exact:{complete:true,frames:1,bytes:exact.size,dropped:0,error:''},nameConfiguration:NORMAL_SCANNER_NAME_CONFIGURATION} as ReproductionFile['metadata'];
  return {metadata,video:new Blob(),exact};
 }
 test('shared replay supplies real pixels, capture provenance and isolated recorded seed',async()=>{

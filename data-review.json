@@ -22,6 +22,12 @@
     },
     "tests/fixtures/manual-screenshot-cards.json": {
       "sha256": "f8b165d32a19f93990b68a47bb7cbc050c1f8efbbe80119cd2c9533966a98260"
+    },
+    "public/scanner/portrait-competitors.json": {
+      "sha256": "133a7e94a9c42f426bc8924aa22c5a5d7e0e9ea62764e228fb630012747f482d"
+    },
+    "src/features/card-scanner/portrait-competitor-pins.json": {
+      "sha256": "d962e5075fc4cdbc3b2027897f22765991f3a92f7ebeb99f8ac69c92082a8844"
     }
   },
   "inGameEvidence": [

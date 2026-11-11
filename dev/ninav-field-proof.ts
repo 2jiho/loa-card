@@ -1,8 +1,8 @@
-import {createAcquisitionClient} from '../src/features/card-scanner/acquisition-client';
-import {pixelHash} from '../src/features/card-scanner/recording-frame-integrity';
-import {inspectVisual,readVisual} from '../src/features/card-scanner/visual-fields';
-import {packCount,prepareContrastPattern,type CountPattern} from '../src/features/card-scanner/count-pattern';
-import type {RasterContext} from '../src/features/card-scanner/acquisition-raster';
+import {createAcquisitionClient} from '../src/features/card-scanner/acquisition/acquisition-client';
+import {pixelHash} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
+import {inspectVisual,readVisual} from '../src/features/card-scanner/recognition/visual-fields';
+import {packCount,prepareContrastPattern,type CountPattern} from '../src/features/card-scanner/recognition/count-pattern';
+import type {RasterContext} from '../src/features/card-scanner/acquisition/acquisition-raster';
 
 type Link={seq:number;sourceFrameId:number;acquisitionFrameId:number;phase:'input'|'recovery';captureTime:number};
 type Target={acquisitionFrameId:number;available:boolean;reason?:string;link?:Link;receipts?:unknown[];header?:unknown;

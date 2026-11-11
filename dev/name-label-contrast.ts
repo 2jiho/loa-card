@@ -1,1 +1,1 @@
-export * from '../src/features/card-scanner/name-label-contrast';
+export * from '../src/features/card-scanner/recognition/name-label-contrast';

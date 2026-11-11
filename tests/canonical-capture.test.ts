@@ -1,18 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCanonicalCapture} from '../src/features/card-scanner/canonical-capture';
-import type {SavedAcquisition} from '../src/features/card-scanner/saved-acquisition';
-import type {NativeYuvFrameMetadata} from '../src/features/card-scanner/native-yuv-recipe';
-import type {SourcePreparationAttestationIdentity} from '../src/features/card-scanner/source-preparation-protocol';
-import type {PreparedNativeAttestation} from '../src/features/card-scanner/prepared-native-attestation';
-import {planNativeYuvFrame} from '../src/features/card-scanner/native-yuv-recipe';
+import {createCanonicalCapture} from '../src/features/card-scanner/reproduction/canonical-capture';
+import type {SavedAcquisition} from '../src/features/card-scanner/acquisition/saved-acquisition';
+import type {NativeYuvFrameMetadata} from '../src/features/card-scanner/acquisition/native-yuv-recipe';
+import type {SourcePreparationAttestationIdentity} from '../src/features/card-scanner/acquisition/source-preparation-protocol';
+import type {PreparedNativeAttestation} from '../src/features/card-scanner/acquisition/prepared-native-attestation';
+import {planNativeYuvFrame} from '../src/features/card-scanner/acquisition/native-yuv-recipe';
+import {pixelHash} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
+import type {RestoredPixelProofOptions} from '../src/features/card-scanner/acquisition/restored-pixel-capability';
 
 const turn=()=>new Promise<void>(resolve=>setImmediate(resolve));
 type Source=VideoFrame&{tag:number};
 const source=(tag:number,width=1,height=1)=>({displayWidth:width,displayHeight:height,tag}) as Source;
 type FrameRequest={kind:'frame';id:number;width:number;height:number;time:number;role:string;phase:string;canonical:boolean;bitmap?:ImageBitmap&{tag:number};pixels?:ArrayBuffer;native?:{pixels:Uint8Array<ArrayBuffer>}};
 
-function harness(options:{manualCopies?:boolean;manualAck?:boolean;manualDrain?:boolean;byteLimit?:number;ownedRgba?:boolean;recoveryCapacityTimeoutMs?:number;onTiming?:(value:unknown)=>void;attestation?:SourcePreparationAttestationIdentity;read?:(id:number,signal:AbortSignal)=>Promise<unknown>}={}){
+function harness(options:{manualCopies?:boolean;manualAck?:boolean;manualDrain?:boolean;byteLimit?:number;ownedRgba?:boolean;experimentalRestoredPixels?:RestoredPixelProofOptions;recoveryCapacityTimeoutMs?:number;onTiming?:(value:unknown)=>void;attestation?:SourcePreparationAttestationIdentity;read?:(id:number,signal:AbortSignal)=>Promise<unknown>}={}){
   const requests:Record<string,unknown>[]=[],reports:string[]=[],incomplete:string[]=[],uses:unknown[]=[],receipts:unknown[]=[],reads:number[]=[];
   const stored=new Map<number,{id:number;width:number;height:number;time:number;hash:string;pixels:Uint8ClampedArray<ArrayBuffer>}>();
   const copies:{tag:number;resolve:(bitmap:ImageBitmap)=>void;reject:(reason:unknown)=>void;closed:number}[]=[];
@@ -47,7 +49,7 @@ function harness(options:{manualCopies?:boolean;manualAck?:boolean;manualDrain?:
       if(!options.manualCopies)resolve({tag:copy.tag,close(){copy.closed++;}} as unknown as ImageBitmap);
     }),
     canvasFactory:()=>canvas,onUse:value=>uses.push(value),onRasterReceipt:value=>receipts.push(value),ownedRgba:options.ownedRgba,onTiming:options.onTiming,
-    attestation:options.attestation,onStorageAttestation:value=>attestations.push(value),
+    attestation:options.attestation,onStorageAttestation:value=>attestations.push(value),experimentalRestoredPixels:options.experimentalRestoredPixels,
   });
   return {capture,requests,reports,incomplete,uses,receipts,reads,copies,raster,canvas,attestations,
     frames:()=>requests.filter(value=>value.kind==='frame') as unknown as FrameRequest[],
@@ -58,6 +60,48 @@ function harness(options:{manualCopies?:boolean;manualAck?:boolean;manualDrain?:
     portCounts:()=>({closed:portClosed,started:portStarted,taken}),
   };
 }
+
+test('opt-in restored proof hashes actual pixels, binds ACK and rejects changed bytes',async()=>{
+ await imageDataScope(async()=>{
+  const pixels=new Uint8ClampedArray([3,3,3,3]),hash=await pixelHash(new Uint8Array(pixels)),signal=new AbortController().signal;
+  const h=harness({manualAck:true,ownedRgba:true,experimentalRestoredPixels:{maxFrames:2,lifetimeMs:10000,maxWorkingBytes:8},
+   read:async id=>({id,width:1,height:1,time:1,hash,pixels:pixels.slice()})});
+  h.capture.submit(source(3),1,1);await turn();h.ack(1,{hash});
+  const iter=h.capture.frames(signal),frame=(await iter.next()).value!;
+  const identity={sourceFrameId:1,time:1,width:1,height:1,hash};
+  assert.equal(await h.capture.verifyRestoredPixelCapability(frame.restoredPixelCapability,identity,signal),true);
+  assert.equal(await h.capture.verifyRestoredPixelCapability(structuredClone(frame.restoredPixelCapability),identity,signal),false);
+  assert.equal(await h.capture.verifyRestoredPixelCapability(frame.restoredPixelCapability,{...identity,time:2},signal),false);
+  frame.rgba![0]=9;assert.equal(await h.capture.verifyRestoredPixelCapability(frame.restoredPixelCapability,identity,signal),false);
+  await iter.return(undefined);await h.capture.discard();
+ });
+});
+test('opt-in restored proof rejects store pixels that disagree with the actual writer ACK',async()=>{
+ await imageDataScope(async()=>{
+  const original=new Uint8Array([3,3,3,3]),hash=await pixelHash(original);
+  const h=harness({manualAck:true,ownedRgba:true,experimentalRestoredPixels:{maxFrames:2,lifetimeMs:10000,maxWorkingBytes:8},
+   read:async id=>({id,width:1,height:1,time:1,hash,pixels:new Uint8ClampedArray([4,3,3,3])})});
+  h.capture.submit(source(3),1,1);await turn();h.ack(1,{hash});
+  await assert.rejects(h.capture.frames(new AbortController().signal).next(),/SHA mismatch/);await h.capture.discard();
+ });
+});
+
+test('canonical owner exposes only its own one-shot restored pixel transfer',async()=>{
+ await imageDataScope(async()=>{
+  const pixels=new Uint8ClampedArray([3,3,3,3]),hash=await pixelHash(new Uint8Array(pixels)),signal=new AbortController().signal;
+  const h=harness({manualAck:true,ownedRgba:true,experimentalRestoredPixels:{maxFrames:2,lifetimeMs:10000,maxWorkingBytes:8},
+   read:async id=>({id,width:1,height:1,time:1,hash,pixels:pixels.slice()})});
+  const other=harness({ownedRgba:true,experimentalRestoredPixels:{maxFrames:2,lifetimeMs:10000,maxWorkingBytes:8}});
+  h.capture.submit(source(3),1,1);await turn();h.ack(1,{hash});
+  const iter=h.capture.frames(signal),frame=(await iter.next()).value!,identity={sourceFrameId:1,time:1,width:1,height:1,hash};
+  assert.equal(await other.capture.consumeRestoredPixelCapability(frame.restoredPixelCapability,identity,signal),undefined);
+  const moved=await h.capture.consumeRestoredPixelCapability(frame.restoredPixelCapability,identity,signal);
+  assert.ok(moved);assert.deepEqual([...moved.pixels],[3,3,3,3]);assert.equal(frame.rgba!.byteLength,0);
+  assert.equal(await h.capture.consumeRestoredPixelCapability(frame.restoredPixelCapability,identity,signal),undefined);
+  await iter.return(undefined);await h.capture.discard();await other.capture.discard();
+  assert.throws(()=>harness({experimentalRestoredPixels:{maxFrames:1,lifetimeMs:1000,maxWorkingBytes:8}}),/requires owned RGBA/);
+ });
+});
 
 test('serialized recovery waits for stored ACK credits without dropping a frame or widening the byte cap',async()=>{
  const h=harness({manualAck:true,byteLimit:8});const record=h.capture.reserve({width:1,height:1,time:1,elapsed:1,role:'recovery'})!;

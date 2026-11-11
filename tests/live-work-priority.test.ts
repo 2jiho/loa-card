@@ -1,10 +1,10 @@
 import {readFileSync} from 'node:fs';
-import {observationPixels} from '../src/features/card-scanner/observation-pixels';
+import {observationPixels} from '../src/features/card-scanner/acquisition/observation-pixels';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {LiveWorkPriority} from '../src/features/card-scanner/live-work-priority';
-import {CandidateQueue} from '../src/features/card-scanner/candidate-queue';
-import {shiftOcrRetry} from '../src/features/card-scanner/live-scan-policy';
+import {LiveWorkPriority} from '../src/features/card-scanner/session/live-work-priority';
+import {CandidateQueue} from '../src/features/card-scanner/acquisition/candidate-queue';
+import {shiftOcrRetry} from '../src/features/card-scanner/session/live-scan-policy';
 
 test('failed OCR attempts yield to other unread cards without certifying or dropping any observation',()=>{
  const priority=new LiveWorkPriority();
@@ -41,6 +41,32 @@ test('approximate priority does not cross columns and FIFO is retained without a
  assert.notEqual(priority.group(pixels,0),priority.group(pixels,1));
  const queue=new CandidateQueue<{group:number}>(5,()=>{});
  queue.push({group:2});queue.push({group:1});assert.equal(queue.shift()?.group,2);assert.equal(queue.shift()?.group,1);
+});
+
+test('name difference threshold stays strict and equally close groups keep their original order',()=>{
+ const priority=new LiveWorkPriority(),base=new Uint8Array(3240),below=base.slice(),at=base.slice();
+ below.fill(255,0,16);below[16]=239;
+ at.set(below);at[16]=240;
+ const original=priority.group(base,0);
+ assert.equal(priority.group(below,0),original,'4319 / 864 is below the threshold');
+ assert.notEqual(priority.group(at,0),original,'4320 / 864 is exactly the threshold');
+
+ const ordered=new LiveWorkPriority(),second=base.slice(),middle=base.slice();
+ second.fill(9,0,864);middle.fill(4,0,432);middle.fill(5,432,864);
+ const firstId=ordered.group(base,3),secondId=ordered.group(second,3);
+ assert.notEqual(firstId,secondId);
+ assert.equal(ordered.group(middle,3),firstId,'equal portrait scores prefer the earliest inserted matching group');
+ assert.notEqual(ordered.group(base,4),firstId,'the index does not combine columns');
+});
+
+test('column indexing keeps bounded groups reusable and never matches a NaN column',()=>{
+ const priority=new LiveWorkPriority(),feature=new Uint8Array(3240);
+ for(let column=0;column<2046;column++)assert.equal(priority.group(feature,column),column);
+ const first=priority.group(feature,Number.NaN),second=priority.group(feature,Number.NaN);
+ assert.equal(first,2046);assert.equal(second,2047);
+ assert.equal(priority.group(feature,Number.NaN),-1,'unknown columns cannot bypass the global group limit');
+ assert.equal(priority.group(feature,3000),-1);
+ assert.equal(priority.group(feature,50),50,'existing groups remain available at the limit');
 });
 
 // Ground truth comes from the existing manually checked screenshot inventory.

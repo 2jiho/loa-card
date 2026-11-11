@@ -3,9 +3,9 @@
 // This is an open-set boundary check, not a guarantee for future game artwork.
 import fs from 'node:fs';
 import path from 'node:path';
-import {createPortraitMatcher} from '../src/features/card-scanner/portrait-matcher.ts';
-import {matchCardName} from '../src/features/card-scanner/card-dictionary.ts';
-import {confirmName,confirmCatalogName} from '../src/features/card-scanner/name-confidence.ts';
+import {createPortraitMatcher} from '../src/features/card-scanner/recognition/portrait-matcher.ts';
+import {matchCardName} from '../src/features/card-scanner/recognition/card-dictionary.ts';
+import {confirmName,confirmCatalogName} from '../src/features/card-scanner/recognition/name-confidence.ts';
 const root=path.resolve(import.meta.dirname,'..');
 const read=file=>JSON.parse(fs.readFileSync(path.join(root,file),'utf8'));
 const {cards}=read('public/scanner/cards.json');
@@ -14,7 +14,7 @@ const supplement=read('public/scanner/screen-artwork-details.json').cards;
 const sources=[
  {name:'screenshots-1',rows:read('tests/fixtures/artwork-detail-samples.json').map(row=>({
   ...row,id:cards.find(card=>card.name===row.expected)?.id}))},
- {name:'screenshots-2',rows:read('tests/fixtures/screen-portrait-holdout.json').rows.map(row=>({...row,id:row.expected}))},
+ {name:'screenshots-2',rows:read('tests/fixtures/screen-portrait-regression.json').rows.map(row=>({...row,id:row.expected}))},
 ];
 const portraits=[];
 for(const source of sources){

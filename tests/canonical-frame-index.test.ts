@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CanonicalFrameIndex} from '../src/features/card-scanner/canonical-frame-index';
-import type {CanonicalFrameCommit} from '../src/features/card-scanner/canonical-frame-index';
+import {CanonicalFrameIndex} from '../src/features/card-scanner/reproduction/canonical-frame-index';
+import type {CanonicalFrameCommit} from '../src/features/card-scanner/reproduction/canonical-frame-index';
 
 const hash='1'.repeat(64);
 const frame=(id:number,overrides:Partial<CanonicalFrameCommit>={}):CanonicalFrameCommit=>({

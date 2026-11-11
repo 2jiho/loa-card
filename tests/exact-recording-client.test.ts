@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createExactRecording} from '../src/features/card-scanner/exact-recording';
+import {createExactRecording} from '../src/features/card-scanner/reproduction/exact-recording';
 
 test('compact recording format is explicit and requires matching worker acknowledgement',async()=>{
  const old=Object.getOwnPropertyDescriptor(globalThis,'Worker');let worker:any;
@@ -76,6 +76,120 @@ async function eventQueueClient(run:(recorder:Awaited<ReturnType<typeof createEx
  try{recorder=await createExactRecording();await run(recorder,workers[0]);}
  finally{await recorder?.dispose();if(old)Object.defineProperty(globalThis,'Worker',old);else Reflect.deleteProperty(globalThis,'Worker');}
 }
+
+for(const source of ['worker-message','worker-error'] as const)test(`${source} after ready rejects finish immediately and preserves the failure`,async()=>{
+ await eventQueueClient(async(recorder,worker)=>{
+  const warnings:string[]=[];
+  recorder.setJournal({async write(){},incomplete(){}},reason=>warnings.push(reason));
+  if(source==='worker-message')worker.onmessage({data:{kind:'error',error:'fatal recording failure'}});
+  else worker.onerror({message:'fatal recording failure'});
+  assert.equal(warnings.length,1);assert.match(warnings[0],/fatal recording failure/);
+  const started=performance.now();
+  await assert.rejects(recorder.finish(),/fatal recording failure/);
+  await assert.rejects(recorder.finish(),/fatal recording failure/);
+  assert.ok(performance.now()-started<500,'a failed worker must not wait for the ten-second finish timeout');
+  assert.equal(worker.messages.some((message:any)=>message.kind==='finish'),false);
+ });
+});
+
+test('fatal worker error before journal attachment also fails reads and journal finalization promptly',async()=>{
+ await eventQueueClient(async(recorder,worker)=>{
+  worker.onmessage({data:{kind:'error',error:'worker unavailable'}});
+  const warnings:string[]=[],journalErrors:string[]=[];
+  recorder.setJournal({async write(){},incomplete(reason){journalErrors.push(reason);}},reason=>warnings.push(reason));
+  assert.match(warnings[0],/worker unavailable/);assert.match(journalErrors[0],/worker unavailable/);
+  assert.throws(()=>recorder.takePort(),/worker unavailable/);
+  await assert.rejects(recorder.readFrame(1),/worker unavailable/);
+  const journal=await recorder.finishJournal();assert.equal(journal.complete,false);assert.match(journal.error,/worker unavailable/);
+  assert.equal(worker.messages.some((message:any)=>message.kind==='journal-start'),false);
+ });
+});
+
+test('fatal worker error interrupts event drain and ignores a later done response',async()=>{
+ await eventQueueClient(async(recorder,worker)=>{
+  recorder.event('pending',{},0);
+  const ending=recorder.finish();
+  worker.onmessage({data:{kind:'error',error:'worker died while draining'}});
+  worker.onmessage({data:{kind:'done',blob:new Blob(),stats:{complete:true,error:''}}});
+  const started=performance.now();
+  await assert.rejects(ending,/worker died while draining/);
+  assert.ok(performance.now()-started<500);
+  assert.equal(worker.messages.some((message:any)=>message.kind==='finish'),false);
+  assert.equal(recorder.finishedStats,undefined,'late success cannot replace a fatal failure');
+ });
+});
+
+test('a thrown finish transport rejects every finish call without a dangling promise',async()=>{
+ await eventQueueClient(async(recorder,worker)=>{
+  const send=worker.postMessage.bind(worker);
+  worker.postMessage=(message:any)=>{if(message.kind==='finish')throw Error('finish transport failed');send(message);};
+  await assert.rejects(recorder.finish(),/finish transport failed/);
+  await assert.rejects(recorder.finish(),/finish transport failed/);
+ });
+});
+
+test('exact input and event loss are reported once without changing scan behavior',async()=>{
+ await eventQueueClient(async(recorder,worker)=>{
+  const warnings:string[]=[];
+  recorder.setJournal({async write(){},incomplete(){}},reason=>{warnings.push(reason);throw Error('consumer error');});
+  recorder.incomplete('capture input lost');
+  recorder.incomplete('later loss');
+  worker.onmessage({data:{kind:'events-error',error:'write failed'}});
+  assert.deepEqual(warnings,['capture input lost']);
+  const raw=await recorder.finish();assert.equal(raw.stats.complete,false);assert.match(raw.stats.error,/later loss/);
+ });
+});
+
+test('an event lost before attaching the journal is reported when the listener is installed',async()=>{
+ await eventQueueClient(async(recorder)=>{
+  const cyclic:any={};cyclic.self=cyclic;
+  recorder.event('cyclic',cyclic,0);
+  const warnings:string[]=[];
+  recorder.setJournal({async write(){},incomplete(){}},reason=>{warnings.push(reason);});
+  assert.equal(warnings.length,1);assert.match(warnings[0],/이벤트/);
+  const raw=await recorder.finish();assert.equal(raw.stats.complete,false);
+ });
+});
+
+test('a worker input gap warns immediately once and remains partial without cutting off the source',async()=>{
+ await eventQueueClient(async(recorder,worker)=>{
+  const warnings:string[]=[];
+  recorder.setJournal({async write(){},incomplete(){}},reason=>warnings.push(reason));
+  recorder.takePort();
+  worker.onmessage({data:{kind:'input-gap'}});
+  worker.onmessage({data:{kind:'input-gap'}});
+  assert.equal(warnings.length,1);assert.match(warnings[0],/프레임.*누락/);
+  const ending=recorder.finish();
+  assert.equal(worker.messages.at(-1).noSource,false,'admitted source frames still drain through the end marker');
+  const result=await ending;
+  assert.equal(result.stats.complete,false,'even an inconsistent worker complete flag cannot certify a known gap');
+  assert.match(result.stats.error,/프레임.*누락/);
+  worker.onmessage({data:{kind:'input-gap'}});
+  assert.equal(warnings.length,1,'late worker messages cannot add another warning');
+ });
+});
+
+test('a worker gap observed before journal attachment is not lost',async()=>{
+ await eventQueueClient(async(recorder,worker)=>{
+  worker.onmessage({data:{kind:'input-gap'}});
+  const warnings:string[]=[];
+  recorder.setJournal({async write(){},incomplete(){}},reason=>warnings.push(reason));
+  assert.equal(warnings.length,1);assert.match(warnings[0],/프레임.*누락/);
+  const result=await recorder.finish();assert.equal(result.stats.complete,false);
+ });
+});
+
+test('an explicitly skipped acquisition marks the producer partial without discarding accepted source frames',async()=>{
+ await eventQueueClient(async(recorder,worker)=>{
+  const warnings:string[]=[];
+  recorder.setJournal({async write(){},incomplete(){}},reason=>warnings.push(reason));recorder.takePort();
+  recorder.missingInput('획득 전 입력 생략');recorder.missingInput('다른 생략');
+  assert.deepEqual(warnings,['획득 전 입력 생략']);
+  const ending=recorder.finish();
+  assert.equal(worker.messages.at(-1).noSource,false,'accepted source frames must drain before finish');
+  const result=await ending;assert.equal(result.stats.complete,false);
+ });
+});
 
 test('a single oversized event is distinguished from an aggregate backlog without retaining its value',async()=>{
  await eventQueueClient(async(recorder,worker)=>{

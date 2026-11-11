@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {MAX_PORTRAIT_DIAGNOSTIC_CALLS,MAX_PORTRAIT_DIAGNOSTIC_BYTES,
- parsePortraitDiagnostics,readPortraitDiagnostics} from '../src/features/card-scanner/portrait-diagnostics';
+ parsePortraitDiagnostics,readPortraitDiagnostics} from '../src/features/card-scanner/recognition/portrait-diagnostics';
 
 const bytes=(value:unknown)=>new TextEncoder().encode(JSON.stringify(value)).byteLength;
 const numericChecks=()=>({upper:true,lower:true,correlation:false,margin:false,left:null as boolean|null,right:null as boolean|null});

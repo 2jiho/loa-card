@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {createHash} from 'node:crypto';
-import { recordContinuous } from "../src/features/card-scanner/continuous-capture";
-import {createBoundedJournal,JOURNAL_CHUNK_BYTES,JOURNAL_PENDING_BYTES} from '../src/features/card-scanner/recording-journal';
+import { recordContinuous } from "../src/features/card-scanner/capture/continuous-capture";
+import {createBoundedJournal,JOURNAL_CHUNK_BYTES,JOURNAL_PENDING_BYTES} from '../src/features/card-scanner/persistence/recording-journal';
 
 class FakeRecorder extends EventTarget {
   static instance: FakeRecorder;

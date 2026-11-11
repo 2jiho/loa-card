@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {inventoryCsv,inventoryCsvIssues,parseInventoryCsv} from '../src/inventory-csv';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 const card=(name:string,awakening:number|null,extraCopies:number|null):ScannedCard=>({id:name,name,awakening,extraCopies,countReliable:true,review:[],confidence:1,image:'private pixels',time:0,observations:1});
 test('CSV presence means ownership and retains zero extra copies with exactly three columns',()=>{
  assert.equal(inventoryCsv([card('세리아',5,0),card('실리안',0,12)]),'\uFEFF이름,각수,카드수\r\n세리아,5,0\r\n실리안,0,12\r\n');

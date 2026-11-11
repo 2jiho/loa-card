@@ -4,17 +4,17 @@ import {gzipSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
 import {RunStateTrace,parseRunStateTrace,replayRunStateTrace,MAX_RUN_STATE_TRACE_BYTES,MAX_RUN_STATE_TRACE_BLOB_BYTES,
  MAX_RUN_STATE_TRACE_RAW_BYTES,MAX_RUN_STATE_TRACE_PENDING_BYTES,MAX_RUN_STATE_TRACE_EVENTS} from '../dev/run-state-trace';
-import {ScanGrid} from '../src/features/card-scanner/scan-grid';
-import {recordScanGrid,hashScanGridReplay,scanGridReplaySnapshot} from '../src/features/card-scanner/scan-grid-command';
-import {hashObservationExecution} from '../src/features/card-scanner/observation-execution';
-import type {ObservationFact} from '../src/features/card-scanner/observation-execution';
-import {InventoryEvidence,hashInventoryEvidence,serializeInventorySeed} from '../src/features/card-scanner/inventory-evidence';
-import type {InventoryEvent,InventorySource} from '../src/features/card-scanner/inventory-evidence';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
-import {InputDecisionReplay} from '../src/features/card-scanner/live-input-decision-replay';
-import {UnknownLifecycle,hashUnknownLifecycle} from '../src/features/card-scanner/unknown-lifecycle';
-import {UNKNOWN_LIFECYCLE_LIMITS} from '../src/features/card-scanner/unknown-lifecycle-types';
-import type {UnknownSeed,UnknownUpsert} from '../src/features/card-scanner/unknown-lifecycle-types';
+import {ScanGrid} from '../src/features/card-scanner/session/scan-grid';
+import {recordScanGrid,hashScanGridReplay,scanGridReplaySnapshot} from '../src/features/card-scanner/session/scan-grid-command';
+import {hashObservationExecution} from '../src/features/card-scanner/session/observation-execution';
+import type {ObservationFact} from '../src/features/card-scanner/session/observation-execution';
+import {InventoryEvidence,hashInventoryEvidence,serializeInventorySeed} from '../src/features/card-scanner/session/inventory-evidence';
+import type {InventoryEvent,InventorySource} from '../src/features/card-scanner/session/inventory-evidence';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
+import {InputDecisionReplay} from '../src/features/card-scanner/reproduction/live-input-decision-replay';
+import {UnknownLifecycle,hashUnknownLifecycle} from '../src/features/card-scanner/session/unknown-lifecycle';
+import {UNKNOWN_LIFECYCLE_LIMITS} from '../src/features/card-scanner/session/unknown-lifecycle-types';
+import type {UnknownSeed,UnknownUpsert} from '../src/features/card-scanner/session/unknown-lifecycle-types';
 import {RunStateCompression} from '../dev/run-state-compression';
 
 const signal=()=>new AbortController().signal;
@@ -171,7 +171,7 @@ test('unknown lifecycle facts share immutable compressed recording and replay th
  assert.ok(upsert?.type==='unknown-event'&&upsert.value.kind==='upsert');assert.ok(Object.isFrozen(upsert.value.source));
  const result=await replayRunStateTrace(blob,signal());
  assert.deepEqual(result.unknownLifecycle,{supported:true,events:3,active:0,pending:0,final:0,
-  complete:true,hash,expectedHash:hash,matchesCapturedState:true});
+  complete:true,hash,expectedHash:hash,matchesCapturedState:true,liveEvidenceLost:false});
  assert.equal(result.grid.supported,false);assert.equal(result.inventory.supported,false);
 });
 

@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createExactRecording} from '../src/features/card-scanner/exact-recording';
-import {RGBA_WINDOW_CODEC,RGBA_WINDOW_POLICY} from '../src/features/card-scanner/rgba-window-policy';
+import {createExactRecording} from '../src/features/card-scanner/reproduction/exact-recording';
+import {RGBA_WINDOW_CODEC,RGBA_WINDOW_POLICY} from '../src/features/card-scanner/reproduction/rgba-window-policy';
 
 async function client(run:(workers:any[])=>Promise<void>,ready:any,stats:any){
   const old=Object.getOwnPropertyDescriptor(globalThis,'Worker'),workers:any[]=[];

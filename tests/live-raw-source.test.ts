@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCanonicalCapture} from '../src/features/card-scanner/canonical-capture';
-import {createLiveRawSource,type CanonicalRawLease} from '../src/features/card-scanner/live-raw-source';
-import {createLiveInputAdmission} from '../src/features/card-scanner/live-input-admission';
-import {createLiveCapturePipeline} from '../src/features/card-scanner/live-capture-pipeline';
-import {createLiveOriginalCapture} from '../src/features/card-scanner/live-original-capture';
-import {parseBackupCapacityDeferral,type BackupCapacityDeferral} from '../src/features/card-scanner/input-arrival';
-import {MAX_FRAME_BYTES} from '../src/features/card-scanner/recording-frame-integrity';
+import {createCanonicalCapture} from '../src/features/card-scanner/reproduction/canonical-capture';
+import {createLiveRawSource,type CanonicalRawLease} from '../src/features/card-scanner/capture/live-raw-source';
+import {createLiveInputAdmission} from '../src/features/card-scanner/capture/live-input-admission';
+import {createLiveCapturePipeline} from '../src/features/card-scanner/capture/live-capture-pipeline';
+import {createLiveOriginalCapture} from '../src/features/card-scanner/capture/live-original-capture';
+import {parseBackupCapacityDeferral,type BackupCapacityDeferral} from '../src/features/card-scanner/capture/input-arrival';
+import {publishCanonicalSource,reportCanonicalSourceGap} from '../src/features/card-scanner/reproduction/canonical-source-publication';
+import {MAX_FRAME_BYTES} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
 
 const turn=()=>new Promise<void>(resolve=>setImmediate(resolve));
 function deferred(){let resolve!:()=>void;const promise=new Promise<void>(yes=>{resolve=yes;});return {promise,resolve};}
@@ -37,6 +38,47 @@ function storage(options:{byteLimit?:number}={}){
   async finish(){await turn();for(const id of frames.keys())if(!acked.has(id))ack(id);await capture.finish();},
  };
 }
+
+test('a busy raw recorder preserves live acquisition while marking only consumed unrecorded input partial',async()=>{
+ const h=storage({byteLimit:4}),policy=createLiveInputAdmission(),borrowed=handle('recorder-backlog',1,1);
+ const raw=createLiveRawSource(h.capture,{remember(){},backupDeferred(){assert.fail('busy input must not submit a backup');}});
+ const incomplete:string[]=[],consumed:{marker:string;sourceId:number|undefined}[]=[],errors:unknown[]=[];
+ const pipeline=createLiveCapturePipeline<{source:Handle;lease?:CanonicalRawLease;sourceUnrecorded:boolean}>({
+  frameBytes:()=>4,maxRetainedBytes:4,yieldTask:()=>Promise.resolve(),
+  consume(input,time){
+   const reserved=input.lease?raw.commit(input.lease,input.source,time,time*1000):undefined;
+   const sourceId=h.capture.input(input.source,time,time*1000,'input',reserved,!input.sourceUnrecorded);
+   consumed.push({marker:input.source.marker,sourceId});
+   publishCanonicalSource(h.capture,sourceId,consumed.length,'input',time,undefined,{recordingExpected:true},
+    fact=>reportCanonicalSourceGap(fact,()=>{}, {missingInput:reason=>{incomplete.push(reason);}}));
+  },release(input){input.lease?.release();input.source.close();},onError(error){errors.push(error);},
+ });
+ try{
+  const backlog=raw.lease(borrowed.value);assert.ok(backlog);
+  assert.equal(raw.commit(backlog,borrowed.value,0,0),1);backlog.release();await turn();
+  assert.equal(h.capture.stats.pendingBytes,4);
+  function offer(marker:string,time:number){
+   const source=handle(marker,1,1),stamp=policy.stamp(time,time*1000);
+   const admission=policy.consider(stamp,{capturing:true,checkingCompletion:false});
+   assert.equal(admission.kind,'freeze');
+   const plan=raw.plan(source.value);policy.frozen(stamp,{succeeded:true,freezeMs:0});
+   pipeline.offer({source:source.value,...plan},time,stamp);
+   return {source,plan};
+  }
+  const skippedRecording=offer('unique-card',.5);await pipeline.flush();
+  assert.equal(skippedRecording.plan.sourceUnrecorded,true);assert.equal(skippedRecording.source.closes(),1);
+  assert.deepEqual(consumed,[{marker:'unique-card',sourceId:undefined}]);
+  assert.equal(incomplete.length,1,'consumed live input without raw bytes must mark the recording partial');
+  assert.equal(h.capture.stats.pendingBytes,4,'busy recorder must not allocate another raw raster');
+  assert.equal(h.capture.captured,1);assert.deepEqual(h.reports,[]);
+  h.ack(1);
+  const recorded=offer('next-card',.7);await pipeline.flush();await turn();
+  assert.equal(recorded.plan.sourceUnrecorded,false);assert.equal(recorded.source.closes(),1);
+  assert.deepEqual(consumed,[{marker:'unique-card',sourceId:undefined},{marker:'next-card',sourceId:2}]);
+  assert.equal(incomplete.length,1);assert.equal(h.capture.stats.pendingBytes,4);
+  assert.equal(h.capture.stats.leasedBytes,0);assert.deepEqual(errors,[]);assert.deepEqual(h.reports,[]);
+ }finally{pipeline.dispose();await pipeline.flush();await h.finish();}
+});
 
 test('raw live leases persist only consumed inputs and due backups while replaced representatives return credit without source ID holes',async()=>{
  const h=storage(),admission=createLiveInputAdmission(),held=deferred(),frozen:ReturnType<typeof handle>[]=[],borrowed:ReturnType<typeof handle>[]=[];

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {exactPixels} from '../src/features/card-scanner/exact-recording-codec';
+import {exactPixels} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 
 test('actual exact Worker appends identical journal bytes, bounded chunks and original input/recovery pixel hashes',async()=>{
  const oldSelf=Object.getOwnPropertyDescriptor(globalThis,'self'),oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator'),oldCanvas=Object.getOwnPropertyDescriptor(globalThis,'OffscreenCanvas');
@@ -30,7 +30,7 @@ test('actual exact Worker appends identical journal bytes, bounded chunks and or
  Object.defineProperty(globalThis,'OffscreenCanvas',{configurable:true,value:Canvas});
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{storage:{async getDirectory(){return {async getDirectoryHandle(){return directory;}};}}}});
  try{
-  await import('../src/features/card-scanner/exact-recording-worker');
+  await import('../src/features/card-scanner/reproduction/exact-recording-worker');
   await scope.onmessage({data:{kind:'init',port}});assert.equal(sent[0].kind,'ready');
   await scope.onmessage({data:{kind:'journal-start'}});
   await scope.onmessage({data:{kind:'events',events:[{kind:'event',seq:1,time:0,type:'configuration',value:{source:'screen'}}]}});

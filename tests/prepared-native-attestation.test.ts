@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {MessageChannel} from 'node:worker_threads';
 import {createPreparedNativeAttestationInbox,parsePreparedNativeAttestation,verifyAttestedPreparedNative,
-  type PreparedNativeAttestation,type AuthorizedPreparedNativeAttestation,type PreparedNativeAttestationPort} from '../src/features/card-scanner/prepared-native-attestation';
-import {prepareNativeStorage,restoreFrameStorage} from '../src/features/card-scanner/native-frame-storage';
-import {NATIVE_YUV_RECIPES,type NativeYuvFrameMetadata} from '../src/features/card-scanner/native-yuv-recipe';
+  type PreparedNativeAttestation,type AuthorizedPreparedNativeAttestation,type PreparedNativeAttestationPort} from '../src/features/card-scanner/acquisition/prepared-native-attestation';
+import {prepareNativeStorage,restoreFrameStorage} from '../src/features/card-scanner/reproduction/native-frame-storage';
+import {NATIVE_YUV_RECIPES,type NativeYuvFrameMetadata} from '../src/features/card-scanner/acquisition/native-yuv-recipe';
 
 const sessionId='test-session',producerId='test-producer',source={sourceFrameId:7,captureTime:1.75};
 const uuid=(n=1)=>`00000000-0000-4000-8000-${n.toString(16).padStart(12,'0')}`;

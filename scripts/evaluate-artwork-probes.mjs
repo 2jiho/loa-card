@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
-import { createArtworkVerifier } from "../src/features/card-scanner/artwork-verifier.ts";
+import { createArtworkVerifier } from "../src/features/card-scanner/recognition/artwork-verifier.ts";
 const json = async path => JSON.parse(await readFile(path, "utf8"));
 const { cards } = await json("public/scanner/cards.json");
 const verify = createArtworkVerifier(cards);

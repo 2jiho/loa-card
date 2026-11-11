@@ -1,16 +1,17 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  InventoryEvidence, hashInventoryEvidence, inventoryEventData, parseInventoryEvent, parseInventorySeed,
+  InventoryEvidence, hashInventoryEvidence, inventoryEventData, parseInventoryEvent, parseInventoryPreviewConfirmation, parseInventorySeed,
   reduceInventoryCard, replayInventoryEvidence, serializeInventoryEvent, serializeInventorySeed,
-} from '../src/features/card-scanner/inventory-evidence';
-import type {InventoryEvent, InventorySource} from '../src/features/card-scanner/inventory-evidence';
-import type {ScannedCard, NameEvidence} from '../src/features/card-scanner/recognizer';
-import {consensus} from '../src/features/card-scanner/consensus';
-import {appendObservation} from '../src/features/card-scanner/observation-history';
-import {confirmedReadingCount} from '../src/features/card-scanner/recovery-completion';
-import {confirmedCaptureCount} from '../src/features/card-scanner/auto-completion';
-import {CURRENT_FIELD_REVIEW} from '../src/features/card-scanner/current-scan-fields';
+} from '../src/features/card-scanner/session/inventory-evidence';
+import type {InventoryEvent, InventoryPreviewConfirmation, InventorySource} from '../src/features/card-scanner/session/inventory-evidence';
+import type {ScannedCard, NameEvidence} from '../src/features/card-scanner/recognition/recognizer';
+import {consensus} from '../src/features/card-scanner/recognition/consensus';
+import {appendObservation} from '../src/features/card-scanner/session/observation-history';
+import {confirmedReadingCount} from '../src/features/card-scanner/session/recovery-completion';
+import {canStopSharing, confirmedCaptureCount} from '../src/features/card-scanner/session/auto-completion';
+import {InventoryEvidenceReplay} from '../src/features/card-scanner/reproduction/inventory-evidence-replay';
+import {CURRENT_FIELD_REVIEW, hasCurrentFieldProof} from '../src/features/card-scanner/session/current-scan-fields';
 
 function source(order = 10, slot = 0): InventorySource {
   return {sessionId: 'session', frameId: order, observationId: `observation-${order}-${slot}`,
@@ -28,12 +29,233 @@ function card(input: InventorySource = source(), change: Partial<ScannedCard> = 
 }
 function record(inventory: InventoryEvidence, input: InventorySource, value = card(input)) {
   inventory.acceptIdentity(input, value.id);
-  if (!value.review.includes('이름 확인')) inventory.confirmName(input, value.id);
+  if (!value.review.includes('이름 확인')) inventory.confirmName(input, value.id,value.name);
   return inventory.recordObservation(input, value, .9);
 }
 function evidence(inventory: InventoryEvidence) {
   return {latest: inventory.latestIdentityOrder, confirmed: inventory.confirmedFieldOrder};
 }
+
+function completion(inventory: InventoryEvidence) {
+  return {expected:1,finalExpected:1,cards:inventory.project([]),...evidence(inventory),
+    confirmedNames:inventory.confirmedNameOrder,unresolved:0,dropped:0,inputSettled:true,
+    fieldChangesSettled:true,headerAvailable:true};
+}
+
+test('new-run seed manual fields cannot override or certify a newer observation', () => {
+  const seed=card(source(1),{awakening:1,extraCopies:2,manual:['awakening','extraCopies']});
+  const inventory=new InventoryEvidence([seed],{seedPolicy:'prior-run'});
+  assert.deepEqual(inventory.cards.get('card')!.manual,['awakening','extraCopies'], 'initial seed retains manual provenance');
+  const input=source(10), next=card(input,{awakening:2,extraCopies:3});
+  record(inventory,input,next);
+  assert.deepEqual([inventory.cards.get('card')!.awakening,inventory.cards.get('card')!.extraCopies],[2,3]);
+  assert.equal(canStopSharing(completion(inventory)),true);
+  assert.deepEqual(seed.manual,['awakening','extraCopies'], 'the caller-owned seed is unchanged');
+});
+
+test('new-run seed manual fields cannot make unresolved or impossible newer fields current', () => {
+  for(const next of [card(source(10),{awakening:null,extraCopies:null,countReliable:false,review:['각성 확인']}),
+    card(source(10),{awakening:4,extraCopies:10,countReliable:true,review:[]}),
+    card(source(10),{awakening:1,extraCopies:2,countReliable:true,review:[],maxAwakening:0})]){
+    const seed=card(source(1),{awakening:1,extraCopies:2,manual:['awakening','extraCopies']});
+    const inventory=new InventoryEvidence([seed],{seedPolicy:'prior-run'});
+    record(inventory,source(10),next);
+    assert.equal(inventory.confirmedFieldOrder.has('card'),false);
+    assert.ok(inventory.project([])[0].review.includes(CURRENT_FIELD_REVIEW));
+    assert.equal(canStopSharing(completion(inventory)),false);
+  }
+});
+
+test('impossible newer observation cannot reuse an older valid field proof', () => {
+  const inventory=new InventoryEvidence([],{seedPolicy:'prior-run'});
+  record(inventory,source(10),card(source(10),{awakening:1,extraCopies:2}));
+  record(inventory,source(20),card(source(20),{awakening:4,extraCopies:10}));
+  assert.equal(inventory.confirmedFieldOrder.get('card'),10);
+  assert.equal(inventory.latestIdentityOrder.get('card'),20);
+  assert.equal(canStopSharing(completion(inventory)),false);
+});
+
+test('repeated newer field pair stays provable while a changed pair does not', () => {
+  const inventory=new InventoryEvidence([],{seedPolicy:'prior-run'});
+  record(inventory,source(10),card(source(10),{awakening:0,extraCopies:2}));
+  record(inventory,source(20),card(source(20),{awakening:0,extraCopies:2,countReliable:false,review:['추가 장수 확인']}));
+  const repeated={latest:inventory.latestIdentityOrder,confirmed:inventory.confirmedFieldOrder,agreed:inventory.agreedFieldOrder};
+  assert.equal(inventory.confirmedFieldOrder.get('card'),10);
+  assert.equal(inventory.latestIdentityOrder.get('card'),20);
+  assert.equal(inventory.agreedFieldOrder.get('card'),20);
+  assert.equal(hasCurrentFieldProof('card',repeated),true);
+  assert.equal(confirmedReadingCount({cards:inventory.project([]),...repeated}),1);
+
+  const changed=new InventoryEvidence([],{seedPolicy:'prior-run'});
+  record(changed,source(10),card(source(10),{awakening:0,extraCopies:2}));
+  record(changed,source(20),card(source(20),{awakening:0,extraCopies:3,countReliable:false,review:['추가 장수 확인']}));
+  assert.equal(changed.confirmedFieldOrder.get('card'),10);
+  assert.equal(changed.latestIdentityOrder.get('card'),20);
+  assert.equal(changed.agreedFieldOrder.has('card'),false);
+  assert.equal(hasCurrentFieldProof('card',{latest:changed.latestIdentityOrder,confirmed:changed.confirmedFieldOrder,
+    agreed:changed.agreedFieldOrder}),false);
+
+  const partial=new InventoryEvidence([],{seedPolicy:'prior-run'});
+  record(partial,source(10),card(source(10),{awakening:0,extraCopies:2}));
+  record(partial,source(20),card(source(20),{awakening:null,extraCopies:2,countReliable:false,review:['각성 확인']}));
+  assert.equal(partial.agreedFieldOrder.get('card'),20,'an unobserved awakening does not contradict the confirmed pair');
+  assert.equal(hasCurrentFieldProof('card',{latest:partial.latestIdentityOrder,confirmed:partial.confirmedFieldOrder,
+    agreed:partial.agreedFieldOrder}),true,'the newest capture still repeats the count');
+
+  const contradicted=new InventoryEvidence([],{seedPolicy:'prior-run'});
+  record(contradicted,source(10),card(source(10),{awakening:0,extraCopies:2}));
+  record(contradicted,source(20),card(source(20),{awakening:1,extraCopies:2,countReliable:false,review:['각성 확인']}));
+  assert.equal(contradicted.agreedFieldOrder.has('card'),false,'a later observed awakening blocks the old pair');
+
+  const missingCount=new InventoryEvidence([],{seedPolicy:'prior-run'});
+  record(missingCount,source(10),card(source(10),{awakening:0,extraCopies:2}));
+  record(missingCount,source(20),card(source(20),{awakening:null,extraCopies:null,countReliable:false,review:['각성 확인','추가 장수 확인']}));
+  assert.equal(missingCount.agreedFieldOrder.has('card'),false,'the newest capture must repeat the count');
+});
+
+test('manual observations within a new run retain their existing precedence', () => {
+  const inventory=new InventoryEvidence([],{seedPolicy:'prior-run'});
+  record(inventory,source(10),card(source(10),{awakening:1,extraCopies:2,manual:['awakening','extraCopies']}));
+  record(inventory,source(20),card(source(20),{awakening:2,extraCopies:3}));
+  assert.deepEqual([inventory.cards.get('card')!.awakening,inventory.cards.get('card')!.extraCopies],[1,2]);
+  assert.equal(inventory.confirmedFieldOrder.get('card'),10,'newer conflicting proof cannot certify the manual value');
+  assert.equal(canStopSharing(completion(inventory)),false);
+});
+
+test('newer name proof cannot certify a conflicting same-run manual label', () => {
+  const inventory=new InventoryEvidence([],{seedPolicy:'prior-run-v2'});
+  record(inventory,source(10),card(source(10),{name:'수동 이름',manual:['name']}));
+  record(inventory,source(20),card(source(20),{name:'다른 이름'}));
+  assert.equal(inventory.cards.get('card')!.name,'수동 이름');
+  assert.equal(inventory.confirmedNameOrder.get('card'),10,'an older matching proof is retained but is not current');
+  assert.equal(canStopSharing(completion(inventory)),false);
+  record(inventory,source(30),card(source(30),{name:'수동 이름'}));
+  assert.equal(inventory.confirmedNameOrder.get('card'),30);
+  assert.equal(canStopSharing(completion(inventory)),true);
+});
+
+test('unreadable or out-of-order name observations cannot upgrade a manual label', () => {
+  const inventory=new InventoryEvidence([],{seedPolicy:'prior-run-v2'});
+  record(inventory,source(10),card(source(10),{name:'수동 이름',manual:['name']}));
+  record(inventory,source(30),card(source(30),{name:'수동 이름',review:['이름 확인']}));
+  assert.equal(canStopSharing(completion(inventory)),false);
+  record(inventory,source(20),card(source(20),{name:'다른 이름'}));
+  assert.equal(canStopSharing(completion(inventory)),false);
+  record(inventory,source(40),card(source(40),{name:'수동 이름'}));
+  assert.equal(canStopSharing(completion(inventory)),true);
+  record(inventory,source(15),card(source(15),{name:'다른 이름'}));
+  assert.equal(inventory.confirmedNameOrder.get('card'),40, 'an older read does not erase newer matching proof');
+  assert.equal(canStopSharing(completion(inventory)),true);
+});
+
+test('same-capture retries and interrupted bound name events cannot revive conflicting proof', async () => {
+  const events:InventoryEvent[]=[],inventory=new InventoryEvidence([],{seedPolicy:'prior-run-v2',onEvent:event=>events.push(event)});
+  record(inventory,source(10),card(source(10),{name:'수동 이름',manual:['name']}));
+  const latest=source(20);record(inventory,latest,card(latest,{name:'다른 이름'}));
+  assert.equal(inventory.confirmedNameOrder.get('card'),10);
+  assert.equal(canStopSharing(completion(inventory)),false);
+  const before=await hashInventoryEvidence(inventory.snapshot());
+  inventory.acceptIdentity(latest,'card');inventory.confirmName(latest,'card','다른 이름');
+  assert.equal(inventory.confirmedNameOrder.get('card'),10,'confirmation alone is not a finished observation');
+  assert.equal(canStopSharing(completion(inventory)),false,'timeout after the event cannot revive the old manual label');
+  assert.notEqual(await hashInventoryEvidence(inventory.snapshot()),before,'a pending confirmation is included in the checkpoint');
+  const replay=new InventoryEvidenceReplay(new AbortController().signal);replay.seed(serializeInventorySeed([],'prior-run-v2'));
+  for(const event of events)replay.accept(serializeInventoryEvent(event));
+  replay.checkpoint({complete:true,hash:await hashInventoryEvidence(inventory.snapshot())});
+  assert.equal((await replay.summary()).matchesCapturedState,true);
+  inventory.recordObservation(latest,card(latest,{name:'다른 이름'}),.9);
+  assert.equal(canStopSharing(completion(inventory)),false,'same-source disagreement remains unresolved');
+  inventory.acceptIdentity(latest,'card');inventory.confirmName(latest,'card','수동 이름');
+  inventory.recordObservation(latest,card(latest,{name:'수동 이름'}),.9);
+  assert.equal(inventory.confirmedNameOrder.get('card'),20);
+  assert.equal(canStopSharing(completion(inventory)),true,'same-source matching observation restores proof');
+  inventory.confirmName(latest,'card','수동 이름');
+  assert.equal(canStopSharing(completion(inventory)),true,'reuse of the identical source and label retains proof');
+  const other={...latest,observationId:'different-attempt'};
+  inventory.confirmName(other,'card','다른 이름');
+  assert.equal(canStopSharing(completion(inventory)),false,'a different attempt cannot reuse the same-order proof');
+  inventory.recordObservation(latest,card(latest,{name:'수동 이름'}),.9);
+  assert.equal(canStopSharing(completion(inventory)),false,'a different source cannot consume the pending confirmation');
+});
+
+test('an older observation cannot consume a pending newer bound-name source', () => {
+  const inventory=new InventoryEvidence([],{seedPolicy:'prior-run-v2'});
+  const newer=source(30),older=source(20);
+  inventory.acceptIdentity(newer,'card');inventory.confirmName(newer,'card','카드');
+  inventory.acceptIdentity(older,'card');inventory.confirmName(older,'card','다른 이름');
+  inventory.recordObservation(older,card(older,{name:'다른 이름'}),.9);
+  assert.equal(inventory.confirmedNameOrder.has('card'),false);
+  inventory.recordObservation(newer,card(newer,{name:'카드',confidence:1}),.9);
+  assert.equal(inventory.confirmedNameOrder.get('card'),30);
+  assert.equal(canStopSharing(completion(inventory)),true);
+});
+
+test('a same-order unconfirmed replacement cannot reuse a proof bound to another label', () => {
+  const inventory=new InventoryEvidence([],{seedPolicy:'prior-run-v2'}),input=source(10);
+  record(inventory,input,card(input,{name:'첫 이름',confidence:.8}));
+  assert.equal(canStopSharing(completion(inventory)),true);
+  inventory.acceptIdentity(input,'card');
+  inventory.recordObservation(input,card(input,{name:'다른 이름',confidence:1}),.9);
+  assert.equal(inventory.cards.get('card')!.name,'다른 이름');
+  assert.equal(inventory.confirmedNameOrder.has('card'),false);
+  assert.equal(canStopSharing(completion(inventory)),false);
+});
+
+test('v2 state replay keeps its historical name proof while v3 rejects the conflicting proof', async () => {
+  const legacyEvents:InventoryEvent[]=[],currentEvents:InventoryEvent[]=[];
+  const legacy=new InventoryEvidence([],{seedPolicy:'prior-run',onEvent:event=>legacyEvents.push(event)});
+  const current=new InventoryEvidence([],{seedPolicy:'prior-run-v2',onEvent:event=>currentEvents.push(event)});
+  for(const inventory of [legacy,current]) {
+    record(inventory,source(10),card(source(10),{name:'수동 이름',manual:['name']}));
+    record(inventory,source(20),card(source(20),{name:'다른 이름'}));
+  }
+  assert.equal(canStopSharing(completion(legacy)),true,'legacy v2 semantics are preserved for state replay');
+  assert.equal(canStopSharing(completion(current)),false,'new v3 state does not certify a different label');
+  for(const [version,policy,events,inventory] of [[2,'prior-run',legacyEvents,legacy],[3,'prior-run-v2',currentEvents,current]] as const){
+    const wire=serializeInventorySeed([],policy),parsed=parseInventorySeed(wire);
+    assert.equal(parsed.version,version);
+    const replay=new InventoryEvidenceReplay(new AbortController().signal);replay.seed(wire);
+    for(const event of events)replay.accept(serializeInventoryEvent(event));
+    replay.checkpoint({complete:true,hash:await hashInventoryEvidence(inventory.snapshot())});
+    assert.equal((await replay.summary()).matchesCapturedState,true);
+  }
+});
+
+test('late manual observation cannot reuse newer proof for different selected values', () => {
+  const inventory=new InventoryEvidence([],{seedPolicy:'prior-run'});
+  record(inventory,source(20),card(source(20),{awakening:2,extraCopies:3}));
+  record(inventory,source(10),card(source(10),{awakening:1,extraCopies:2,manual:['awakening','extraCopies']}));
+  assert.deepEqual([inventory.cards.get('card')!.awakening,inventory.cards.get('card')!.extraCopies],[1,2]);
+  assert.equal(inventory.confirmedFieldOrder.get('card'),10);
+  assert.equal(canStopSharing(completion(inventory)),false);
+});
+
+test('historical manually named seed does not override the current observed name', () => {
+  const seed=card(source(1),{name:'이전 수동 이름',confidence:1,manual:['name']});
+  const inventory=new InventoryEvidence([seed],{seedPolicy:'prior-run'});
+  record(inventory,source(10),card(source(10),{name:'카드',confidence:.9}));
+  assert.equal(inventory.cards.get('card')!.name,'카드');
+  assert.equal(inventory.evidence.get('card')![0].name,'이전 수동 이름');
+});
+
+test('versioned new-run seed replays the new policy and legacy version retains old semantics', async () => {
+  const seed=card(source(1),{awakening:1,extraCopies:2,manual:['awakening','extraCopies']});
+  const events:InventoryEvent[]=[];
+  const inventory=new InventoryEvidence([seed],{seedPolicy:'prior-run',onEvent:event=>events.push(event)});
+  record(inventory,source(10),card(source(10),{awakening:2,extraCopies:3}));
+  const wire=serializeInventorySeed([seed],'prior-run');
+  const parsed=parseInventorySeed(wire);assert.equal(parsed.version,2);
+  assert.equal(await hashInventoryEvidence(replayInventoryEvidence(parsed.cards,events,{seedPolicy:'prior-run'}).snapshot()),
+    await hashInventoryEvidence(inventory.snapshot()));
+  const replay=new InventoryEvidenceReplay(new AbortController().signal);replay.seed(wire);
+  for(const event of events)replay.accept(serializeInventoryEvent(event));
+  const expected=await hashInventoryEvidence(inventory.snapshot());replay.checkpoint({complete:true,hash:expected});
+  assert.equal((await replay.summary()).matchesCapturedState,true);
+  const legacy=new InventoryEvidenceReplay(new AbortController().signal);legacy.seed(serializeInventorySeed([seed]));
+  for(const event of events)legacy.accept(serializeInventoryEvent(event));
+  legacy.checkpoint({complete:true,hash:expected});
+  assert.equal((await legacy.summary()).matchesCapturedState,false);
+});
 
 test('seeds remain historical and stable map aliases receive separate identity, name and field facts', () => {
   const seed = card(source(5)), inventory = new InventoryEvidence([seed]);
@@ -128,6 +350,34 @@ test('name uncertainty cannot donate fields to an independently identified card'
   assert.equal(inventory.confirmedFieldOrder.get('card'), 10);
   assert.equal(inventory.latestIdentityOrder.get('card'), 20);
   assert.equal(confirmedReadingCount({cards: inventory.project([]), ...evidence(inventory)}), 0);
+});
+
+test('state replay does not turn legacy repeated tentative OCR into independent identity proof', () => {
+  const events: InventoryEvent[] = [], live = new InventoryEvidence([], {onEvent: event => events.push(event)});
+  for (const [index, engine, rawText] of [[10, 'paddle', '발탄'], [20, 'tesseract', '발단']] as const) {
+    const input=source(index);
+    const tentative=card(input,{id:'short',name:'발탄',review:['이름 확인'],
+      nameEvidence:[proof({frame:input.frame,readingId:`reading-${index}`,fingerprint:`pixels-${index}`,
+        rawText,engine,exact:index===10})]});
+    record(live,input,tentative);
+  }
+  const replay=replayInventoryEvidence([],events.map(inventoryEventData));
+  for (const instance of [live,replay]) {
+    assert.ok(instance.cards.get('short')!.review.includes('이름 확인'));
+    assert.equal(instance.confirmedNameOrder.has('short'),false);
+    assert.equal(instance.cards.get('short')!.nameConfirmedBy,undefined);
+  }
+});
+
+test('name ambiguity is retained and validated in recorded inventory events', () => {
+  const events: InventoryEvent[] = [], inventory=new InventoryEvidence([], {onEvent: event=>events.push(event)});
+  const input=source(), value=card(input,{nameEvidence:[proof({nameAmbiguous:true})]});
+  record(inventory,input,value);
+  const replay=replayInventoryEvidence([],events.map(inventoryEventData));
+  assert.equal(replay.cards.get('card')!.nameEvidence![0].nameAmbiguous,true);
+  const recorded=structuredClone(inventoryEventData(events.find(event=>event.kind==='observation-recorded')!)) as unknown as {card:{nameEvidence:Array<{nameAmbiguous:unknown}>}};
+  recorded.card.nameEvidence[0].nameAmbiguous='yes';
+  assert.throws(()=>parseInventoryEvent(recorded),/boolean required/);
 });
 
 test('name-sort correction is only a selector and cannot mutate evidence or certify raw name/field proofs', () => {
@@ -302,4 +552,65 @@ test('external object events and JSON events share the UTF-8 byte cap, independe
   assert.equal(parsed.kind, 'observation-recorded');
   if (parsed.kind === 'observation-recorded') assert.equal(parsed.card.image, '');
   assert.equal(JSON.stringify(parseInventorySeed({version:1,cards:[withImage.card]})).includes('xxx'), false);
+});
+
+test('a stable preview re-read can confirm field proof without adding an observation',()=>{
+  const inventory=new InventoryEvidence([]);
+  assert.equal(inventory.confirmedFieldOrder.get('card'),undefined);
+  inventory.confirmPreviewField('card',10);
+  assert.equal(inventory.confirmedFieldOrder.get('card'),10);
+  inventory.confirmPreviewField('card',5);
+  assert.equal(inventory.confirmedFieldOrder.get('card'),10,'older preview evidence cannot replace newer proof');
+  inventory.confirmPreviewField('',20);
+  inventory.confirmPreviewField('card',Number.NaN);
+  assert.equal(inventory.confirmedFieldOrder.get('card'),10);
+});
+
+test('final preview rescue exposes identity, name and field maps without older replacement',()=>{
+  const inventory=new InventoryEvidence([]);
+  inventory.confirmPreviewCard(card(source(10),{id:'rescue'}),10);
+  assert.equal(inventory.cards.get('rescue')?.id,'rescue');
+  assert.equal(inventory.latestIdentityOrder.get('rescue'),10);
+  assert.equal(inventory.confirmedNameOrder.get('rescue'),10);
+  assert.equal(inventory.confirmedFieldOrder.get('rescue'),10);
+  inventory.confirmPreviewCard(card(source(5),{id:'rescue',name:'older'}),5);
+  assert.equal(inventory.cards.get('rescue')?.name,'카드','older preview cannot replace a newer rescue');
+  assert.equal(inventory.latestIdentityOrder.get('rescue'),10);
+});
+
+test('preview confirmations are recorded and replay to the same inventory state',async()=>{
+  const facts:InventoryPreviewConfirmation[]=[],events:InventoryEvent[]=[];
+  const live=new InventoryEvidence([],{onEvent:event=>events.push(event),onPreviewConfirmation:fact=>facts.push(fact)});
+  record(live,source(10));
+  live.confirmPreviewField('card',50);
+  live.confirmPreviewCard(card(source(60),{id:'rescue',name:'구조'}),60);
+  live.confirmPreviewField('',70);                      // rejected input is not a mutation
+  live.confirmPreviewField('card',20);                  // an older order still reaches the live reducer's early-return path
+  assert.deepEqual(facts.map(fact=>fact.kind),['preview-field','preview-card','preview-field'],'only accepted calls are recorded');
+  const seed=Object.freeze({version:1 as const,cards:[]});
+  const replay=new InventoryEvidenceReplay(new AbortController().signal);
+  replay.seed(seed);
+  for(const event of events)replay.accept(inventoryEventData(event));
+  const withoutFacts=await replay.summary();
+  for(const fact of facts)replay.previewConfirmation(JSON.parse(JSON.stringify(fact)));
+  const withFacts=await replay.summary();
+  const liveHash=await hashInventoryEvidence(live.snapshot());
+  assert.equal(withFacts.hash,liveHash,'replaying the facts reproduces the live state');
+  assert.notEqual(withoutFacts.hash,liveHash,'omitting them is exactly the defect: the proof maps differ');
+  assert.equal(replay.confirmedFieldOrder.get('card'),live.confirmedFieldOrder.get('card'));
+  assert.equal(replay.confirmedFieldOrder.get('rescue'),60);
+});
+
+test('replaying a preview confirmation never re-emits it and rejects malformed facts',()=>{
+  const facts:InventoryPreviewConfirmation[]=[];
+  const inventory=new InventoryEvidence([],{onPreviewConfirmation:fact=>facts.push(fact)});
+  inventory.applyPreviewConfirmation(parseInventoryPreviewConfirmation({version:1,kind:'preview-field',id:'card',order:4}));
+  assert.equal(facts.length,0);
+  assert.equal(inventory.confirmedFieldOrder.get('card'),4);
+  inventory.confirmPreviewField('card',9);
+  assert.equal(facts.length,1,'live calls still emit after a replay call');
+  assert.throws(()=>parseInventoryPreviewConfirmation({version:1,kind:'preview-field',id:'card',order:-1}));
+  assert.throws(()=>parseInventoryPreviewConfirmation({version:1,kind:'preview-field',order:1}));
+  assert.throws(()=>parseInventoryPreviewConfirmation({version:1,kind:'preview-field',id:'card',order:1,card:{}}));
+  assert.throws(()=>parseInventoryPreviewConfirmation({version:1,kind:'other',order:1}));
 });

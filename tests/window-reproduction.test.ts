@@ -1,12 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
-import {createReproductionBundle,openReproduction,beginReproduction,createReproductionSessionAccess,replaySettings} from '../src/features/card-scanner/scan-reproduction';
-import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction-session-store';
-import {entryParts,fastCompress,packPixels,pixelHash,exactPixels,executionSummary} from '../src/features/card-scanner/exact-recording-codec';
-import {RGBA_WINDOW_CODEC,RGBA_WINDOW_POLICY} from '../src/features/card-scanner/rgba-window-policy';
-import type {ExactRecordingStats} from '../src/features/card-scanner/exact-recording';
-import type {ReproductionFile} from '../src/features/card-scanner/scan-reproduction';
+import {createReproductionBundle,openReproduction,beginReproduction,createReproductionSessionAccess,replaySettings} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction/reproduction-session-store';
+import {entryParts,fastCompress,packPixels,pixelHash,exactPixels,executionSummary} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {RGBA_WINDOW_CODEC,RGBA_WINDOW_POLICY} from '../src/features/card-scanner/reproduction/rgba-window-policy';
+import type {ExactRecordingStats} from '../src/features/card-scanner/reproduction/exact-recording';
+import type {ReproductionFile} from '../src/features/card-scanner/reproduction/scan-reproduction';
 
 const signal=()=>new AbortController().signal,environment={browser:'test',catalog:'test',build:'test'};
 async function fixture(){

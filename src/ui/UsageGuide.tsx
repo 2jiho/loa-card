@@ -8,7 +8,7 @@ import BugReportOutlined from '@mui/icons-material/BugReportOutlined';
 import './UsageGuide.css';
 
 const steps = [
-  { title: '성장 탭 열기', text: '게임에서 카드 보관함 → 성장 탭을 열고 목록의 맨 위로 이동하세요.' },
+  { title: '성장 탭 열기', text: '게임에서 카드 보관함 → 성장 탭을 열고 모든 등급·전체로 설정하세요. 검색어와 알림 설정 카드만 보기 체크를 지운 뒤 맨 위로 이동하세요.' },
   { title: '게임 화면 공유', text: '스캔 준비 완료가 표시되면 화면 공유 시작을 누르고 로스트아크 창을 선택하세요.' },
   { title: '스크롤바에서 스크롤', text: '스크롤바 위에서 휠을 돌리거나 스크롤바를 천천히 끌어 끝까지 내려 주세요. 카드 위는 피해 주세요.' },
 ];
@@ -33,7 +33,7 @@ export function UsageGuide({ open, onClose, onDiagnostics, diagnosticsDisabled }
       <section aria-labelledby="guide-scan"><h3 id="guide-scan">카드 스캔</h3>
         <ScanSteps />
         <p>PC의 Chrome·Edge를 사용하세요. 게임 창을 선택할 수 없으면 게임이 표시된 화면을 공유하세요. 카드 이름·보석·장수와 보관함 수량이 가려지지 않게 해 주세요.</p>
-        <p>스크롤바에서 조작하면 카드 툴팁이 이름·보석·장수를 가리지 않아 더 잘 읽을 수 있어요. 빠진 구간은 잠깐 멈춰 다시 보여 주세요.</p>
+        <p>스크롤바에서 조작하면 카드 툴팁이 이름·보석·장수를 가리지 않아 더 잘 읽을 수 있어요. 빠진 구간은 잠깐 멈춰 다시 보여 주세요. 스캔 중 필터나 검색어를 바꿨다면 처음부터 다시 스캔해 주세요.</p>
         <p>페이지를 열면 인식 모델을 미리 준비합니다. 화면은 외부 OCR 서버로 전송하지 않고 현재 브라우저에서 읽습니다.</p>
       </section>
       <section aria-labelledby="guide-check"><h3 id="guide-check">스캔이 끝났는지 확인하기</h3>
@@ -63,8 +63,8 @@ export function UsageGuide({ open, onClose, onDiagnostics, diagnosticsDisabled }
         <p>스캔별 결과와 문제 카드 사진을 확인하고, 저장한 입력으로 다시 판독할 수 있습니다. 내 카드 목록은 바뀌지 않습니다.</p>
         <Button color="inherit" startIcon={<BugReportOutlined />} disabled={diagnosticsDisabled} onClick={onDiagnostics}>스캔 진단</Button>
         {diagnosticsDisabled&&<p>진행 중인 작업이 끝나면 사용할 수 있습니다.</p>}
-        <p>기본으로 진단 요약과 제한된 문제 이미지만 보관합니다. 입력을 다시 실행하려면 스캔 전에 진단 화면에서 <strong>전체 입력 기록 · 문제 재현용</strong>을 켜 주세요. 기록은 이 브라우저에 보관하며 자동 전송하지 않습니다.</p>
-        <p>최근 8개·총 512MiB 한도로 보관합니다. 오래된 미고정 기록부터 정리하며, 고정하거나 진행 중인 기록은 자동 삭제하지 않습니다. 저장 공간이 부족하면 부분 기록으로 남습니다.</p>
+        <p>{import.meta.env.DEV?'개발 모드에서는 재현용 입력 기록이 기본으로 켜집니다.':'배포 페이지에서는 진단 요약과 제한된 문제 이미지의 저장을 기본으로 시도합니다. 입력을 다시 실행하려면 스캔 전에 진단 화면에서 상세 입력 기록을 켜 주세요.'} 기록은 이 브라우저에 보관하며 외부로 자동 전송하지 않습니다.</p>
+        <p>최근 8개·총 512MiB 한도로 보관합니다. 오래된 미고정 기록부터 정리하며, 고정하거나 진행 중인 기록은 자동 삭제하지 않습니다. 저장 공간이 부족하거나 오류가 나면 일부 또는 전체가 저장되지 않을 수 있습니다.</p>
         <p>페이지가 중단되면 마지막 활성 확인에서 2분이 지난 뒤 진단 목록을 다시 열어 남아 있는 부분 기록을 확인하세요. 저장하지 못한 구간은 복구할 수 없습니다. 미리보기 영상이 없어도 입력이 남아 있으면 재현할 수 있습니다.</p>
         <p>입력 재판독·당시 실행 상태 재생·실시간 속도 검사는 서로 다릅니다. 진단 파일을 공유하기 전 화면의 개인정보를 확인하세요.</p>
       </section>

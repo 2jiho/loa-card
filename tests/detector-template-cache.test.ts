@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDetectorTemplateCache} from '../src/features/card-scanner/detector-template-cache';
+import {createDetectorTemplateCache} from '../src/features/card-scanner/acquisition/detector-template-cache';
 
 function setup(bytes=100,entries=2){
   const made:{width:number;height:number;deleted:number;delete():void}[]=[];

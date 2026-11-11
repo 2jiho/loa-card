@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fieldPixelRegions} from '../src/features/card-scanner/field-pixel-regions';
+import {fieldPixelRegions} from '../src/features/card-scanner/acquisition/field-pixel-regions';
 
 test('integer unscaled fields cover the full name, count and awakening ROIs',()=>{
  const content={x:6,y:6,width:140,height:210},before={...content};

@@ -1,7 +1,95 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {createAcquisitionClient} from '../src/features/card-scanner/acquisition-client';
-import type {Layout} from '../src/features/card-scanner/detector';
-import {entryParts,exactReplayFrames,fastCompress,packPixels,pixelHash} from '../src/features/card-scanner/exact-recording-codec';
+import {createAcquisitionClient} from '../src/features/card-scanner/acquisition/acquisition-client';
+import type {Layout} from '../src/features/card-scanner/acquisition/detector';
+import {entryParts,exactReplayFrames,fastCompress,packPixels,pixelHash} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+test('recording attachment is atomic and cannot overlap preparation, acquisition, another recording or its stop',async()=>{
+ const names=['Worker','OffscreenCanvas','createImageBitmap'];
+ const previous=Object.fromEntries(names.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+ const messages:any[]=[],issues:string[]=[];let worker:any,finishFreeze!:(value:unknown)=>void,failTransfer=false;
+ let client:ReturnType<typeof createAcquisitionClient>|undefined;
+ try{
+  Object.defineProperty(globalThis,'Worker',{configurable:true,value:class{
+   onmessage:any;onerror:any;constructor(){worker=this;}
+   postMessage(message:any){if(message.kind==='record'&&failTransfer)throw Error('port transfer failed');messages.push(message);}
+   terminate(){}
+  }});
+  Object.defineProperty(globalThis,'OffscreenCanvas',{configurable:true,value:class{}});
+  Object.defineProperty(globalThis,'createImageBitmap',{configurable:true,value:()=>new Promise(resolve=>{finishFreeze=resolve;})});
+  client=createAcquisitionClient(new AbortController().signal);
+  const port={} as MessagePort;
+  const ready=client.ready();assert.throws(()=>client!.startRecording(port),/준비 중/);
+  worker.onmessage({data:{ready:true}});await ready;
+  const acquisition=client.detectAndAcquire({} as HTMLCanvasElement);
+  assert.throws(()=>client!.startRecording(port),/수집 또는 준비 중/,'freeze is in progress');
+  finishFreeze({width:1,height:1,close(){}});await Promise.resolve();
+  assert.throws(()=>client!.startRecording(port),/수집 또는 준비 중/,'worker acquisition is in flight');
+  worker.onmessage({data:{id:messages.at(-1).id,cells:[],layout:null}});await acquisition;
+  failTransfer=true;assert.throws(()=>client!.startRecording(port,()=>issues.push('failed attachment')),/port transfer failed/);
+  worker.onmessage({data:{recordingIssue:'stale'}});assert.deepEqual(issues,[],'failed transfer does not install a callback');
+  failTransfer=false;client.startRecording(port,reason=>issues.push(reason));
+  assert.throws(()=>client!.startRecording(port,()=>issues.push('duplicate')),/이미 연결/);
+  worker.onmessage({data:{recordingIssue:'first'}});assert.deepEqual(issues,['first'],'duplicate cannot replace the attached callback');
+  const stopping=client.stopRecording();
+  assert.throws(()=>client!.startRecording(port),/종료 중/,'old stop acknowledgment cannot clear a new callback');
+  worker.onmessage({data:{recordingEnded:true}});await stopping;
+  client.startRecording(port,reason=>issues.push(reason));worker.onmessage({data:{recordingIssue:'second'}});
+  assert.deepEqual(issues,['first','second']);
+  const finalStop=client.stopRecording();worker.onmessage({data:{recordingEnded:true}});await finalStop;
+ }finally{
+  client?.dispose();for(const [key,value]of Object.entries(previous))if(value)Object.defineProperty(globalThis,key,value);else Reflect.deleteProperty(globalThis,key);
+ }
+});
+test('recording stop failure, timeout or abort closes the client and ignores a late acknowledgment',async()=>{
+ const names=['Worker','OffscreenCanvas','createImageBitmap'];
+ const previous=Object.fromEntries(names.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+ let worker:any,failEnd=false;const clients:ReturnType<typeof createAcquisitionClient>[]=[];
+ try{
+  Object.defineProperty(globalThis,'Worker',{configurable:true,value:class{
+   onmessage:any;onerror:any;terminated=false;constructor(){worker=this;}
+   postMessage(message:any){if(message.kind==='record-end'&&failEnd)throw Error('end transfer failed');}
+   terminate(){this.terminated=true;}
+  }});
+  Object.defineProperty(globalThis,'OffscreenCanvas',{configurable:true,value:class{}});
+  Object.defineProperty(globalThis,'createImageBitmap',{configurable:true,value:async()=>({width:1,height:1,close(){}})});
+  const port={} as MessagePort;
+  for(const kind of ['send','timeout','abort','worker'] as const){
+   const control=new AbortController(),client=createAcquisitionClient(control.signal),currentWorker=worker,issues:string[]=[];
+   clients.push(client);client.startRecording(port,reason=>issues.push(reason));failEnd=kind==='send';
+   const stopped=client.stopRecording();
+   const rejected=assert.rejects(stopped,kind==='send'?/end transfer failed/:kind==='timeout'?/종료 응답 없음/:
+    kind==='abort'?{name:'AbortError'}:/worker stopped/);
+   if(kind==='abort')control.abort();else if(kind==='worker')currentWorker.onerror({message:'worker stopped'});
+   await rejected;assert.equal(currentWorker.terminated,true);
+   currentWorker.onmessage({data:{recordingEnded:true}});currentWorker.onmessage({data:{recordingIssue:'late'}});
+   assert.deepEqual(issues,[],'closed client ignores late recording messages');
+   assert.throws(()=>client.startRecording(port),kind==='abort'?{name:'AbortError'}:/수집 종료/);
+   failEnd=false;
+  }
+ }finally{
+  for(const client of clients)client.dispose();
+  for(const [key,value]of Object.entries(previous))if(value)Object.defineProperty(globalThis,key,value);else Reflect.deleteProperty(globalThis,key);
+ }
+});
+test('recording transport failure reports without rejecting the current acquisition',async()=>{
+ const names=['Worker','OffscreenCanvas','createImageBitmap'];
+ const previous=Object.fromEntries(names.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+ let worker:any;
+ try{
+  Object.defineProperty(globalThis,'Worker',{configurable:true,value:class{onmessage:any;onerror:any;sent:any;constructor(){worker=this;}postMessage(m:any){this.sent=m;}terminate(){}}});
+  Object.defineProperty(globalThis,'OffscreenCanvas',{configurable:true,value:class{}});
+  Object.defineProperty(globalThis,'createImageBitmap',{configurable:true,value:async()=>({width:100,height:100,close(){}})});
+  const controller=new AbortController(),client=createAcquisitionClient(controller.signal),issues:string[]=[];
+  const channel=new MessageChannel();client.startRecording(channel.port1,reason=>{issues.push(reason);throw Error('diagnostic consumer');});
+  const pending=client.detectAndAcquire({} as HTMLCanvasElement);await Promise.resolve();
+  const id=worker.sent.id;
+  worker.onmessage({data:{recordingIssue:'기록 채널 오류'}});
+  worker.onmessage({data:{id,cells:[],layout:null}});
+  assert.equal((await pending).frameId,id);assert.deepEqual(issues,['기록 채널 오류']);
+  const stopping=client.stopRecording();worker.onmessage({data:{recordingEnded:true}});await stopping;
+  worker.onmessage({data:{recordingIssue:'늦은 기록 오류'}});assert.equal(issues.length,1);
+  controller.abort();channel.port2.close();
+ }finally{for(const [key,d] of Object.entries(previous))if(d)Object.defineProperty(globalThis,key,d);else Reflect.deleteProperty(globalThis,key);}
+});
 test('acquisition transfers a frozen frame, resolves crops, closes returned bitmaps and cancels pending work',async()=>{
  const previous=Object.fromEntries(['Worker','OffscreenCanvas','createImageBitmap','document'].map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
  let inputClosed=0,outputClosed=0;

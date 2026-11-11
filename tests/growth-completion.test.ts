@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { completeGrowth, undoGrowth } from '../src/features/growth/complete-growth';
 import { compareGrowthCandidates, currentBookProgress } from '../src/features/growth/optimizer';
 import type { GrowthMaster } from '../src/features/growth/optimizer';
-import type { ScannerState } from '../src/features/card-scanner/scanner';
-import { consensus } from '../src/features/card-scanner/consensus';
+import type { ScannerState } from '../src/features/card-scanner/orchestration/scanner';
+import { consensus } from '../src/features/card-scanner/recognition/consensus';
 import { growthDisplayRows } from '../src/features/growth/growth-display';
 
 const master: GrowthMaster = { version: 'test', targets: [{ id: 'd', name: '악마' }],

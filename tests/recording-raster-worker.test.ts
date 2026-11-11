@@ -20,7 +20,7 @@ async function runWorker(run:(h:any)=>Promise<void>){
  class Canvas {constructor(public width:number,public height:number){}getContext(){return context;}}
  Object.defineProperty(globalThis,'self',{configurable:true,value:scope});Object.defineProperty(globalThis,'OffscreenCanvas',{configurable:true,value:Canvas});
  try{
-  const address=new URL('../src/features/card-scanner/recording-raster-worker.ts',import.meta.url);address.searchParams.set('test',crypto.randomUUID());await import(address.href);
+  const address=new URL('../src/features/card-scanner/reproduction/recording-raster-worker.ts',import.meta.url);address.searchParams.set('test',crypto.randomUUID());await import(address.href);
   await run({messages,draws,send:(data:any)=>scope.onmessage({data}),failNextPost:()=>{failPost=true;}});
  }finally{for(const [key,value]of previous)if(value)Object.defineProperty(globalThis,key,value);else Reflect.deleteProperty(globalThis,key);}
 }

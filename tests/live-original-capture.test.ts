@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createLiveOriginalCapture} from '../src/features/card-scanner/live-original-capture';
-import {createLiveCapturePipeline} from '../src/features/card-scanner/live-capture-pipeline';
+import {createLiveOriginalCapture} from '../src/features/card-scanner/capture/live-original-capture';
+import {createLiveCapturePipeline} from '../src/features/card-scanner/capture/live-capture-pipeline';
 
 function deferred() {
   let resolve!:()=>void;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { imageInputs, streamImageInputs, yieldForCapture } from "../src/features/card-scanner/input-source";
+import { imageInputs, streamImageInputs, yieldForCapture } from "../src/features/card-scanner/capture/input-source";
 
 test("image input retains order and exact source elements through the final image", async () => {
   const images = [{ src: "first" }, { src: "last" }] as HTMLImageElement[];

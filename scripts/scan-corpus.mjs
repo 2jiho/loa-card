@@ -1,33 +1,42 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { addCorpusCase, CorpusRunError, listCorpusCases, readCorpusBytes, readCorpusJson, storeCorpusRun, verifyCorpus } from './scan-corpus-core.mjs';
+import { addCorpusCase, CorpusRunError, inspectCorpusWriterLock, listCorpusCases, readCorpusBytes, readCorpusJson, readCorpusInputSelection, storeCorpusRun, verifyCorpus } from './scan-corpus-core.mjs';
 import { compareScanResults } from './scan-case-results.mjs';
 
 const USAGE = `Usage:
-  npm run corpus -- add <files...> [--name name] [--kind video|images|replay] [--root path]
+  npm run corpus -- add <files...> [--name name] [--kind video|images|replay|raw-session] [--root path]
   npm run corpus -- list [--root path]
+  npm run corpus -- lock-status [--root path]
   npm run corpus -- verify [case-id] [--root path]
+  npm run corpus -- verify-raw <case-id> [--root path]
+  npm run corpus -- verify-selection <case-id> <selection-id> [--sha256 receipt-hash] [--root path]
   npm run corpus -- record-run <case-id> <report.json> [--root path]
   npm run corpus -- compare <reference.json> <actual.json> [--scope full|partial]
-  npm run corpus -- replay-state <report.json|trace.json>
-  npm run corpus -- <import-human|list-human|verify-human|compare-human> ...
+  npm run corpus -- replay-state <report.json|trace.json> [--inventory-policy legacy-repeat-candidate]
+  npm run corpus -- <import-human|list-human|verify-human|compare-human|quarantine-human> ...
 
 Input order and repeated images are preserved. Input hashes verify stored bytes, not recognition accuracy.
+Raw sessions preserve partial source bytes; they are not replay inputs.
+verify-raw checks the stored container and chunk hashes; it does not replay frames.
+verify-selection checks the stored selection record; timestamps are client-reported, not capture proof.
 Baseline and human-verified expected results are never generated automatically.
 record-run archives original report bytes; completed runs remain unverified observations.
 compare checks reference equality, not recognition accuracy. Mismatches exit with code 2.
 replay-state reapplies display/observation state events, not OCR or the live scheduler.
-Without a captured grid hash, state replay is not a verified comparison.`;
+It exits 2 for a mismatch or a missing required freshness/obstruction report hash.
+Legacy missing hashes can exit 0 with verificationStatus=partial; inspect that field.
+Without both captured grid and inventory hashes, state replay is partial.
+Verified covers recorded state components only; absent legacy channels are not proof of absence.`;
 
 export async function runCorpusCli(args, write = text => process.stdout.write(`${text}\n`)) {
   if (!args.length || args[0] === '--help' || args[0] === 'help') { write(USAGE); return 0; }
   const [command, ...rest] = args;
-  const humanCommands={'import-human':'import','list-human':'list','verify-human':'verify','compare-human':'compare'};
+  const humanCommands={'import-human':'import','list-human':'list','verify-human':'verify','compare-human':'compare','quarantine-human':'quarantine'};
   if(Object.hasOwn(humanCommands,command)){
     const {runHumanExpectedCli}=await import('./scan-human-expected.mjs');
     return runHumanExpectedCli([humanCommands[command],...rest],write);
   }
-  if (!['add', 'list', 'verify', 'record-run', 'compare', 'replay-state'].includes(command)) throw new Error('Unknown corpus command. Use --help.');
+  if (!['add', 'list', 'lock-status', 'verify', 'verify-raw', 'verify-selection', 'record-run', 'compare', 'replay-state'].includes(command)) throw new Error('Unknown corpus command. Use --help.');
   const options = {};
   const files = [];
   let literal = false;
@@ -35,7 +44,7 @@ export async function runCorpusCli(args, write = text => process.stdout.write(`$
     const value = rest[index];
     if (!literal && value === '--') { literal = true; continue; }
     if (!literal && value.startsWith('--')) {
-      const allowed = command === 'replay-state' ? [] : command === 'compare' ? ['--scope'] : ['--root', ...(command === 'add' ? ['--name', '--kind'] : [])];
+      const allowed = command === 'replay-state' ? ['--inventory-policy'] : command === 'compare' ? ['--scope'] : ['--root', ...(command === 'add' ? ['--name', '--kind'] : []), ...(command === 'verify-selection' ? ['--sha256'] : [])];
       if (!allowed.includes(value)) throw new Error('Unknown option for this corpus command.');
       if (index + 1 === rest.length || rest[index + 1].startsWith('--') || Object.hasOwn(options, value.slice(2))) throw new Error('Missing or repeated option value.');
       options[value.slice(2)] = rest[++index];
@@ -48,9 +57,22 @@ export async function runCorpusCli(args, write = text => process.stdout.write(`$
   } else if (command === 'list') {
     if (files.length) throw new Error('list does not accept input paths.');
     write(JSON.stringify(await listCorpusCases(options), null, 2));
+  } else if (command === 'lock-status') {
+    if (files.length) throw new Error('lock-status does not accept input paths.');
+    write(JSON.stringify(await inspectCorpusWriterLock(options)));
   } else if (command === 'verify') {
     if (files.length > 1) throw new Error('verify accepts at most one case ID.');
     write(JSON.stringify(await verifyCorpus({ ...options, id: files[0] })));
+  } else if (command === 'verify-raw') {
+    if (files.length !== 1) throw new Error('verify-raw requires one raw session case ID.');
+    const {verifyRawSessionCase}=await import('./verify-raw-session.ts');
+    write(JSON.stringify(await verifyRawSessionCase({ ...options, id: files[0] })));
+  } else if (command === 'verify-selection') {
+    if (files.length !== 2) throw new Error('verify-selection requires a case ID and selection ID.');
+    if (options.sha256 !== undefined && !/^[a-f0-9]{64}$/.test(options.sha256)) throw new Error('Invalid selection receipt hash.');
+    const result = await readCorpusInputSelection({root:options.root,id:files[0],selectionId:files[1]});
+    if (options.sha256 !== undefined && result.sha256 !== options.sha256) throw new Error('Selection receipt hash mismatch.');
+    write(JSON.stringify({...result,receiptMatches:options.sha256===undefined?null:true}));
   } else if (command === 'record-run') {
     if (files.length !== 2) throw new Error('record-run requires a case ID and one report JSON.');
     write(JSON.stringify(await storeCorpusRun(await readCorpusBytes(files[1]), { ...options, id: files[0] })));
@@ -64,6 +86,7 @@ export async function runCorpusCli(args, write = text => process.stdout.write(`$
     return comparison.same ? 0 : 2;
   } else {
     if (files.length !== 1) throw new Error('replay-state requires one report JSON or trace JSON.');
+    if(options['inventory-policy']!==undefined&&options['inventory-policy']!=='legacy-repeat-candidate')throw new Error('Unknown inventory comparison policy.');
     const report = await readCorpusJson(files[0]);
     if (!report || typeof report !== 'object' || Array.isArray(report)) throw new Error('Invalid state replay input.');
     const isReport = Object.hasOwn(report, 'execution');
@@ -72,7 +95,7 @@ export async function runCorpusCli(args, write = text => process.stdout.write(`$
     if (isReport && Object.hasOwn(report, 'executionExpected')) {
       const expected = report.executionExpected;
       if (!expected || typeof expected !== 'object' || Array.isArray(expected)) throw new Error('Invalid captured state hash.');
-      for (const [component, key] of [['grid', 'gridHash'], ['inventory', 'inventoryHash'], ['input', 'inputHash'], ['unknownLifecycle', 'unknownHash'], ['freshness', 'freshnessHash']]) {
+      for (const [component, key] of [['grid', 'gridHash'], ['inventory', 'inventoryHash'], ['input', 'inputHash'], ['unknownLifecycle', 'unknownHash'], ['freshness', 'freshnessHash'], ['obstruction','obstructionHash']]) {
         if (!Object.hasOwn(expected, key)) continue;
         if (typeof expected[key] !== 'string' || !/^[a-f0-9]{64}$/.test(expected[key])) throw new Error('Invalid captured state hash.');
         expectedComponents[component] = expected[key];
@@ -80,21 +103,61 @@ export async function runCorpusCli(args, write = text => process.stdout.write(`$
       expectedHash = expectedComponents.grid ?? null;
     }
     // Keep the TypeScript loader optional for the existing plain-Node commands.
-    const { replayRunStateTrace } = await import('../dev/run-state-trace.ts');
-    const replay = await replayRunStateTrace(new Blob([JSON.stringify(isReport ? report.execution : report)]), new AbortController().signal);
-    const componentChecks = Object.fromEntries(Object.entries(expectedComponents).map(([component, hash]) =>
-      [component, { expectedHash: hash, matchesCapturedState: replay[component]?.supported === true &&
-        (component !== 'input' || replay.input.settled) && (component !== 'freshness' || replay.freshness.complete) &&
-        replay[component].hash === hash }]));
-    // A new report must not hide a missing/failed fifth checkpoint by declaring
-    // only the four older hashes. Legacy traces have no freshness seed.
-    if (isReport && replay.freshness.supported && !Object.hasOwn(componentChecks, 'freshness'))
-      componentChecks.freshness = { expectedHash: null, matchesCapturedState: false };
-    const matchesCapturedState = Object.keys(componentChecks).length === 0 ? null :
-      Object.values(componentChecks).every(check => check.matchesCapturedState);
-    write(JSON.stringify({ scope: 'display-and-observation-state', ...replay, expectedHash, componentChecks, matchesCapturedState,
-      interpretation: 'not OCR/live scheduler/recognition accuracy' }, null, 2));
-    return matchesCapturedState === false ? 2 : 0;
+    const { replayRunStateTrace,compareLegacyInventoryCandidate,drainReplayScope } = await import('../dev/run-state-trace.ts');
+    const traceBlob=new Blob([JSON.stringify(isReport ? report.execution : report)]),signal=new AbortController().signal;
+    const replay = await replayRunStateTrace(traceBlob,signal);
+    const legacyInventoryCandidate=options['inventory-policy']==='legacy-repeat-candidate'?
+      await compareLegacyInventoryCandidate(traceBlob,signal):undefined;
+    // Report hashes and in-trace checkpoints are independent evidence. Neither
+    // may hide a known mismatch in the other. Enumerate supported components
+    // even if an older report omitted their outer hash; that case is partial,
+    // not a successful comparison of the entire captured state.
+    const componentChecks = {};
+    for (const component of ['grid','inventory','input','unknownLifecycle','freshness','obstruction']) {
+      const state=replay[component], declared=Object.hasOwn(expectedComponents,component);
+      if (!declared && !state?.supported) continue;
+      const expectedHash=declared?expectedComponents[component]:null;
+      const checkpoint=state?.matchesCapturedState??null;
+      const eligible=state?.supported===true && (component!=='input'||state.settled) &&
+        (component!=='unknownLifecycle'||state.complete) &&
+        (component!=='freshness'||state.complete) &&
+        (component!=='obstruction'||state.complete&&checkpoint===true);
+      let matchesCapturedState, status;
+      if (checkpoint===false) {matchesCapturedState=false;status='checkpoint-mismatch';}
+      else if (!declared) {matchesCapturedState=null;status='missing-report-hash';}
+      else if (!eligible) {matchesCapturedState=false;status='unsupported-or-incomplete';}
+      else if (state.hash!==expectedHash) {matchesCapturedState=false;status='report-hash-mismatch';}
+      else {matchesCapturedState=true;status='verified';}
+      componentChecks[component]={expectedHash,matchesCapturedState,status,checkpointMatchesCapturedState:checkpoint};
+    }
+    // Existing newer-report gates retain exit 2 when required freshness or
+    // obstruction hashes are omitted. Other legacy omissions remain exit 0,
+    // but their aggregate result is explicitly partial / null.
+    const missingFreshness=isReport&&replay.freshness.supported&&!Object.hasOwn(expectedComponents,'freshness');
+    const obstructionRequested=isReport&&typeof report.validation?.obstructionFenceRequested==='boolean'?report.validation.obstructionFenceRequested:null;
+    const missingObstruction=isReport&&(obstructionRequested===true||replay.obstruction.supported)&&!Object.hasOwn(expectedComponents,'obstruction');
+    if(missingObstruction&&!Object.hasOwn(componentChecks,'obstruction'))
+      componentChecks.obstruction={expectedHash:null,matchesCapturedState:null,status:'missing-report-hash',checkpointMatchesCapturedState:null};
+    const obstructionCheck=Object.hasOwn(componentChecks,'obstruction')?
+      {requested:obstructionRequested,status:componentChecks.obstruction.matchesCapturedState?'verified-reducer-state':'unverified',scope:'reducer-state-only'}:
+      {requested:obstructionRequested,status:'unknown',scope:'reducer-state-only'};
+    const values=Object.values(componentChecks);
+    const matchesCapturedState = values.some(check=>check.matchesCapturedState===false)?false:
+      componentChecks.grid?.matchesCapturedState===true&&componentChecks.inventory?.matchesCapturedState===true&&
+        values.every(check=>check.matchesCapturedState===true)?true:null;
+    const verificationStatus=values.some(check=>check.status==='checkpoint-mismatch'||check.status==='report-hash-mismatch')?'mismatch':
+      values.some(check=>check.status==='unsupported-or-incomplete')?'unverified':matchesCapturedState===true?'verified':'partial';
+    // Existing component hashes are still comparable; they never included the
+    // drain-input loss debt or the live automatic-stop decision.
+    const drainReplay=drainReplayScope(isReport?report.validation?.completionDrainRequested:null,isReport?report.diagnosticSummary:undefined);
+    write(JSON.stringify({ scope: 'display-and-observation-state', ...replay, expectedHash, componentChecks, obstructionCheck, matchesCapturedState,verificationStatus,drainReplay,
+      ...(legacyInventoryCandidate?{legacyInventoryCandidate:{...legacyInventoryCandidate,
+        matchesDeclaredHash:expectedComponents.inventory===undefined||legacyInventoryCandidate.hash===null?null:
+          legacyInventoryCandidate.hash===expectedComponents.inventory}}:{}),
+      componentMatchesCapturedState:matchesCapturedState,fullScannerReplaySupported:false,
+      excludedFromHash: ['capture-time estimated viewport hint (v1 grid hash)'],
+      interpretation: 'Recorded state components only; absent legacy channels are not proof of absence. Not OCR/live scheduler/recognition accuracy.' }, null, 2));
+    return matchesCapturedState === false || missingFreshness || missingObstruction ? 2 : 0;
   }
   return 0;
 }

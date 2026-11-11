@@ -1,8 +1,8 @@
 import {ALL_FORMATS,BlobSource,CanvasSink,Input,VideoSampleSink} from 'mediabunny';
 import type {InputVideoTrack} from 'mediabunny';
-import type {ScannerInputFrame} from '../src/features/card-scanner/scanner-input-frame';
-import {MAX_FRAME_BYTES} from '../src/features/card-scanner/exact-recording-codec';
-import {yieldForCapture} from '../src/features/card-scanner/input-source';
+import type {ScannerInputFrame} from '../src/features/card-scanner/capture/scanner-input-frame';
+import {MAX_FRAME_BYTES} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {yieldForCapture} from '../src/features/card-scanner/capture/input-source';
 import {createNativeYuvTransform} from './native-yuv-transform';
 import type {NativeYuvTransformMetadata,NativeYuvTransformResult} from './native-yuv-transform';
 import {planNativeYuvFrame} from './native-yuv-recipe';

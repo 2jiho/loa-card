@@ -1,4 +1,4 @@
-import {compareReproduction,type ReproductionResult} from '../src/features/card-scanner/scan-reproduction';
+import {compareReproduction,type ReproductionResult} from '../src/features/card-scanner/reproduction/scan-reproduction';
 
 /** Equality is a regression observation, never a claim of independent truth. */
 export function compareReplayResult(before:ReproductionResult|null,after:ReproductionResult|null,

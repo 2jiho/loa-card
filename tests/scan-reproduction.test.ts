@@ -2,15 +2,57 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import {beginReproduction,loadReproduction,loadScanDiagnosticSummary,createScanDiagnosticSummary,clearReproduction,createReproductionBundle,openReproduction,replaySettings,compareReproduction,
- listReproductionSessions,loadReproductionSession,loadSessionDiagnosticSummary} from '../src/features/card-scanner/scan-reproduction';
-import type {ReproductionFile} from '../src/features/card-scanner/scan-reproduction';
-import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/scanner-name-configuration';
-import {MAX_UNRESOLVED_FIELD_CHANGES} from '../src/features/card-scanner/current-scan-fields';
-import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction-session-store';
+ listReproductionSessions,loadReproductionSession,loadSessionDiagnosticSummary,createReproductionSessionAccess} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import type {ReproductionFile} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import type {ReproductionRecordingIssue} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/session/scanner-name-configuration';
+import {MAX_UNRESOLVED_FIELD_CHANGES} from '../src/features/card-scanner/session/current-scan-fields';
+import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction/reproduction-session-store';
+import {noRecordedInputMessage} from '../src/features/card-scanner/ui/recording-ui-policy';
 const file=():ReproductionFile=>({video:new Blob(['webm-content'],{type:'video/webm;codecs=vp8'}),metadata:{
   version:1,createdAt:'2026-10-17T00:00:00Z',browser:'test',catalog:'test',build:'test',completed:true,warnings:[],
   duration:2,type:'video/webm;codecs=vp8',bytes:12,seed:[],result:{expected:1,read:1,unidentified:0,experience:null,cards:[{id:'1',name:'카드',awakening:1,extraCopies:2,review:[]}]},
 }});
+
+test('a write failure reports one asynchronous journal warning without interrupting scanning',async()=>{
+ const store=createReproductionSessionStore({dbName:`live-journal-failure-${crypto.randomUUID()}`});
+ store.appendChunk=async()=>{throw Error('quota reached');};
+ const issues:ReproductionRecordingIssue[]=[];
+ const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},
+  {record:true,store,onRecordingIssue(issue){issues.push(issue);throw Error('consumer failure');}});
+ await capture.ready;
+ const pending=capture.options.journal!.write({kind:'video',sequence:0,blob:new Blob(['preview'])});
+ assert.equal(issues.length,0,'notification cannot synchronously block acquisition');
+ await assert.rejects(pending,/quota reached/);
+ await Promise.resolve();
+ assert.deepEqual(issues,[{scope:'journal',reason:'quota reached'}]);
+ capture.options.journal!.incomplete('later failure');await Promise.resolve();assert.equal(issues.length,1);
+ const result=await capture.finish(undefined,false);
+ assert.equal(result,undefined);
+ const saved=await store.getSession(capture.id);assert.equal(saved?.index.status,'failed');
+});
+
+test('producer loss is a single warning and does not assert which independent stream survived',async()=>{
+ const store=createReproductionSessionStore({dbName:`live-input-failure-${crypto.randomUUID()}`}),issues:ReproductionRecordingIssue[]=[];
+ let sourceIssue!:(reason:string)=>void;
+ const exact={setJournal(_sink:unknown,onInputIssue:(reason:string)=>void){sourceIssue=onInputIssue;},
+  async finish(){return undefined;},async dispose(){}} as never;
+ const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},
+  {record:true,store,exact,onRecordingIssue:issue=>{issues.push(issue);}});
+ sourceIssue('frame lost');capture.options.journal!.incomplete('preview lost');
+ assert.equal(issues.length,0);await Promise.resolve();
+ assert.deepEqual(issues,[{scope:'exact-input',reason:'frame lost'}]);
+ await capture.finish(undefined,false);
+});
+
+test('a recorder attachment failure is reported without waiting for recording to finish',async()=>{
+ const store=createReproductionSessionStore({dbName:`live-recorder-failure-${crypto.randomUUID()}`}),issues:ReproductionRecordingIssue[]=[];
+ const exact={setJournal(){throw Error('attach failed');},async dispose(){}} as never;
+ const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},
+  {record:true,store,exact,onRecordingIssue:issue=>{issues.push(issue);}});
+ await Promise.resolve();assert.deepEqual(issues,[{scope:'exact-input',reason:'Error: attach failed'}]);
+ await capture.finish(undefined,false);
+});
 test('single file keeps source bytes, starting settings and original results without full-video reads',async()=>{
  const value=file();value.video.arrayBuffer=()=>{throw Error('must not read full video');};
  const bundle=createReproductionBundle(value),loaded=await openReproduction(bundle,new AbortController().signal);
@@ -83,6 +125,8 @@ test('recording failures keep a failed session and diagnostic without fake compl
  assert.equal(await capture.finish(undefined,false),undefined);assert.equal(await loadReproduction(),undefined);
  const index=(await listReproductionSessions())[0];assert.equal(index.id,capture.id);assert.equal(index.status,'failed');
  assert.equal(index.hasInput,false);assert.equal((await loadSessionDiagnosticSummary(capture.id))!.completed,false);
+ assert.equal(index.record,true);
+ assert.match(noRecordedInputMessage(index)!,/상세 입력이 보관되지 않아/);
 });
 
 test('deletion during exact finalization never reports a successfully saved file',async()=>{
@@ -122,12 +166,56 @@ test('recording off persists bounded failure evidence without input or a fabrica
  const saved=(await store.getSession(capture.id))!;
  assert.equal(saved.video.size,0);assert.equal(saved.exact?.size??0,0);
  assert.equal(saved.metadata,undefined);
+ const [item]=await createReproductionSessionAccess(store).list();
+ assert.equal(item.record,false);assert.equal(item.hasInput,false);
+ assert.match(noRecordedInputMessage(item)!,/상세 입력 기록이 꺼져/);
+ assert.equal(item.reason,undefined,'an intentional summary-only session is not described as a recording failure');
  const summary=saved.summary as ReturnType<typeof createScanDiagnosticSummary>;
  assert.equal(summary.completed,false);assert.equal(summary.unresolvedFieldChanges,1);
- assert.equal(summary.result?.cards[0].extraCopies,null);
+ assert.equal(summary.scope,'failure-only-v1');assert.equal('cards' in summary.result!,false);
+ assert.equal('experience' in summary.result!,false);assert.equal(summary.result?.inventoryCount,1);
+ assert.equal(saved.index.cards,1);
  assert.ok(summary.images.length>0&&summary.images.length<=32);
  assert.ok(summary.images.reduce((sum,row)=>sum+row.image.length,0)<=1_048_576);
  assert.equal(summary.unidentifiedObservations?.length,40);
+});
+
+test('detailed replay preserves full comparison results separately from failure-only diagnostics',async()=>{
+ const store=createReproductionSessionStore({dbName:`diagnostic-separation-${crypto.randomUUID()}`});
+ const state={status:'확인',expected:1,currentRunRead:1,growthPoints:{current:12345},unidentified:[],
+  cards:[{id:'private-id',name:'내 카드',awakening:1,extraCopies:2,review:[],image:'data:image/png;base64,AAAA',time:1}]} as never;
+ const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},{record:true,store});
+ capture.options.continuous!({blob:file().video,duration:2});
+ const replay=await capture.finish(state,true),stored=await store.getSession(capture.id);
+ assert.ok(replay);assert.equal(replay.metadata.result?.cards[0].name,'내 카드');
+ assert.equal(replay.metadata.result?.experience,12345);
+ const summary=stored!.summary as ReturnType<typeof createScanDiagnosticSummary>;
+ assert.equal(summary.scope,'failure-only-v1');assert.equal('cards' in summary.result!,false);
+ assert.equal('experience' in summary.result!,false);assert.equal(JSON.stringify(summary).includes('private-id'),false);
+ assert.equal(stored!.index.cards,1);
+ assert.deepEqual(compareReproduction(replay.metadata.result,replay.metadata.result!),{added:[],missing:[],changed:[]});
+});
+
+test('partial replay never treats a failure-only aggregate as a full comparison baseline',async()=>{
+ const store=createReproductionSessionStore({dbName:`summary-partial-${crypto.randomUUID()}`});
+ const environment={browser:'test',catalog:'test',build:'test'};
+ await store.beginSession({id:'partial',createdAt:new Date().toISOString(),environment,record:true,initial:{seed:[]}});
+ await store.appendChunk('partial','video',0,file().video);
+ await store.sealSession('partial',{status:'partial',summary:{scope:'failure-only-v1',completed:false,
+  result:{expected:1,read:0,unidentified:0,inventoryCount:1},images:[],warnings:[]}});
+ const loaded=await createReproductionSessionAccess(store).load('partial');
+ assert.ok(loaded);assert.equal(loaded.metadata.result,null);assert.equal(loaded.metadata.recordState,'partial');
+ assert.equal((await store.listSessions())[0].cards,1);
+});
+
+test('diagnostics preserve both capture and unresolved header warnings without claiming completion',()=>{
+ const state={status:'확인 필요',expected:1,currentRunRead:1,cards:[],unidentified:[],
+  captureWarning:'기록 실패',headerConflict:true} as unknown as Parameters<typeof createScanDiagnosticSummary>[0];
+ const summary=createScanDiagnosticSummary(state,true);
+ assert.equal(summary.completed,false);
+ assert.ok(summary.warnings.includes('기록 실패'));
+ assert.ok(summary.warnings.some(value=>value.includes('보관함 수량이나 용량')));
+ assert.equal(createScanDiagnosticSummary({...state,headerConflict:false},true).completed,true);
 });
 
 test('diagnostic crop bounds exclude source rasters and trace ledgers while preserving unresolved values',()=>{
@@ -142,14 +230,15 @@ test('diagnostic crop bounds exclude source rasters and trace ledgers while pres
  assert.ok(summary.images.length<=32);
  assert.ok(summary.images.reduce((n,row)=>n+row.image.length,0)<=1_048_576);
  assert.ok(summary.images.every(row=>row.image!==oversized));
- assert.equal(summary.result?.cards[0].extraCopies,null);
+ assert.equal('cards' in summary.result!,false);
  assert.equal('ledger' in summary,false);assert.equal('captureDiagnostics' in summary,false);
 });
 
 test('diagnostic image omissions are explicit without retaining rejected pixels or counting duplicates as loss',()=>{
  const small='data:image/png;base64,AAAA',large='data:image/png;base64,'+'A'.repeat(300_000);
- const state={status:'확인 필요',expected:0,currentRunRead:0,cards:[],unidentified:[],
-   captureDiagnostics:{samples:[small,small,large,'unavailable'].map(image=>({image,reason:'가림',time:1,accepted:false}))},
+ const state={status:'확인 필요',expected:0,currentRunRead:0,
+   cards:[small,small,large,'unavailable'].map(image=>({image,name:'카드',review:['가림'],time:1})),unidentified:[],
+   captureDiagnostics:{samples:[{image:'data:image/png;base64,R0VORVJJQw==',reason:'가림',time:1,accepted:false}]},
  } as unknown as Parameters<typeof createScanDiagnosticSummary>[0];
  const summary=createScanDiagnosticSummary(state,false);
  assert.equal(summary.images.length,1);
@@ -157,6 +246,7 @@ test('diagnostic image omissions are explicit without retaining rejected pixels 
  assert.ok(summary.warnings.some(message=>message.includes('1건이 저장 한도로')));
  assert.ok(summary.warnings.some(message=>message.includes('1건의 형식')));
  assert.equal(JSON.stringify(summary).includes(large),false);
+ assert.equal(JSON.stringify(summary).includes('R0VORVJJQw=='),false,'unassociated rejected crop is not retained');
 });
 
 test('diagnostics retain bounded changed-field debt without inventing card issues or hiding invalid metadata',()=>{
@@ -164,7 +254,7 @@ test('diagnostics retain bounded changed-field debt without inventing card issue
  const summary=createScanDiagnosticSummary(state,true);
  assert.equal(summary.unresolvedFieldChanges,MAX_UNRESOLVED_FIELD_CHANGES);
  assert.equal(summary.completed,true,'execution completion remains separate from inventory proof');
- assert.deepEqual(summary.fieldIssues,[]);assert.deepEqual(summary.result?.cards,[]);assert.deepEqual(summary.images,[]);
+ assert.deepEqual(summary.fieldIssues,[]);assert.equal('cards' in summary.result!,false);assert.deepEqual(summary.images,[]);
  assert.equal(createScanDiagnosticSummary({...state,unresolvedFieldChanges:0},true).completed,true);
  for(const invalid of [null,-1,.5,NaN,Infinity,MAX_UNRESOLVED_FIELD_CHANGES+1]){
    const malformed=createScanDiagnosticSummary({...state,unresolvedFieldChanges:invalid} as typeof state,true);
@@ -221,7 +311,7 @@ test('diagnostics preserve latest failed field evidence even when an older valid
  } as unknown as Parameters<typeof createScanDiagnosticSummary>[0];
  const summary=createScanDiagnosticSummary(state,true);
  assert.equal(summary.result?.read,0);
- assert.equal(summary.result?.cards[0].extraCopies,0);
+ assert.equal('cards' in summary.result!,false);
  assert.equal(summary.images[0].image,latestImage);
  assert.equal(summary.images[0].time,2);
  assert.match(summary.images[0].reason,/숫자 영역 가림/);
@@ -247,7 +337,7 @@ test('field diagnostics stay bounded independently of source record size',()=>{
 
 test('diagnostics prefer lossless recognition crops and retain numeric proof without embedding image fields',()=>{
  const preview='data:image/jpeg;base64,cHJldmlldw==',raw='data:image/png;base64,cmF3';
- const countDiagnostics={maximum:15,reason:'추가 장수 영역 가림 또는 불명확',iconPresent:false,
+ const countDiagnostics={maximum:15,reason:'장수 숫자 미검출 또는 불명확',iconPresent:false,
    patternOcrAgreed:false,ocrConfirmedValue:0,reliability:'unconfirmed',
    pattern:{value:null,candidate:1,score:.28,gap:.009,reason:'숫자 획과 외곽선 대비 부족'},
    readings:[{engine:'PP-OCRv6 숫자 영역',text:'+1',confidence:69,value:1}],image:'unwanted',trace:['unwanted']};
@@ -296,4 +386,17 @@ test('v2 lossless payload survives export/import independently of preview video'
  const loaded=await openReproduction(createReproductionBundle(value),new AbortController().signal);
  assert.equal(await loaded.exact!.text(),'lossless');assert.equal(await loaded.video.text(),'webm-content');assert.deepEqual(loaded.metadata,value.metadata);
  value.metadata.exact.bytes++;assert.throws(()=>createReproductionBundle(value),/용량/);
+});
+
+test('summary keeps a bounded automatic-stop diagnostic without treating it as proof',()=>{
+ const diagnostic={gate:'latest-observations',expected:394,identities:394,names:394,fields:394,unresolved:13,
+  inputPending:false,headerAvailable:true,headerAttempts:1,headerMismatches:1,headerErrors:0,privatePixels:'not copied'} as const;
+ const state={status:'확인 필요',expected:394,currentRunRead:394,cards:[],unidentified:[],autoCompletionDiagnostic:diagnostic} as unknown as Parameters<typeof createScanDiagnosticSummary>[0];
+ const summary=createScanDiagnosticSummary(state,false);
+ assert.equal(summary.autoCompletion?.gate,'latest-observations');
+ assert.equal(summary.autoCompletion?.unresolved,13);
+ assert.equal('privatePixels' in summary.autoCompletion!,false);
+ assert.equal(summary.completed,false);
+ const unsafe={...state};Object.defineProperty(unsafe,'autoCompletionDiagnostic',{get(){throw Error('must not execute');}});
+ assert.equal(createScanDiagnosticSummary(unsafe,false).autoCompletion,undefined);
 });

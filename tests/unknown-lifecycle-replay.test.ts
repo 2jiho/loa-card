@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {UnknownLifecycle,hashUnknownLifecycle} from '../src/features/card-scanner/unknown-lifecycle';
-import {UnknownLifecycleReplay} from '../src/features/card-scanner/unknown-lifecycle-replay';
-import {UNKNOWN_LIFECYCLE_LIMITS} from '../src/features/card-scanner/unknown-lifecycle-types';
-import type {UnknownFact,UnknownSeed,UnknownUpsert} from '../src/features/card-scanner/unknown-lifecycle-types';
+import {UnknownLifecycle,hashUnknownLifecycle} from '../src/features/card-scanner/session/unknown-lifecycle';
+import {UnknownLifecycleReplay} from '../src/features/card-scanner/reproduction/unknown-lifecycle-replay';
+import {UNKNOWN_LIFECYCLE_LIMITS} from '../src/features/card-scanner/session/unknown-lifecycle-types';
+import type {UnknownFact,UnknownSeed,UnknownUpsert} from '../src/features/card-scanner/session/unknown-lifecycle-types';
 
 const signal=()=>new AbortController().signal;
 const seed:UnknownSeed={version:1,sessionId:'unknown-replay',origin:'scan',limits:UNKNOWN_LIFECYCLE_LIMITS};
@@ -30,7 +30,7 @@ test('live authority and replay preserve stale suppression, latest warning and s
   for(const fact of facts){core.apply(fact);replay.accept(fact);}
   const hash=await complete(replay,core),summary=await replay.summary();
   assert.deepEqual(summary,{supported:true,events:facts.length,active:2,pending:1,final:1,
-    complete:true,hash,expectedHash:hash,matchesCapturedState:true});
+    complete:true,hash,expectedHash:hash,matchesCapturedState:true,liveEvidenceLost:true});
   const second=new UnknownLifecycleReplay(signal());second.seed(seed);facts.forEach(fact=>second.accept(fact));
   second.checkpoint({version:1,complete:true,events:facts.length,hash});
   assert.deepEqual(await second.summary(),summary);
@@ -39,13 +39,15 @@ test('live authority and replay preserve stale suppression, latest warning and s
 test('seedless legacy is explicitly unsupported and later facts invalidate a prior checkpoint',async()=>{
   const legacy=new UnknownLifecycleReplay(signal());
   assert.deepEqual(await legacy.summary(),{supported:false,events:0,active:0,pending:0,final:0,
-    complete:false,hash:null,expectedHash:null,matchesCapturedState:null});
+    complete:false,hash:null,expectedHash:null,matchesCapturedState:null,liveEvidenceLost:null});
   const core=new UnknownLifecycle(seed),replay=new UnknownLifecycleReplay(signal());replay.seed(seed);
   const empty=await complete(replay,core);assert.equal((await replay.summary()).matchesCapturedState,true);
   const fact=warning(1,1);core.apply(fact);replay.accept(fact);
   const changed=await replay.summary();assert.equal(changed.complete,false);assert.equal(changed.expectedHash,null);
+  assert.equal(changed.liveEvidenceLost,null,'a partial stream cannot establish absence of loss');
   assert.equal(changed.matchesCapturedState,null);assert.notEqual(changed.hash,empty);
   await complete(replay,core);assert.equal((await replay.summary()).matchesCapturedState,true);
+  assert.equal((await replay.summary()).liveEvidenceLost,false);
   replay.checkpoint({version:1,complete:false,events:1,hash:null});
   assert.equal((await replay.summary()).matchesCapturedState,null);
 });
@@ -97,4 +99,17 @@ test('summary captures one state boundary and cancellation never returns a parti
   assert.equal(snapshot.matchesCapturedState,true);assert.equal((await replay.summary()).active,1);
   controller.abort();assert.throws(()=>replay.accept(warning(2,2)),{name:'AbortError'});
   await assert.rejects(replay.summary(),{name:'AbortError'});
+});
+
+test('live-loss state is captured before async hashing and unknown metadata cannot certify safety',async()=>{
+  const core=new UnknownLifecycle(seed),replay=new UnknownLifecycleReplay(signal());replay.seed(seed);
+  for(const fact of [proof(1,1),proof(1,2)]){core.apply(fact);replay.accept(fact);}
+  await complete(replay,core);
+  const before=replay.summary();replay.accept(proof(1,3,'different-card'));
+  assert.equal((await before).liveEvidenceLost,false);
+  assert.equal((await replay.summary()).liveEvidenceLost,true);
+  const metadata=new UnknownLifecycleReplay(signal());metadata.seed(seed);await complete(metadata,new UnknownLifecycle(seed));
+  metadata.unrecognizedType();
+  const report=await metadata.summary();assert.equal(report.matchesCapturedState,true);
+  assert.equal(report.liveEvidenceLost,null,'legacy state hash equality cannot validate unknown event semantics');
 });

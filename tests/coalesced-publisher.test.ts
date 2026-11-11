@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCoalescedPublisher} from '../src/features/card-scanner/coalesced-publisher';
-import {ScanGrid} from '../src/features/card-scanner/scan-grid';
-import {createScanMonitorStore} from '../src/features/card-scanner/scan-monitor-store';
+import {createCoalescedPublisher} from '../src/features/card-scanner/capture/coalesced-publisher';
+import {ScanGrid} from '../src/features/card-scanner/session/scan-grid';
+import {createScanMonitorStore} from '../src/features/card-scanner/ui/scan-monitor-store';
 
 test('a final read reaches the monitor without another frame or OCR result',t=>{
  t.mock.timers.enable({apis:['setTimeout']});let now=0;

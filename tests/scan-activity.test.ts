@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {RecentScanActivity} from '../src/features/card-scanner/scan-activity';
+import {RecentScanActivity} from '../src/features/card-scanner/ui/scan-activity';
 
 test('activity retains at most sixteen thumbnails and ignores late completion of evicted work',()=>{
   const activity=new RecentScanActivity();

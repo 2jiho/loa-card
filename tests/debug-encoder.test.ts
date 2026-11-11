@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createDebugEncoder } from "../src/features/card-scanner/debug-encoder";
+import { createCaptureEncoder as createDebugEncoder } from "../src/features/card-scanner/capture/capture-encoder";
 
 class FakeWorker {
   onmessage: ((event: MessageEvent) => void) | null = null;

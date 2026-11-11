@@ -1,8 +1,8 @@
 import{test}from"node:test";
 import assert from"node:assert/strict";
 import{readFileSync}from"node:fs";
-import{emptySlotVector,isEmptySlotVector}from"../src/features/card-scanner/empty-slot.ts";
-import{inspectCapture}from"../src/features/card-scanner/capture-quality.ts";
+import{emptySlotVector,isEmptySlotVector}from"../src/features/card-scanner/acquisition/empty-slot.ts";
+import{inspectCapture,preBorderEvidence}from"../src/features/card-scanner/acquisition/capture-quality.ts";
 const samples=JSON.parse(readFileSync(new URL('./fixtures/empty-slot-samples.json',import.meta.url),'utf8')) as {group:number;page:number;row:number;column:number;empty:boolean;vector:string}[];
 
 test('independent screenshot slots exclude the fixed card back without excluding owned artwork',()=>{
@@ -58,11 +58,25 @@ test('cursor exceptions cannot conceal name ink, broad overlays or scattered cha
  assert.equal(isEmptySlotVector(noisy),false,'the rest of the motif must still match');
 });
 
+test('a single dim top-border sample does not turn a cursor-covered fixed back into a card',()=>{
+ for(const [x,y] of [[3,19],[4,9],[12,13],[17,23]]) {
+  const vector=addCursor(Float32Array.from(cursorBack,v=>v*.91+5),x,y);
+  vector[9]-=13;
+  assert.equal(isEmptySlotVector(vector),true,`${x}/${y}`);
+ }
+ const name=addCursor(cursorBack.slice(),6,2); name[9]-=13;
+ assert.equal(isEmptySlotVector(name),false,'name-area cursor remains unsafe');
+ const two=addCursor(cursorBack.slice(),3,19);two[9]-=20;two[10]-=20;
+ assert.equal(isEmptySlotVector(two),false,'more upper-border damage remains unsafe');
+});
+
 test('a cursor on any of the 768 owned portraits never makes it an empty slot',()=>{
  let checked=0;
  for(const sample of samples.filter(s=>!s.empty))for(const [x,y]of[[1,10],[6,8],[11,14],[17,21]]) {
   const vector=addCursor(Float32Array.from(Buffer.from(sample.vector,'base64')),x,y);
   assert.equal(isEmptySlotVector(vector),false,`${sample.group}/${sample.page}/${sample.row}/${sample.column}: ${x}/${y}`);
+  vector[9]-=13;
+  assert.equal(isEmptySlotVector(vector),false,`border noise: ${sample.group}/${sample.page}/${sample.row}/${sample.column}: ${x}/${y}`);
   checked++;
  }
  assert.equal(checked,3072);
@@ -79,6 +93,7 @@ test('a cursor-covered back is rejected before structural border acceptance',()=
  const result=inspectCapture(image,140,210,true,false,true,true);
  assert.equal(result.usable,false);
  assert.equal(result.reason,'미보유 카드 뒷면 · 빈 슬롯');
+ assert.equal(preBorderEvidence(result).kind,'empty');
 });
 
 // Existing public fixed-back motif; all cursor/occlusion pixels below are synthetic.

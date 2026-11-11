@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { runJoinedWorkers } from '../src/features/card-scanner/joined-workers';
+import { runJoinedWorkers } from '../src/features/card-scanner/capture/joined-workers';
 
 test('consumers share pending jobs without duplicate processing', async () => {
   const pending = Array.from({length: 30}, (_, i) => i), completed: number[] = [];

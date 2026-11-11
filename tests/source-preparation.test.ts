@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createSourcePreparation} from '../src/features/card-scanner/source-preparation';
-import {createSourcePreparationWorkerRuntime,type PreparationFrame,type SourcePreparationPlatform} from '../src/features/card-scanner/source-preparation-worker';
-import {parsePreparedSource} from '../src/features/card-scanner/source-preparation-protocol';
-import {prepareNativeStorage} from '../src/features/card-scanner/native-frame-storage';
-import {pixelHash} from '../src/features/card-scanner/recording-frame-integrity';
-import {createPreparedNativeAttestationInbox,parsePreparedNativeAttestation,verifyAttestedPreparedNative} from '../src/features/card-scanner/prepared-native-attestation';
-import {restoreFrameStorage} from '../src/features/card-scanner/native-frame-storage';
+import {createSourcePreparation} from '../src/features/card-scanner/acquisition/source-preparation';
+import {createSourcePreparationWorkerRuntime,type PreparationFrame,type SourcePreparationPlatform} from '../src/features/card-scanner/acquisition/source-preparation-worker';
+import {parsePreparedSource} from '../src/features/card-scanner/acquisition/source-preparation-protocol';
+import {prepareNativeStorage} from '../src/features/card-scanner/reproduction/native-frame-storage';
+import {pixelHash} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
+import {createPreparedNativeAttestationInbox,parsePreparedNativeAttestation,verifyAttestedPreparedNative} from '../src/features/card-scanner/acquisition/prepared-native-attestation';
+import {restoreFrameStorage} from '../src/features/card-scanner/reproduction/native-frame-storage';
 
 const binding={sourceFrameId:17,captureTime:1.75};
 function deferred<T=void>(){let resolve!:(value:T)=>void,reject!:(error:unknown)=>void;

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CanonicalFrameIndex} from '../src/features/card-scanner/canonical-frame-index';
-import {readCanonicalFrame} from '../src/features/card-scanner/canonical-frame-reader';
-import {entryParts,packPixels,fastCompress,pixelHash} from '../src/features/card-scanner/exact-recording-codec';
+import {CanonicalFrameIndex} from '../src/features/card-scanner/reproduction/canonical-frame-index';
+import {readCanonicalFrame} from '../src/features/card-scanner/reproduction/canonical-frame-reader';
+import {entryParts,packPixels,fastCompress,pixelHash} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 
 async function archive(){
  const index=new CanonicalFrameIndex(),parts:BlobPart[]=[],originals:Uint8Array<ArrayBuffer>[]=[];

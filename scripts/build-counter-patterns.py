@@ -1,7 +1,10 @@
 """Fixed +1..+15 font masks with their dark outline; training input is video 1 only.
 
-Manual counter labels were visually read independently of the recognizer output.
-Full recordings and card images stay in ignored work/. Only glyph masks are emitted.
+The manually labelled subset was read independently of the recognizer. Other
+training masks use the previous recognizer result when no manual label exists.
+The emitted regression strips come from the manual subset of this same video;
+they are not an independent holdout for the resulting atlas. Full recordings
+and card images stay in ignored work/. Only glyph masks are emitted.
 """
 import base64
 import json

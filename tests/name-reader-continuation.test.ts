@@ -1,13 +1,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
-import {createNameReader} from '../src/features/card-scanner/name-reader';
-import {CardReadBudget,CardReadTimeout} from '../src/features/card-scanner/card-read-budget';
-import {createGrayNameFirstLine,NAME_GRAY_FIRST_RECIPE} from '../src/features/card-scanner/name-gray-first';
-import {softNamePixels,normalizeSoftNamePixels} from '../src/features/card-scanner/soft-name-pixels';
-import type {NameAttempt} from '../src/features/card-scanner/name-diagnostics';
-import type {NeuralReading} from '../src/features/card-scanner/neural-reader';
-import type {NameReading} from '../src/features/card-scanner/name-reader';
+import {createNameReader} from '../src/features/card-scanner/recognition/name-reader';
+import {confirmCatalogName} from '../src/features/card-scanner/recognition/name-confidence';
+import {CardReadBudget,CardReadTimeout} from '../src/features/card-scanner/recognition/card-read-budget';
+import {createGrayNameFirstLine,NAME_GRAY_FIRST_RECIPE} from '../src/features/card-scanner/recognition/name-gray-first';
+import {softNamePixels,normalizeSoftNamePixels} from '../src/features/card-scanner/recognition/soft-name-pixels';
+import type {NameAttempt} from '../src/features/card-scanner/recognition/name-diagnostics';
+import type {NeuralReading} from '../src/features/card-scanner/recognition/neural-reader';
+import type {NameReading} from '../src/features/card-scanner/recognition/name-reader';
 
 type Request={id:number;type:string;model:string;width:number;height:number;data:Uint8ClampedArray;
  useLexicon:boolean;nameLine?:{group:string;line:number}};
@@ -102,6 +103,138 @@ async function fixture(run:(value:ReturnType<typeof setup>)=>Promise<void>,polic
  const value=setup(policy,signal,createReader);
  try{await value.reader.ready();await run(value);}finally{await value.reader.dispose();value.restore();}
 }
+
+const overlappingReader:typeof createNameReader=(_cards,status,signal,options)=>createNameReader([
+ {id:'short',name:'벨루',rarity:2},{id:'long',name:'벨루마테',rarity:3},
+],status,signal,options);
+for(const policy of ['continue','resample'] as const)test(`ambiguous first line continues OCR in ${policy} mode`,async()=>{
+ await fixture(async({reader,source,state})=>{
+  state.reply=request=>reading(phase(request)==='raw-first'?'벨루':phase(request)==='raw-second'?'마테':'');
+  const quick:NameReading[]=[];
+  const result=await reader.matchForIdentify(source,{allowRaw:true,acceptQuick:value=>{
+   if(value)quick.push(value);return !!value&&confirmCatalogName(value,false);
+  }});
+  assert.equal(quick[0]?.card.id,'short');assert.equal(quick[0]?.nameAmbiguous,true);
+  assert.equal(result?.card.id,'long');assert.equal(result?.exact,true);
+  assert.equal(confirmCatalogName(result!,false),true);
+  assert.ok(state.requests.some(request=>phase(request)==='raw-second'));
+ },policy,undefined,overlappingReader);
+});
+test('ambiguous exact OCR is not reused as a confirmed name-mask cache entry',async()=>{
+ await fixture(async({reader,source,state})=>{
+  state.reply=()=>reading('벨루');
+  const first=await reader.matchForIdentify(source,{full:false,allowRaw:true,acceptQuick:()=>false});
+  assert.equal(first?.card.id,'short');assert.equal(first?.nameAmbiguous,true);
+  assert.equal(confirmCatalogName(first!,false),false);
+  const before=state.requests.length;state.reply=()=>reading('벨루마테');
+  const second=await reader.matchForIdentify(source,{full:false,allowRaw:true,acceptQuick:value=>!!value&&confirmCatalogName(value,false)});
+  assert.equal(second?.card.id,'long');assert.ok(state.requests.length>before,'new OCR must run');
+ },'continue',undefined,overlappingReader);
+});
+
+test('an ambiguous short exact does not hide a later longer fuzzy candidate',async()=>{
+ const bridgeKey='__loaCardTestTesseractAmbiguousFallback',globals=globalThis as unknown as Record<string,unknown>;
+ const previous={location:globalThis.location,bridge:globals[bridgeKey],hadBridge:Object.hasOwn(globals,bridgeKey)};
+ let tesseractCalls=0,tesseractText='',tesseractReply:undefined|(()=>string);
+ globals[bridgeKey]=()=>({setParameters:async()=>{},terminate:async()=>{},recognize:async()=>{
+  tesseractCalls++;return {data:{text:tesseractReply?.()??tesseractText,confidence:98}};
+ }});
+ globalThis.location={href:'https://loacard.test/'} as Location;
+ const virtualModule='loacard-test:tesseract-ambiguous-fallback';
+ const moduleUrl=new URL('../src/features/card-scanner/recognition/name-reader.ts?test=tesseract-ambiguous-fallback',import.meta.url).href;
+ const hooks=registerHooks({
+  resolve(specifier,context,nextResolve){return specifier==='tesseract.js'?{url:virtualModule,shortCircuit:true}:nextResolve(specifier,context);},
+  load(url,context,nextLoad){
+   if(url===virtualModule)return {format:'module',shortCircuit:true,source:`export async function createWorker(){return globalThis[${JSON.stringify(bridgeKey)}]();}`};
+   const result=nextLoad(url,context);
+   if(url===moduleUrl)return {...result,source:String(result.source).replaceAll('import.meta.env.BASE_URL',"'/'")};
+   return result;
+  },
+ });
+ try{
+  const fresh=await import(moduleUrl) as typeof import('../src/features/card-scanner/recognition/name-reader');
+  const factory:typeof createNameReader=(_cards,status,signal,options)=>fresh.createNameReader([
+   {id:'short',name:'벨루',rarity:2},{id:'long',name:'벨루마테',rarity:3},
+  ],status,signal,options);
+  const sameGradeFactory:typeof createNameReader=(_cards,status,signal,options)=>fresh.createNameReader([
+   {id:'short',name:'벨루',rarity:2},{id:'long',name:'벨루마테',rarity:2},
+  ],status,signal,options);
+  for(const policy of ['continue','resample'] as const)await fixture(async({reader,source,state})=>{
+   const before=tesseractCalls;
+   state.reply=request=>reading(phase(request)==='raw-first'?'벨루':phase(request)==='raw-second'?'마태':phase(request)==='raw-full'?'벨루마태':'');
+   const seen:NameReading[]=[];
+   const result=await reader.matchForIdentify(source,{allowRaw:true,acceptQuick:value=>{if(value)seen.push(value);return false;}});
+   assert.equal(seen[0]?.card.id,'short');assert.equal(seen[0]?.nameAmbiguous,true);
+   assert.ok(state.requests.some(request=>phase(request)==='raw-second'),'the later name was actually read');
+   assert.equal(result?.card.id,'long','the recognizer needs the stronger full-name candidate for independent artwork review');
+   assert.equal(result?.exact,false);assert.equal(result?.rawText,'벨루마태');
+   assert.equal(confirmCatalogName(result!,false),false,'a fuzzy candidate alone must never be confirmed');
+   assert.equal(confirmCatalogName({...result!,portrait:{region:'above-badge',upper:.87,lower:.87,
+    correlation:.87,margin:.5,left:.87,right:.87}},false),true,
+    'only a sufficiently strong, separately supplied portrait can confirm it');
+   assert.equal(tesseractCalls-before,9,'ambiguous names retain the existing bounded full OCR opportunity');
+   const requestsBeforeRetry=state.requests.length;
+   state.reply=()=>reading('벨루마테');
+   const retry=await reader.matchForIdentify(source,{full:false,allowRaw:true,acceptQuick:()=>true});
+   assert.equal(retry?.card.id,'long');assert.equal(retry?.exact,true);
+   assert.ok(state.requests.length>requestsBeforeRetry,'the unconfirmed fuzzy fallback cannot poison the next read');
+  },policy,undefined,factory);
+  for(const policy of ['continue','resample'] as const)await fixture(async({reader,source,state})=>{
+   state.reply=request=>reading(phase(request)==='raw-first'?'벨루마태':phase(request)==='raw-full'?'벨루':'');
+   const result=await reader.matchForIdentify(source,{allowRaw:true,acceptQuick:()=>false});
+   assert.equal(result?.card.id,'long','later ambiguous short text cannot hide a better full-name hypothesis');
+   assert.equal(confirmCatalogName(result!,false),false,'no portrait means no confirmed identity');
+  },policy,undefined,factory);
+  for(const policy of ['continue','resample'] as const)for(const full of [false,true])await fixture(async({reader,source,state})=>{
+   const before=tesseractCalls;
+   state.reply=request=>reading(phase(request)==='raw-first'?'벨루':'벨루마태');
+   const result=await reader.matchForIdentify(source,{full,allowRaw:true,
+    // Simulate the caller having strong independent visual proof for short.
+    acceptQuick:value=>value?.card.id==='short'});
+   assert.equal(result?.card.id,'short');
+   assert.equal(state.requests.length,1,'accepted first candidate retains the fast path');
+   assert.equal(tesseractCalls,before);
+  },policy,undefined,factory);
+  for(const policy of ['continue','resample'] as const)await fixture(async({reader,source,state})=>{
+   state.reply=request=>reading(phase(request)==='raw-first'?'벨루':phase(request)==='raw-second'?'마태':phase(request)==='raw-full'?'벨루마태':'');
+   tesseractText='벨루마테';
+   try{
+    const result=await reader.matchForIdentify(source,{allowRaw:true,acceptQuick:()=>false});
+    assert.equal(result?.card.id,'long');assert.equal(result?.exact,true);
+   }finally{tesseractText='';}
+  },policy,undefined,factory);
+  for(const policy of ['continue','resample'] as const)await fixture(async({reader,source,state})=>{
+   state.reply=request=>reading(phase(request)==='raw-first'?'벨루':phase(request)==='raw-second'?'마태':phase(request)==='raw-full'?'벨루마태':'');
+   let calls=0;tesseractReply=()=>++calls===1?'벨루마타':'벨루마테';
+   try{
+    const result=await reader.matchForIdentify(source,{allowRaw:true,acceptQuick:()=>false});
+    assert.equal(result?.card.id,'long');assert.equal(result?.exact,true,'later exact must beat earlier unconfirmed fuzzy');
+    assert.equal(calls,2);
+   }finally{tesseractReply=undefined;}
+  },policy,undefined,sameGradeFactory);
+  for(const policy of ['continue','resample'] as const)for(const confirmLater of [false,true])await fixture(async({reader,source,state})=>{
+   state.reply=request=>reading(phase(request)==='raw-first'?'벨루':phase(request)==='raw-second'?'마태':phase(request)==='raw-full'?'벨루마태':'');
+   let calls=0;tesseractReply=()=>{calls++;return calls<=7?'':calls===9&&confirmLater?'벨루마테':'벨루마타';};
+   try{
+    const result=await reader.matchForIdentify(source,{allowRaw:true,acceptQuick:()=>false});
+    assert.equal(calls,9,'the existing bounded Tesseract passes are preserved');
+    assert.equal(result?.rawText,confirmLater?'벨루마테':'벨루마태',
+     'gray OCR cannot replace an equal-quality retained hypothesis or hide a later exact');
+    if(!confirmLater)assert.equal(confirmCatalogName(result!,false),false);
+   }finally{tesseractReply=undefined;}
+  },policy,undefined,sameGradeFactory);
+  for(const policy of ['continue','resample'] as const)await fixture(async({reader,source,state})=>{
+   state.cost=1;
+   state.reply=request=>reading(phase(request)==='raw-first'?'벨루':'벨루마태');
+   await assert.rejects(reader.matchForIdentify(source,{allowRaw:true,acceptQuick:()=>false,
+    budget:new CardReadBudget(2,()=>state.clock)}),CardReadTimeout,
+    'budget expiry cannot promote a retained candidate');
+  },policy,undefined,factory);
+ }finally{
+  hooks.deregister();globalThis.location=previous.location;
+  if(previous.hadBridge)globals[bridgeKey]=previous.bridge;else delete globals[bridgeKey];
+ }
+});
 
 test('continuation consumes the shared prefix once, then runs remaining raw, gray and soft recipes',async()=>{
  await fixture(async({reader,source,state})=>{
@@ -369,6 +502,43 @@ for(const scenario of equivalenceCases)test(`deterministic policies select equal
  assert.deepEqual(results.get('continue'),results.get('resample'));
 });
 
+test('rejecting an artwork quick result follows the same full-result branch as resampling',async()=>{
+ const virtualModule='loacard-test:artwork-continuation',
+  moduleUrl=new URL('../src/features/card-scanner/recognition/name-reader.ts?test=artwork-continuation',import.meta.url).href;
+ const hooks=registerHooks({
+  resolve(specifier,context,nextResolve){
+   if(context.parentURL===moduleUrl&&specifier==='./artwork-verifier')return {url:virtualModule,shortCircuit:true};
+   return nextResolve(specifier,context);
+  },
+  load(url,context,nextLoad){
+   if(url===virtualModule)return {format:'module',shortCircuit:true,source:`
+    export function createArtworkVerifier(cards){return (_pixels,text)=>text==='알수없는문자'?{
+      card:cards[0],score:.9,exact:false,gap:0,
+      artwork:{correlation:.99,margin:.2,visiblePrefix:text,mode:'prefix',textSimilarity:1}
+    }:null;}`};
+   return nextLoad(url,context);
+  },
+ });
+ try{
+  const fresh=await import(moduleUrl) as typeof import('../src/features/card-scanner/recognition/name-reader');
+  const results=new Map<'continue'|'resample',ReturnType<typeof evidence>>();
+  for(const policy of ['continue','resample'] as const)await fixture(async({reader,source,state})=>{
+   state.reply=request=>reading(phase(request)==='raw-first'?'알수없는문자':'');
+   let callbacks=0;
+   const result=await reader.matchForIdentify(source,{allowRaw:true,budget:new CardReadBudget(10000),acceptQuick:value=>{
+    callbacks++;assert.ok(value?.artwork);return false;
+   }});
+   assert.equal(callbacks,1);assert.ok(result?.artwork);
+   assert.equal(result.card.id,'raw');assert.equal(confirmCatalogName(result,false),true);
+   assert.deepEqual(phases(state.requests),policy==='continue'
+    ?['raw-first','raw-second','raw-full']
+    :['raw-first','raw-second','raw-full','raw-first','raw-second','raw-full']);
+   results.set(policy,evidence(result));
+  },policy,undefined,fresh.createNameReader);
+  assert.deepEqual(results.get('continue'),results.get('resample'));
+ }finally{hooks.deregister();}
+});
+
 test('flat no-mask quality rejection invokes the null gate once and dispatches no OCR',async()=>{
  await fixture(async({reader,state,createBlankSource})=>{
   let callbacks=0;const attempts:NameAttempt[]=[];
@@ -436,7 +606,7 @@ test('an exact Tesseract mask result arriving after abort cannot become an accep
  }});
  globalThis.location={href:'https://loacard.test/'} as Location;
  const virtualModule='loacard-test:tesseract-late-abort';
- const moduleUrl=new URL('../src/features/card-scanner/name-reader.ts?test=tesseract-late-abort',import.meta.url).href;
+ const moduleUrl=new URL('../src/features/card-scanner/recognition/name-reader.ts?test=tesseract-late-abort',import.meta.url).href;
  const hooks=registerHooks({
   resolve(specifier,context,nextResolve){return specifier==='tesseract.js'?{url:virtualModule,shortCircuit:true}:nextResolve(specifier,context);},
   load(url,context,nextLoad){
@@ -451,7 +621,7 @@ test('an exact Tesseract mask result arriving after abort cannot become an accep
   },
  });
  try{
-  const fresh=await import(moduleUrl) as typeof import('../src/features/card-scanner/name-reader');
+  const fresh=await import(moduleUrl) as typeof import('../src/features/card-scanner/recognition/name-reader');
   assert.equal(providedBase,true);
   await fixture(async({reader,source,state})=>{
    state.reply=()=>reading('');let outcome='pending';const budget=new CardReadBudget(10000),attempts:NameAttempt[]=[];
@@ -483,7 +653,7 @@ test('all-empty deterministic policies exhaust Tesseract fallback without invent
  }};};
  globalThis.location={href:'https://loacard.test/'} as Location;
  const virtualModule='loacard-test:tesseract-all-empty';
- const moduleUrl=new URL('../src/features/card-scanner/name-reader.ts?test=tesseract-all-empty',import.meta.url).href;
+ const moduleUrl=new URL('../src/features/card-scanner/recognition/name-reader.ts?test=tesseract-all-empty',import.meta.url).href;
  const hooks=registerHooks({
   resolve(specifier,context,nextResolve){return specifier==='tesseract.js'?{url:virtualModule,shortCircuit:true}:nextResolve(specifier,context);},
   load(url,context,nextLoad){
@@ -498,7 +668,7 @@ test('all-empty deterministic policies exhaust Tesseract fallback without invent
   },
  });
  try{
-  const fresh=await import(moduleUrl) as typeof import('../src/features/card-scanner/name-reader');
+  const fresh=await import(moduleUrl) as typeof import('../src/features/card-scanner/recognition/name-reader');
   assert.equal(providedBase,true);
   const fallbackCalls=new Map<'continue'|'resample',number>();
   for(const policy of ['continue','resample'] as const)await fixture(async({reader,source,state})=>{

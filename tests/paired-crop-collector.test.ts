@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createPairedCropCollector,PAIRED_CROP_LIMITS} from '../dev/paired-crop-collector';
-import type {RecognitionInputMeta,RecognitionInputOutcome,NameLabelRecipe} from '../src/features/card-scanner/recognition-input-observer';
+import type {RecognitionInputMeta,RecognitionInputOutcome,NameLabelRecipe} from '../src/features/card-scanner/recognition/recognition-input-observer';
 
 const png=new Uint8Array([137,80,78,71,13,10,26,10,1,2,3,4]);
 const uri=`data:image/png;base64,${Buffer.from(png).toString('base64')}`;
@@ -83,6 +83,24 @@ test('same observation and region retries share storage but preserve separate di
  assert.equal(evidence.rows[1].labels[0].reference.shared,true);assert.equal(evidence.rows[1].labels[0].recipe.bypassCache,true);
  assert.equal(evidence.rows[0].outcome?.status,'unknown');assert.equal(evidence.rows[1].outcome?.status,'accepted');
  assert.match(evidence.scopes.sharedReferences,/not independent/);assert.equal(evidence.complete,true);
+});
+
+test('records admitted budgets while refused and legacy-shaped refusal diagnostics remain unknown',async()=>{
+ const {collector}=fixture();
+ for(const [ordinal,data] of [
+   [1,outcome({admitted:true,budgetRemainingAtStart:3000,budgetRemainingAtEnd:2700})],
+   [2,outcome({admitted:false,identifyExecuted:false,budgetRemainingAtStart:null,budgetRemainingAtEnd:null})],
+   // Older or synthetic producers could provide the old stand-in 3000ms.
+   // This collector never treats that as a reservation for a refused read.
+   [3,outcome({admitted:false,identifyExecuted:false,budgetRemainingAtStart:3000,budgetRemainingAtEnd:2999})],
+ ] as const){const input=collector.begin(meta(ordinal))!;input.captureCard(card().canvas);input.finish(data);}
+ const result=await collector.finish();
+ assert.equal(result.rows[0].outcome?.budgetRemainingAtStart,3000);
+ assert.equal(result.rows[0].outcome?.budgetRemainingAtEnd,2700);
+ for(const row of result.rows.slice(1)){
+  assert.equal(row.outcome?.budgetRemainingAtStart,null);
+  assert.equal(row.outcome?.budgetRemainingAtEnd,null);
+ }
 });
 
 test('a different actual label ROI cannot reuse a prior ROI as the exact input',async()=>{

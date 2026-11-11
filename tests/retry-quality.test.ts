@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { retryEligible } from "../src/features/card-scanner/retry-quality";
+import { retryEligible } from "../src/features/card-scanner/session/retry-quality";
 
 test("moving name fragments alone do not occupy the expensive retry queue", () => {
   const fragment = { labelPixels: 50, stable: false, borderAlignment: .3, awakening: null, hasNameBand: false };

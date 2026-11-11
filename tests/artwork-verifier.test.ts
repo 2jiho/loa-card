@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createArtworkVerifier, confirmArtwork } from "../src/features/card-scanner/artwork-verifier.ts";
-import { confirmName } from "../src/features/card-scanner/name-confidence.ts";
+import { createArtworkVerifier, confirmArtwork } from "../src/features/card-scanner/recognition/artwork-verifier.ts";
+import { confirmName } from "../src/features/card-scanner/recognition/name-confidence.ts";
 
 function fixture(kind: number) {
   const bytes = new Uint8Array(720), rgba = new Uint8ClampedArray(24 * 32 * 4);
@@ -36,6 +36,16 @@ test("truncated OCR is confirmed only when independent artwork agrees", () => {
   assert.ok(match && match.score < 1);
   assert.ok(match && confirmName({ ...match, ocrConfidence: 95 }, false));
   assert.equal(createArtworkVerifier(cards)(b.rgba, "영원의 아크 카양", .95), null);
+});
+
+test('an overlapping-name card without artwork cannot be excluded from the artwork ranking',()=>{
+ const competitor={id:'missing',name:'아크 카양겔',rarity:1};
+ const query='영원의 아크 카양';
+ assert.equal(createArtworkVerifier([...cards,competitor])(a.rgba,query,.95),null);
+ // Synthetic feature used only to exercise the independent-candidate gate.
+ assert.equal(createArtworkVerifier([...cards,{...competitor,feature:b.feature}])(a.rgba,query,.95)?.card.id,'a');
+ assert.equal(createArtworkVerifier([...cards,{...competitor,feature:a.feature}])(a.rgba,query,.95),null,
+  'shared artwork cannot prove either identity');
 });
 
 test("bounded portrait registration tolerates a one-pixel shift without completing unrelated or ambiguous names", () => {

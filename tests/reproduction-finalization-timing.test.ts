@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {beginReproduction,type ReproductionFinalizationTiming} from '../src/features/card-scanner/scan-reproduction';
-import {entryParts} from '../src/features/card-scanner/exact-recording-codec';
-import type {ReproductionSession,ReproductionSessionStore,SessionSeal,SessionStart} from '../src/features/card-scanner/reproduction-session-store';
+import {beginReproduction,type ReproductionFinalizationTiming} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import {entryParts} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import type {ReproductionSession,ReproductionSessionStore,SessionSeal,SessionStart} from '../src/features/card-scanner/reproduction/reproduction-session-store';
 
 const environment={browser:'test',catalog:'test',build:'test'};
 function deferred(){let resolve!:()=>void;const promise=new Promise<void>(yes=>{resolve=yes;});return {promise,resolve};}

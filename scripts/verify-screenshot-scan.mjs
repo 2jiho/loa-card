@@ -12,4 +12,7 @@ for (const expected of truth) {
   assert.equal(actual.awakening, expected.awakening, `${expected.name}: awakening`);
   assert.equal(actual.extraCopies, expected.extraCopies, `${expected.name}: extra copies`);
 }
-console.log(`384 unique names and ${truth.length} manually labelled card fields passed. This is not full-field ground truth for all 384 cards.`);
+console.log(`384 unique names and ${truth.length} manually labelled card fields passed.`);
+console.log("Limited comparison only: the input source and code version are not verified, and card counts do not establish the identity or fields of every card.");
+// A partial comparison with no source/version binding cannot pass a gate.
+process.exitCode = 3;

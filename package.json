@@ -8,12 +8,14 @@
     "prebuild": "npm run notices && npm run audit:data && node scripts/prepare-ocr-assets.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/site-manifest.mjs",
-    "lint": "oxlint src dev vite.config.ts scripts",
+    "check:architecture": "node scripts/check-architecture.mjs",
+    "lint": "oxlint src dev vite.config.ts scripts && node scripts/check-architecture.mjs",
     "preview": "vite preview",
     "fixture:prepare": "node scripts/prepare-fixture.mjs",
     "fixture:frames": "node scripts/extract-frames.mjs",
     "corpus": "node --import tsx scripts/scan-corpus.mjs",
     "test": "node --import tsx --test tests/*.test.ts",
+    "test:status": "node --import tsx --test --test-reporter=./scripts/test-status-reporter.mjs tests/*.test.ts",
     "notices": "node scripts/prepare-third-party-notices.mjs",
     "audit:distribution": "npm run notices && node scripts/audit-distribution.mjs",
     "verify:site": "node scripts/verify-site.mjs",
@@ -35,6 +37,7 @@
     "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
+    "@noble/hashes": "1.8.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",

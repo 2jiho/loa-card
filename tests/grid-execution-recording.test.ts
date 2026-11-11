@@ -1,15 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { entryParts, executionSummary } from '../src/features/card-scanner/exact-recording-codec';
-import type { ExactEvent } from '../src/features/card-scanner/exact-recording-codec';
-import { ScanGrid } from '../src/features/card-scanner/scan-grid';
-import { hashScanGridReplay, recordScanGrid, scanGridReplaySnapshot } from '../src/features/card-scanner/scan-grid-command';
-import { hashObservationExecution, observationExecutionSnapshot } from '../src/features/card-scanner/observation-execution';
-import type { ObservationSource } from '../src/features/card-scanner/observation-execution';
-import { ObservationWork } from '../src/features/card-scanner/observation-work';
-import {UnknownLifecycle,hashUnknownLifecycle} from '../src/features/card-scanner/unknown-lifecycle';
-import {UNKNOWN_LIFECYCLE_LIMITS} from '../src/features/card-scanner/unknown-lifecycle-types';
-import type {UnknownSeed,UnknownUpsert} from '../src/features/card-scanner/unknown-lifecycle-types';
+import { entryParts, executionSummary } from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import type { ExactEvent } from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import { ScanGrid } from '../src/features/card-scanner/session/scan-grid';
+import { hashScanGridReplay, recordScanGrid, scanGridReplaySnapshot } from '../src/features/card-scanner/session/scan-grid-command';
+import { hashObservationExecution, observationExecutionSnapshot } from '../src/features/card-scanner/session/observation-execution';
+import type { ObservationSource } from '../src/features/card-scanner/session/observation-execution';
+import { ObservationWork } from '../src/features/card-scanner/session/observation-work';
+import {UnknownLifecycle,hashUnknownLifecycle} from '../src/features/card-scanner/session/unknown-lifecycle';
+import {UNKNOWN_LIFECYCLE_LIMITS} from '../src/features/card-scanner/session/unknown-lifecycle-types';
+import type {UnknownSeed,UnknownUpsert} from '../src/features/card-scanner/session/unknown-lifecycle-types';
 
 const signal = () => new AbortController().signal;
 const archive = (events: readonly ExactEvent[]) => new Blob(events.flatMap(event => entryParts(event)));
@@ -28,9 +28,10 @@ test('unknown physical-event replay requires explicit complete outer totals and 
  const totals={complete:true,dropped:0,events:events.length,frames:0};
  const result=await executionSummary(archive(events),signal(),totals);
  assert.deepEqual(result.unknownLifecycle,{supported:true,events:1,active:1,pending:0,final:1,
-  complete:true,hash,expectedHash:hash,matchesCapturedState:true});
+  complete:true,hash,expectedHash:hash,matchesCapturedState:true,liveEvidenceLost:false});
  const noTotals=await executionSummary(archive(events),signal());
  assert.equal(noTotals.recordingComplete,null);assert.equal(noTotals.unknownLifecycle.complete,false);
+ assert.equal(noTotals.unknownLifecycle.liveEvidenceLost,null);
  assert.equal(noTotals.unknownLifecycle.matchesCapturedState,null,'a valid component prefix cannot prove the physical file is complete');
  for(const changed of [{...totals,complete:false,dropped:0},{...totals,complete:false,dropped:null}]){
   const partial=await executionSummary(archive(events),signal(),changed);
@@ -111,7 +112,8 @@ test('actual grid commands and interleaved lifecycle facts survive the archive a
   const commandCount = events.filter(event => event.type === 'grid-command').length;
   const factCount = events.filter(event => event.type === 'observation-fact').length;
   const blob = archive(events);
-  const actual = await executionSummary(blob, signal());
+  const totals={complete:true,dropped:0,events:events.length,frames:0};
+  const actual = await executionSummary(blob, signal(),totals);
   assert.equal(actual.events, events.length);
   assert.equal(actual.frames, 0);
   assert.equal(actual.kinds['grid-command'], commandCount);
@@ -120,7 +122,11 @@ test('actual grid commands and interleaved lifecycle facts survive the archive a
   assert.deepEqual(actual.observations, { supported: true, facts: factCount, observations: 5,
     waiting: 1, reading: 1, read: 2, review: 1, hash: expectedObservationHash });
   assert.equal(actual.cards.length, 0, 'display identity is not a reconstructed recognition result');
-  assert.deepEqual(await executionSummary(blob, signal()), actual, 'the same recorded execution replays consistently');
+  assert.deepEqual(await executionSummary(blob, signal(),totals), actual, 'the same recorded execution replays consistently');
+  const unknown=await executionSummary(blob,signal());
+  assert.equal(unknown.recordingComplete,null);assert.equal(unknown.grid.hash,expectedHash);
+  assert.equal(unknown.grid.matchesCapturedState,null,'an unverified outer archive cannot certify its checkpoint');
+  assert.equal(unknown.inventory.matchesCapturedState,null);assert.equal(unknown.input.matchesCapturedState,null);
   const groupAt = events.findIndex(event => event.type === 'grid-command' &&
     (event.value as { method: string }).method === 'group');
   assert.equal(events[groupAt + 1].type, 'observation-fact', 'the external command is recorded before its resulting fact');
@@ -137,7 +143,7 @@ test('sort reset, superseded observations and stale leases replay to the capture
   grid.confirm(['a']); grid.restorePositions([{ id: 'a', slot: 0 }]);
   grid.restoreOrder(['a']); grid.liveViewport(undefined, false);
   const hash = await checkpoint();
-  const result = await executionSummary(archive(events), signal());
+  const result = await executionSummary(archive(events), signal(),{complete:true,dropped:0,events:events.length,frames:0});
   assert.equal(result.grid.hash, hash); assert.equal(result.grid.matchesCapturedState, true);
   assert.equal(raw.executionSnapshot().observations.length, 1);
   assert.equal(result.observations.observations, 2, 'all emitted observations and the retained grid cache have different scopes');
@@ -151,8 +157,9 @@ test('a changed valid command reports a mismatch rather than accepting matching 
   const changed = events.map(event => event.type === 'grid-command' &&
     (event.value as { method: string }).method === 'liveViewport'
     ? { ...event, value: { version: 1, method: 'liveViewport', args: [2, true] } } : event);
-  const original = await executionSummary(archive(events), signal());
-  const mismatch = await executionSummary(archive(changed), signal());
+  const totals={complete:true,dropped:0,events:events.length,frames:0};
+  const original = await executionSummary(archive(events), signal(),totals);
+  const mismatch = await executionSummary(archive(changed), signal(),totals);
   assert.equal(mismatch.grid.expectedHash, expectedHash);
   assert.notEqual(mismatch.grid.hash, expectedHash);
   assert.equal(mismatch.grid.matchesCapturedState, false);
@@ -223,5 +230,5 @@ test('cancellation before and during command replay rejects instead of publishin
     if (prior) Object.defineProperty(globalThis, 'scheduler', prior);
     else Reflect.deleteProperty(globalThis, 'scheduler');
   }
-  assert.equal((await executionSummary(blob, signal())).grid.matchesCapturedState, true);
+  assert.equal((await executionSummary(blob, signal(),{complete:true,dropped:0,events:events.length,frames:0})).grid.matchesCapturedState, true);
 });

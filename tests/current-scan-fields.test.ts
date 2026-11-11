@@ -1,25 +1,47 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { consensus } from '../src/features/card-scanner/consensus';
-import { CURRENT_FIELD_REVIEW, MAX_UNRESOLVED_FIELD_CHANGES, boundedCountDiagnostics, boundedUnresolvedFieldChanges, carryUnattributedFieldReviews, hasCurrentFieldProof, pendingScanFields, projectCurrentScanFields, unattributedFieldReviewCount } from '../src/features/card-scanner/current-scan-fields';
-import { confirmedReadingCount } from '../src/features/card-scanner/recovery-completion';
-import { scanCompletion } from '../src/features/card-scanner/completion';
-import type { ScannedCard } from '../src/features/card-scanner/recognizer';
+import { consensus } from '../src/features/card-scanner/recognition/consensus';
+import { CURRENT_FIELD_REVIEW, MAX_UNRESOLVED_FIELD_CHANGES, boundedCountDiagnostics, boundedUnresolvedFieldChanges, carryUnattributedFieldReviews, hasCurrentFieldProof, pendingScanFields, projectCurrentScanFields, unattributedFieldReviewCount } from '../src/features/card-scanner/session/current-scan-fields';
+import { confirmedReadingCount } from '../src/features/card-scanner/session/recovery-completion';
+import { scanCompletion } from '../src/features/card-scanner/session/completion';
+import type { ScannedCard } from '../src/features/card-scanner/recognition/recognizer';
 import { inventoryCsv, inventoryCsvIssues } from '../src/inventory-csv';
 import { remainingMerchantCopies } from '../src/features/merchants/merchant-progress';
 import { trustedInventory } from '../src/features/growth/optimizer';
 import { raidMembers } from '../src/features/raid/raid-progress';
 import type { RaidSet } from '../src/features/raid/raid-progress';
-import { inventoryBackupState } from '../src/features/card-scanner/scan-backup';
-import type { ScannerState } from '../src/features/card-scanner/scanner';
+import { inventoryBackupState } from '../src/features/card-scanner/persistence/scan-backup';
+import type { ScannerState } from '../src/features/card-scanner/orchestration/scanner';
 
 const original: ScannedCard = { id:'3200416', name:'하누마탄', awakening:0, extraCopies:0, review:[], countReliable:true,
   confidence:1, image:'old-good', time:1, observations:1, captureOrder:10 };
 const failed: ScannedCard = { ...original, extraCopies:null, countReliable:false, review:['추가 장수 확인'],
   image:'latest-unresolved', time:2, captureOrder:20,
-  countDiagnostics:{maximum:15,reason:'추가 장수 영역 가림 또는 불명확',readings:[]},
+  countDiagnostics:{maximum:15,reason:'장수 숫자 미검출 또는 불명확',readings:[]},
   capturePosition:{frame:'frame-20',slot:3,stable:true,sort:null} };
 const proof = (latest=20, confirmed=10) => ({ latest:new Map([[original.id,latest]]), confirmed:new Map([[original.id,confirmed]]) });
+
+test('a repeated field pair keeps proof across a newer unstable capture', () => {
+  const merged = consensus([original, failed]);
+  const evidence = {...proof(20, 10), agreed:new Map([[original.id, 20]])};
+  assert.equal(hasCurrentFieldProof(original.id, evidence), true);
+  const cards = projectCurrentScanFields([merged], evidence);
+  assert.equal(cards[0], merged, 'a repeated pair needs no presentation review');
+  assert.deepEqual(cards[0].review, []);
+  assert.equal(confirmedReadingCount({cards, ...evidence}), 1);
+  assert.equal(hasCurrentFieldProof(original.id, {...proof(20, 10), agreed:new Map([[original.id, 19]])}), false);
+  assert.equal(hasCurrentFieldProof(original.id, proof(20, 10)), false, 'agreement is not assumed without evidence');
+});
+
+test('a disagreeing newer capture still blocks field proof', () => {
+  const merged = consensus([original, failed]);
+  const evidence = {...proof(20, 10), agreed:new Map([[original.id, 10]])};
+  assert.equal(hasCurrentFieldProof(original.id, evidence), false);
+  const cards = projectCurrentScanFields([merged], evidence);
+  assert.ok(cards[0].review.includes(CURRENT_FIELD_REVIEW));
+  assert.equal(cards[0].countReliable, false);
+  assert.equal(confirmedReadingCount({cards, ...evidence}), 0);
+});
 
 test('394 collected identities with one stale zero publish 393 confirmed and one review', () => {
   const history = [failed, original], merged = consensus(history);
@@ -92,7 +114,7 @@ test('pending diagnostics expose the latest failed source separately from old co
   const observations = [{card:failed,borderAlignment:.7}];
   const pending = pendingScanFields(observations,proof());
   assert.deepEqual(pending,[{id:original.id,name:original.name,image:'latest-unresolved',time:2,captureOrder:20,
-    reason:'추가 장수 확인',countReason:'추가 장수 영역 가림 또는 불명확',stable:true,borderAlignment:.7,
+    reason:'추가 장수 확인',countReason:'장수 숫자 미검출 또는 불명확',stable:true,borderAlignment:.7,
     countDiagnostics:boundedCountDiagnostics(failed.countDiagnostics)}]);
   assert.deepEqual(pendingScanFields(observations,proof(20,20)),[]);
   assert.deepEqual(pendingScanFields([{card:original,borderAlignment:1}],proof()),[],

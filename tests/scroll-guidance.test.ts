@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {scrollGuidance} from '../src/features/card-scanner/scroll-guidance';
+import {scrollGuidance} from '../src/features/card-scanner/ui/scroll-guidance';
 const state={gaps:1,busy:true,expected:387,collected:333};
 test('scroll holes during live capture and recovery are informational, not a rescan request',()=>{
  assert.equal(scrollGuidance(state),'collecting');

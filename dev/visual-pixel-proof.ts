@@ -1,6 +1,6 @@
-import {inspectVisual,readVisual,reusableVisualPixels} from '../src/features/card-scanner/visual-fields';
-import {prepareContrastPattern} from '../src/features/card-scanner/count-pattern';
-import type {CountPattern} from '../src/features/card-scanner/count-pattern';
+import {inspectVisual,readVisual,reusableVisualPixels} from '../src/features/card-scanner/recognition/visual-fields';
+import {prepareContrastPattern} from '../src/features/card-scanner/recognition/count-pattern';
+import type {CountPattern} from '../src/features/card-scanner/recognition/count-pattern';
 const run=document.querySelector<HTMLButtonElement>('#run')!,status=document.querySelector('#status')!,result=document.querySelector('#result')!;
 const json=async(path:string)=>{const response=await fetch(path);if(!response.ok)throw Error(`Missing fixture ${path}`);return response.json();};
 const hash=async(data:Uint8ClampedArray)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new Uint8Array(data))),b=>b.toString(16).padStart(2,'0')).join('');

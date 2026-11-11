@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { tryStartTrackFrames } from '../src/features/card-scanner/track-frame-source';
+import { tryStartTrackFrames } from '../src/features/card-scanner/capture/track-frame-source';
 
 function fixture() {
   const track = Object.assign(new EventTarget(), { readyState: 'live' });

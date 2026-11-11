@@ -1,0 +1,16 @@
+{
+  "hasIcon": null,
+  "diagnostic": {
+    "iconColor": false,
+    "numericEvidence": false,
+    "iconRemnant": false,
+    "emptyFields": true,
+    "grayMarker": false,
+    "visibleBackground": false,
+    "grayBackgroundEmpty": false,
+    "iconFlat": true,
+    "digitsFlat": false,
+    "highFrequencyCover": false,
+    "flatCover": true
+  }
+}

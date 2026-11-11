@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "enforceRuntimeCycles": true,
+  "reportTypeOnlyCycles": true,
+  "crossFeature": "public-only",
+  "allowed": {
+    "app": ["app", "root", "feature", "scanner", "domain", "data", "shared"],
+    "root": ["app", "root", "feature", "scanner", "domain", "data", "shared"],
+    "feature": ["domain", "data", "shared"],
+    "domain": ["domain"],
+    "data": ["domain", "data"],
+    "shared": ["shared"],
+    "dev": ["*"],
+    "tests": ["*"],
+    "scripts": ["*"]
+  },
+  "scannerSubfolders": {
+    "capture": ["capture", "domain", "data", "shared"],
+    "acquisition": ["capture", "acquisition", "domain", "data", "shared"],
+    "recognition": ["acquisition", "recognition", "domain", "data", "shared"],
+    "session": ["capture", "acquisition", "recognition", "session", "domain", "data", "shared"],
+    "reproduction": ["capture", "acquisition", "recognition", "session", "reproduction", "persistence", "domain", "data", "shared"],
+    "persistence": ["session", "persistence", "domain", "data", "shared"],
+    "ui": ["session", "ui", "domain", "data", "shared"],
+    "orchestration": ["capture", "acquisition", "recognition", "session", "reproduction", "persistence", "ui", "orchestration", "domain", "data", "shared"],
+    "evaluation": ["evaluation", "domain", "data", "shared"]
+  }
+}

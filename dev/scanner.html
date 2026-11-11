@@ -24,6 +24,7 @@
     <h1>스캐너 개발 검사</h1>
     <div id="playback-source" aria-label="실험용 원본 영상 미리보기"></div>
     <p id="input-experiment" class="note" hidden></p>
+    <p id="unknown-policy-note" role="status" hidden></p>
     <p>영상·사진은 빈 목록, 재현 파일은 기록된 시작 목록에서 입력을 다시 읽고, 판독 결과와 상태 재생을 비교합니다. 실제 게임 창 공유는 메인 앱에서 검사하세요.</p>
     <form>
       <div class="source">
@@ -42,17 +43,32 @@
       </select>
       <label><input id="capture-only" type="checkbox" />획득만 검사</label>
       <label><input id="session-recording" type="checkbox" />자동 세션 저장도 검사</label>
+      <label><input id="crop-recording" type="checkbox" />판독 크롭 기록 (개발용)</label>
       <button id="start" type="submit">검사 시작</button>
       <button id="stop" type="button" disabled>중지</button>
       <button id="save" type="button" disabled>결과 JSON 저장</button>
-      <button id="replay-state" type="button" disabled>상태 재생 검사</button>
+      <button id="replay-state" type="button" disabled>현재 실행 상태 재생</button>
       <button id="save-session" type="button" disabled>검증 세션 내보내기</button>
       <button id="retry-archive" type="button" hidden disabled>로컬 기록 다시 저장</button>
     </form>
     <div id="monitor-preview" aria-label="앱 진행창 미리보기"></div>
     <p id="corpus-status" class="note" role="status">입력 코퍼스를 읽고 있습니다.</p>
-    <p class="note">비교 전 <code>npm run corpus -- verify</code>로 저장한 원본을 검사하세요. 일반 검사에는 해시 재계산이 없으며 입력 비교 모드는 실제 사용할 원본 Blob의 SHA를 확인합니다. 사진은 등록·선택 순서를 유지하며 결과를 정답으로 자동 등록하지 않습니다.</p>
-    <p class="note">1배속 검사는 영상의 captureStream으로 실제 공유와 같은 수집·병렬 판독 경로를 실행합니다. OS 캡처 시각과 모든 원본 프레임 도착을 재현하지는 않습니다. 사진·재현 파일은 순차 검사만 지원합니다. 재현 파일은 저장된 픽셀과 설정을 사용하며 원래 처리 속도를 재현하지 않습니다.</p>
+    <p class="note">비교 전 <code>npm run corpus -- verify</code>로 저장한 원본을 검사하세요. 재현 파일은 다시 읽기 전에 파일 전체 SHA를 자동 확인합니다. 일반 영상·사진 검사에는 해시 재계산이 없으며 입력 비교 모드는 실제 사용할 원본 Blob의 SHA를 확인합니다. 사진은 등록·선택 순서를 유지하며 결과를 정답으로 자동 등록하지 않습니다.</p>
+    <p class="note">1배속 검사는 영상의 captureStream으로 실제 공유와 같은 수집·병렬 판독 경로를 실행합니다. OS 캡처 시각과 모든 원본 프레임 도착을 재현하지는 않습니다. 사진·재현 파일은 순차 검사만 지원합니다. 재현 파일은 저장된 픽셀과 설정을 사용하며 원래 처리 속도를 재현하지 않습니다. 현재 실행 상태 재생은 별도 상태 이벤트의 해시 검사이며 저장 세션 입력의 완전성 검사를 대신하지 않습니다.</p>
+    <p class="note">판독 크롭 기록은 이 기기의 브라우저 내부에 저장되며 브라우저 데이터 정리로 사라질 수 있습니다. 개발용 <a href="./crop-archive.html">크롭 파일 내보내기</a>는 브라우저의 스트리밍 저장 선택기가 필요합니다. 새 기록은 판독 직전의 후보 크롭을 보존합니다. 이전 v1 기록은 판독 종료 후 저장되어 입력과 일치하는지 확인할 수 없습니다. 무결성 검사는 저장된 픽셀과 호출 기록만 확인하며 원본 화면, 획득·제외된 카드, 스크롤 누락이나 실제 처리 속도는 재현하지 않습니다. 기록 한도 또는 손실 시 부분 기록으로 표시합니다.</p>
+    <div class="source">
+      <label for="crop-run-id">판독 크롭 기록 ID</label>
+      <input id="crop-run-id" autocomplete="off" />
+      <button id="list-crops" type="button">기록 목록</button>
+      <label for="crop-runs">저장된 기록</label>
+      <select id="crop-runs"><option value="">목록을 불러오세요</option></select>
+      <button id="verify-crops" type="button">기록 무결성 확인</button>
+      <label for="crop-reads">재판독할 관측</label>
+      <select id="crop-reads" disabled><option value="">먼저 기록을 확인하세요</option></select>
+      <button id="reread-crop" type="button" disabled>새 탭에서 크롭 재판독</button>
+      <button id="delete-crops" type="button">이 기록 삭제</button>
+    </div>
+    <p id="crop-message" class="note" role="status"></p>
     <fieldset>
       <legend>원본 일괄 비교</legend>
       <label for="batch-cases">비교할 사례 · 최대 16개</label>
@@ -72,6 +88,7 @@
     <pre id="replay-comparison" aria-label="기록 당시 결과와 비교"></pre>
     <p id="archive-message" class="note" role="status"></p>
     <p id="session-message" class="note" role="status"></p>
+    <p id="session-corpus-message" class="note" role="status"></p>
     <pre id="monitor" aria-label="실시간 진행 요약"></pre>
     <pre id="result" aria-label="검사 요약"></pre>
     <script type="module" src="/dev/scanner.ts"></script>

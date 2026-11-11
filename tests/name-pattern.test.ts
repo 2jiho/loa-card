@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NAME_WIDTH, NAME_HEIGHT, nameMask, packName, nameSimilarity } from "../src/features/card-scanner/name-pattern.ts";
+import { NAME_WIDTH, NAME_HEIGHT, nameMask, packName, nameSimilarity } from "../src/features/card-scanner/recognition/name-pattern.ts";
 
 test("packed name pixels retain unsigned word boundaries and distinct rows", () => {
   const mask = new Uint8Array(NAME_WIDTH * NAME_HEIGHT);

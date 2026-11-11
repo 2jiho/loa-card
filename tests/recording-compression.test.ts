@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {createRecordingCompression} from '../src/features/card-scanner/recording-compression';
-import {fastInflate,packPixels,unpackPixels} from '../src/features/card-scanner/exact-recording-codec';
+import {createRecordingCompression} from '../src/features/card-scanner/reproduction/recording-compression';
+import {fastInflate,packPixels,unpackPixels} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 
 async function realWasm(){
  const binary=await readFile('node_modules/lz4-wasm/lz4_wasm_bg.wasm');

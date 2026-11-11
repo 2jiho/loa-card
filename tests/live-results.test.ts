@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { growthInput, resultCardsKey } from '../src/features/live-results';
 import { currentBookProgress } from '../src/features/growth/optimizer';
 import type { GrowthMaster } from '../src/features/growth/optimizer';
-import type { ScannedCard } from '../src/features/card-scanner/recognizer';
+import type { ScannedCard } from '../src/features/card-scanner/recognition/recognizer';
 
 const card: ScannedCard = { id: 'a', name: 'A', awakening: 0, extraCopies: 0, countReliable: true,
   review: [], image: '', confidence: 1, observations: 1, time: 0 };

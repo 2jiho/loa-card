@@ -5,7 +5,7 @@ import {
   parseCardSort,
   readSortArrow,
   reconcileCardSort,
-} from "../src/features/card-scanner/capture-metadata";
+} from "../src/features/card-scanner/recognition/capture-metadata";
 test("growth points preserve zero, separators and the displayed capacity without guessing glyphs", () => {
   assert.deepEqual(parseGrowthPoints("165,450 / 999,999,999"), {
     current: 165450,
@@ -19,11 +19,12 @@ test("growth points preserve zero, separators and the displayed capacity without
     assert.equal(parseGrowthPoints(text), null);
 });
 
-test('transient missing sort direction retains the last known order without a reset',()=>{
+test('an unknown sort direction invalidates positions until it is known again',()=>{
  const asc={kind:'name',direction:'asc'} as const;
+ const unknown={kind:'name',direction:'unknown'} as const;
  assert.deepEqual(reconcileCardSort(asc,null),{sort:asc,changed:false});
- assert.deepEqual(reconcileCardSort(asc,{kind:'name',direction:'unknown'}),{sort:asc,changed:false});
- assert.deepEqual(reconcileCardSort({kind:'name',direction:'unknown'},asc),{sort:asc,changed:false});
+ assert.deepEqual(reconcileCardSort(asc,unknown),{sort:unknown,changed:true});
+ assert.deepEqual(reconcileCardSort(unknown,asc),{sort:asc,changed:true});
  assert.deepEqual(reconcileCardSort(null,asc),{sort:asc,changed:false});
 });
 

@@ -3,10 +3,10 @@ import {createRoot} from 'react-dom/client';
 import {ThemeProvider,createTheme} from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import Button from '@mui/material/Button';
-import {ScanReplayDialog} from '../src/features/card-scanner/ScanReplayDialog';
-import {createReproductionSessionAccess} from '../src/features/card-scanner/scan-reproduction';
-import type {ReproductionSessionAccess,ScanDiagnosticSummary} from '../src/features/card-scanner/scan-reproduction';
-import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction-session-store';
+import {ScanReplayDialog} from '../src/features/card-scanner/ui/ScanReplayDialog';
+import {createReproductionSessionAccess} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import type {ReproductionSessionAccess,ScanDiagnosticSummary} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction/reproduction-session-store';
 import '../src/index.css';
 import '../src/App.css';
 

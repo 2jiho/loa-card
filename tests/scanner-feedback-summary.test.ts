@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
-import {createScannerFeedback} from '../src/features/card-scanner/scanner-feedback';
-import {feedbackReceiptDiagnostic} from '../src/features/card-scanner/scanner-feedback-summary';
-import {beginReproduction,loadSessionDiagnosticSummary} from '../src/features/card-scanner/scan-reproduction';
-import {createReproductionSessionStore,SessionStorageLimitError} from '../src/features/card-scanner/reproduction-session-store';
-import type {ReproductionSessionStore} from '../src/features/card-scanner/reproduction-session-store';
+import {createScannerFeedback} from '../src/features/card-scanner/ui/scanner-feedback';
+import {feedbackReceiptDiagnostic} from '../src/features/card-scanner/session/scanner-feedback-summary';
+import {beginReproduction,loadSessionDiagnosticSummary} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import {createReproductionSessionStore,SessionStorageLimitError} from '../src/features/card-scanner/reproduction/reproduction-session-store';
+import type {ReproductionSessionStore} from '../src/features/card-scanner/reproduction/reproduction-session-store';
 
 function actualStats(){
   let now=1;const feedback=createScannerFeedback({now:()=>now});
@@ -90,8 +90,8 @@ test('summary storage pressure omits optional feedback before losing the existin
   const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'}, {store,feedbackReceipts:()=>actualStats()});
   await capture.finish(state,true);
   const session=await underlying.getSession(capture.id),summary=session?.summary as {completed:boolean;images:{image:string}[];
-    result:{cards:{extraCopies:number|null}[]};fieldIssues:{reason:string}[];performance:Record<string,unknown>};
+    result:{inventoryCount:number};fieldIssues:{reason:string}[];performance:Record<string,unknown>};
   assert.equal(attempted,2);assert.equal(summary.completed,true);assert.equal(summary.images[0].image,image);
-  assert.equal(summary.result.cards[0].extraCopies,null);assert.equal(summary.fieldIssues[0].reason,'장수 확인');
+  assert.equal(summary.result.inventoryCount,1);assert.equal('cards' in summary.result,false);assert.equal(summary.fieldIssues[0].reason,'장수 확인');
   assert.equal(summary.performance.feedbackReceipts,undefined);assert.equal(summary.performance.feedbackReceiptsUnavailable,'invalid-or-over-limit');
 });

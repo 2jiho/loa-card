@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodedFrames } from "../src/features/card-scanner/decoded-frames";
+import { decodedFrames } from "../src/features/card-scanner/capture/decoded-frames";
 
 test("canceled input never opens or decodes a source", async () => {
   const abort = new AbortController(); abort.abort();

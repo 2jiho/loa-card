@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ScanGrid} from '../src/features/card-scanner/scan-grid';
-import {createScanMonitorStore} from '../src/features/card-scanner/scan-monitor-store';
-import {createScannerFeedback} from '../src/features/card-scanner/scanner-feedback';
-import type {ScannerFeedback,FeedbackReadContext} from '../src/features/card-scanner/scanner-feedback';
-import type {ObservationFact,ObservationSource} from '../src/features/card-scanner/observation-execution';
+import {ScanGrid} from '../src/features/card-scanner/session/scan-grid';
+import {createScanMonitorStore} from '../src/features/card-scanner/ui/scan-monitor-store';
+import {createScannerFeedback} from '../src/features/card-scanner/ui/scanner-feedback';
+import type {ScannerFeedback,FeedbackReadContext} from '../src/features/card-scanner/ui/scanner-feedback';
+import type {ObservationFact,ObservationSource} from '../src/features/card-scanner/session/observation-execution';
 
 const source:ObservationSource={sessionId:'actual-test-session',frameId:7,observationId:'11',captureOrder:51,captureTime:2.4,phase:'input',slot:0};
 

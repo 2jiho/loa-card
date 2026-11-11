@@ -1,9 +1,9 @@
 import {ALL_FORMATS,BlobSource,CanvasSink,Input} from 'mediabunny';
-import {createRecordingInputRaster} from '../src/features/card-scanner/recording-input-raster';
-import {yieldForCapture} from '../src/features/card-scanner/input-source';
-import {MAX_FRAME_BYTES} from '../src/features/card-scanner/exact-recording-codec';
-import {copyScannerInput} from '../src/features/card-scanner/scanner-input-frame';
-import {createEncodedPixelResidual,restoreEncodedPixels} from '../src/features/card-scanner/encoded-pixel-residual';
+import {createRecordingInputRaster} from '../src/features/card-scanner/reproduction/recording-input-raster';
+import {yieldForCapture} from '../src/features/card-scanner/capture/input-source';
+import {MAX_FRAME_BYTES} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {copyScannerInput} from '../src/features/card-scanner/capture/scanner-input-frame';
+import {createEncodedPixelResidual,restoreEncodedPixels} from '../src/features/card-scanner/reproduction/encoded-pixel-residual';
 
 const PREPARATION_URL='/work/encoded-reference/video5-reference-preparation.json';
 const ALL_PREPARATION_URL='/work/encoded-reference/all-recovery-preparation.json';

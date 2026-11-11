@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {inputArrival,parseInputArrival,parseInputBackupReservation,parseBackupCapacityDeferral} from '../src/features/card-scanner/input-arrival';
-import {MAX_FRAME_BYTES} from '../src/features/card-scanner/recording-frame-integrity';
-import {createLiveInputAdmission} from '../src/features/card-scanner/live-input-admission';
+import {inputArrival,parseInputArrival,parseInputBackupReservation,parseBackupCapacityDeferral} from '../src/features/card-scanner/capture/input-arrival';
+import {MAX_FRAME_BYTES} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
+import {createLiveInputAdmission} from '../src/features/card-scanner/capture/live-input-admission';
 import {RunStateTrace,parseRunStateTrace,replayRunStateTrace} from '../dev/run-state-trace';
 
 const stamp={inputId:1,captureTime:3.2,observedAtMs:400};

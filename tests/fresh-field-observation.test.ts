@@ -1,15 +1,15 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {FreshObservations} from '../src/features/card-scanner/fresh-observation';
-import {CaptureObservations} from '../src/features/card-scanner/capture-quality';
-import {CandidateQueue} from '../src/features/card-scanner/candidate-queue';
-import {replacePendingCandidate,replaceRetry} from '../src/features/card-scanner/retry-candidate';
-import {CardReadAttempts} from '../src/features/card-scanner/card-read-budget';
-import {resolvedSavedObservation,type SavedObservation} from '../src/features/card-scanner/saved-acquisition';
-import {canFinishVerifiedCapture,canSkipRecovery} from '../src/features/card-scanner/recovery-completion';
-import {AutoCompletionHold,canFinishEndedCapture,canSkipCoveredOriginals,canStopSharing,hasCompleteCaptureEvidence} from '../src/features/card-scanner/auto-completion';
-import type {ObservationSource} from '../src/features/card-scanner/observation-execution';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+import {FreshObservations} from '../src/features/card-scanner/session/fresh-observation';
+import {CaptureObservations} from '../src/features/card-scanner/acquisition/capture-quality';
+import {CandidateQueue} from '../src/features/card-scanner/acquisition/candidate-queue';
+import {replacePendingCandidate,replaceRetry} from '../src/features/card-scanner/session/retry-candidate';
+import {CardReadAttempts} from '../src/features/card-scanner/recognition/card-read-budget';
+import {resolvedSavedObservation,type SavedObservation} from '../src/features/card-scanner/acquisition/saved-acquisition';
+import {canFinishVerifiedCapture,canSkipRecovery} from '../src/features/card-scanner/session/recovery-completion';
+import {AutoCompletionHold,canFinishEndedCapture,canSkipCoveredOriginals,canStopSharing,hasCompleteCaptureEvidence} from '../src/features/card-scanner/session/auto-completion';
+import type {ObservationSource} from '../src/features/card-scanner/session/observation-execution';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 
 type Observation=Readonly<{order:number;frame:string;stable:boolean}>;
 const observation=(order:number):Observation=>Object.freeze({order,frame:`physical-source/${order}`,stable:true});
@@ -203,13 +203,13 @@ test('unknown changed fields cannot use a complete old inventory to bypass any c
   const card:ScannedCard={id:identity.id,name:identity.name,awakening:0,extraCopies:0,countReliable:true,
     confidence:1,review:[],image:'',time:1,observations:1,captureOrder:100};
   const state=()=>({expected:1,finalExpected:1,cards:[card],latest,confirmedNames,confirmed,inputSettled:true,headerAvailable:true,
-    pending:0,unresolved:5,dropped:0,tailFresh:true,inputClosed:true,headerVerified:true,metadataSettled:true,
+    pending:0,unresolved:0,dropped:0,tailFresh:true,inputClosed:true,headerVerified:true,metadataSettled:true,
     fieldChangesSettled:fresh.unresolvedChanges()===0});
   const before=state(),hold=new AutoCompletionHold();
   assert.equal(hasCompleteCaptureEvidence({...before,fieldChangesSettled:true}),true,
     'the pre-existing inventory is otherwise fully confirmed');
   assert.equal(canFinishEndedCapture({...before,fieldChangesSettled:true}),true,
-    'the ordinary unmatched-crop exception is enabled in this control');
+    'the complete control has no independent unresolved warnings');
   assert.equal(fresh.unresolvedChanges(),1);
   for(const [name,result] of [
     ['preflight',hasCompleteCaptureEvidence(before)],['share stop',canStopSharing(before)],
@@ -311,9 +311,9 @@ test('an accepted field change forming a new visual group cannot disappear behin
     confidence:1,review:[],image:'',time:1,observations:1,captureOrder:100};
   const completion=()=>({expected:1,finalExpected:1,cards:[card],latest:new Map([['known-a',100]]),
     confirmedNames:new Map([['known-a',100]]),confirmed:new Map([['known-a',100]]),inputSettled:true,
-    headerAvailable:true,pending:0,unresolved:1,dropped:0,tailFresh:true,inputClosed:true,headerVerified:true,
+    headerAvailable:true,pending:0,unresolved:0,dropped:0,tailFresh:true,inputClosed:true,headerVerified:true,
     fieldChangesSettled:fresh.unresolvedChanges()===0});
-  assert.equal(canFinishEndedCapture(completion()),true,'the old inventory otherwise satisfies the unmatched-input exception');
+  assert.equal(canFinishEndedCapture(completion()),true,'the old inventory otherwise satisfies the completion checks');
   assert.equal(queue.push(b),true);
   // No duplicate retry plan exists for a newly created group: every accepted
   // source needs proof independently of the visual grouping decision.

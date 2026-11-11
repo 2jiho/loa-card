@@ -12,6 +12,7 @@ LoaCard 작성 코드와 문서는 [MIT](LICENSE)로 제공한다. 아래 외부
 | Emotion | MIT | https://github.com/emotion-js/emotion |
 | Mediabunny | MPL-2.0 | https://github.com/Vanilagy/mediabunny |
 | lz4-lite / lz4-wasm | MIT | https://github.com/alex-vukov/lz4-lite · https://github.com/PSeitz/lz4-wasm |
+| @noble/hashes 1.8.0 (개발 전용) | MIT | https://github.com/paulmillr/noble-hashes |
 | ONNX Runtime Web | MIT | https://github.com/microsoft/onnxruntime |
 | OpenCV.js / 배포 패키지 | Apache-2.0 | https://github.com/TechStark/opencv-js |
 | PaddleOCR 모델 | Apache-2.0 | https://github.com/PaddlePaddle/PaddleOCR |
@@ -22,6 +23,8 @@ LoaCard 작성 코드와 문서는 [MIT](LICENSE)로 제공한다. 아래 외부
 `npm run notices`와 dev/build 준비 단계는 설치된 production 의존성의 버전·라이선스·원문 고지를 `public/licenses/`로 생성한다. 의존성 전체를 포함하므로 실제 번들에 포함되지 않는 항목도 있을 수 있다. 누락된 원문은 `inventory.json`의 `missingLicenseText`에 기록한다. 이 목록은 법률 검토나 배포 권리 확인을 대신하지 않는다.
 
 Mediabunny는 수정하지 않은 npm 패키지를 사용한다. 빌드에 사용한 패키지의 `src/`, `package.json`, `LICENSE`를 `licenses/mediabunny-source/`에 함께 배포한다. 해당 소스는 MPL-2.0이다. 배포 페이지의 **라이선스** 링크에서 라이선스 원문과 소스 파일 목록을 확인할 수 있다. 수정하거나 다른 버전을 사용하면 실제 배포 버전의 소스를 함께 갱신해야 한다.
+
+개발 서버에서 재현 기록의 바이트를 검증하는 Worker는 `@noble/hashes@1.8.0`을 사용한다. 해당 패키지의 MIT 원문과 저작권 표시는 [개발 의존성 고지](licenses/development/noble-hashes-MIT.txt)에 보관한다. 이 Worker는 개발 전용 경로이며 일반 배포에 포함되는지 빌드 결과로 확인해야 한다.
 
 현재 `guid-typescript@1.0.9`, `tr46@0.0.3` npm 패키지는 각각 ISC/MIT를 선언하지만 라이선스 원문을 포함하지 않는다. 생성 보고서가 이를 별도로 표시한다. 공개 배포 전 실제 배포 포함 여부와 원문 확보 여부를 검토한다. ONNX Runtime의 원문은 저장소에 보관한 `public/scanner/LICENSE-ONNX-Runtime.txt`로 보완한다.
 
@@ -40,7 +43,7 @@ Lost Ark의 카드 원화·게임 UI·명칭 및 관련 게임 자산의 권리�
 다음 자료는 이미지가 JSON/base64/특징 벡터로 변환되어 있어도 자동으로 프로젝트 MIT 대상이 되지 않는다.
 
 - `public/scanner/growth-tab.png`, `header-anchor.png`: 게임 UI 일부.
-- `public/scanner/cards.json`, `artwork-details.json`, `screen-artwork-details.json`, `counter-patterns.json`, `stars.json`: 카드 메타데이터 및 원화·UI에서 유래한 인식 자료.
+- `public/scanner/cards.json`, `artwork-details.json`, `screen-artwork-details.json`, `portrait-competitors.json`, `counter-patterns.json`, `stars.json`: 카드 메타데이터 및 원화·UI에서 유래한 인식 자료.
 - `public/growth/master.json`, `public/raid/master.json`, `src/features/merchants/merchants.json`: 게임 데이터 기반 마스터.
 - `tests/fixtures/`: 게임 화면에서 자른 픽셀, 이름 마스크, 특징과 수동 라벨. 일부 JSON에서 이미지를 복원할 수 있다. 별도의 합성 테스트 자료도 있지만 실제 화면에서 얻은 표본의 권리가 바뀌는 것은 아니다.
 

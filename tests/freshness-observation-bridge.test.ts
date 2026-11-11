@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {FreshObservations} from '../src/features/card-scanner/fresh-observation';
-import {FreshnessEvidence} from '../src/features/card-scanner/freshness-evidence';
-import {FRESHNESS_EVIDENCE_LIMITS} from '../src/features/card-scanner/freshness-evidence-types';
-import {FreshnessObservationBridge} from '../src/features/card-scanner/freshness-observation-bridge';
-import {InventoryEvidence} from '../src/features/card-scanner/inventory-evidence';
-import type {InventorySource} from '../src/features/card-scanner/inventory-evidence';
-import type {SavedObservation} from '../src/features/card-scanner/saved-acquisition';
-import {resolvedSavedObservation} from '../src/features/card-scanner/saved-acquisition';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+import {FreshObservations} from '../src/features/card-scanner/session/fresh-observation';
+import {FreshnessEvidence} from '../src/features/card-scanner/session/freshness-evidence';
+import {FRESHNESS_EVIDENCE_LIMITS} from '../src/features/card-scanner/session/freshness-evidence-types';
+import {FreshnessObservationBridge} from '../src/features/card-scanner/session/freshness-observation-bridge';
+import {InventoryEvidence} from '../src/features/card-scanner/session/inventory-evidence';
+import type {InventorySource} from '../src/features/card-scanner/session/inventory-evidence';
+import type {SavedObservation} from '../src/features/card-scanner/acquisition/saved-acquisition';
+import {newSavedObservation,resolvedSavedObservation} from '../src/features/card-scanner/acquisition/saved-acquisition';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 
 function source(order=100,time=1,frameId=1):InventorySource {
   return {sessionId:'bridge',frameId,observationId:`use-${frameId}`,captureOrder:order,captureTime:time,
@@ -61,7 +61,7 @@ test('new fields retain debt after a late old result and queue replacement compl
   assert.equal(fresh.unresolvedChanges(),0);
 });
 
-test('exact cached object reuse preserves original binding and actual read source across opaque pixel-key changes',()=>{
+test('reusing an old logical observation preserves old proof and does not itself validate a later capture',()=>{
   const {inventory,evidence,bridge,fresh}=setup(1),original=source(),next=source(110,2,2);
   const a:SavedObservation={order:100,frame:original.frame,stable:true};
   bridge.use(a,'cache-before',original);fresh.remember(1,'cache-before',1,a,'fields-before',true);
@@ -80,6 +80,31 @@ test('exact cached object reuse preserves original binding and actual read sourc
   assert.equal(lineage.binding.order,100);
   assert.equal(lineage.identity?.source.observationId,original.observationId);
   assert.equal(lineage.identity?.pixelKey,'cache-before','a prior read must not be attributed the new cache key');
+  assert.equal(inventory.latestIdentityOrder.get(identity.id),110,'no time-3 observation was actually recorded');
+});
+
+test('A-B-A separate capture observations retain latest order and require new field proof',()=>{
+  const inventory=new InventoryEvidence();
+  const evidence=new FreshnessEvidence({version:2,sessionId:'bridge',limits:FRESHNESS_EVIDENCE_LIMITS},
+    {confirmedFields:()=>inventory.confirmedFieldOrder});
+  const bridge=new FreshnessObservationBridge(evidence);
+  const fresh=new FreshObservations<SavedObservation>(2048,value=>resolvedSavedObservation(value,inventory.confirmedFieldOrder),bridge);
+  const a=source(100,1,1),b=source(200,2,2),latestA=source(300,3,3);
+  const first=newSavedObservation(a.captureOrder,true,a.frame),middle=newSavedObservation(b.captureOrder,true,b.frame),last=newSavedObservation(latestA.captureOrder,true,latestA.frame);
+  assert.notEqual(first,last,'same pixel appearance must not share mutable captured-source identity');
+  const read=(value:SavedObservation,input:InventorySource,pixels:string,count:number)=>{
+    bridge.use(value,pixels,input);fresh.remember(1,pixels,input.captureTime,value,`fields-${count}`,true);
+    value.identity=identity;bridge.linkIdentity(value,input,pixels);inventory.acceptIdentity(input,identity.id);
+    inventory.recordObservation(input,fields(input,count),1);fresh.finish(value);
+  };
+  read(first,a,'appearance-A',0);read(middle,b,'appearance-B',1);
+  bridge.use(last,'appearance-A',latestA);fresh.remember(1,'appearance-A',3,last,'fields-0',true);
+  last.identity=identity;bridge.linkIdentity(last,latestA,'appearance-A');inventory.acceptIdentity(latestA,identity.id);
+  assert.equal(inventory.latestIdentityOrder.get(identity.id),300);
+  assert.equal(fresh.unresolvedChanges(),1,'the earlier A proof cannot prove the latest A fields');
+  inventory.recordObservation(latestA,fields(latestA,0),1);fresh.finish(last);
+  assert.equal(fresh.unresolvedChanges(),0);
+  assert.equal(inventory.cards.get(identity.id)?.extraCopies,0,'newest captured A is authoritative');
 });
 
 test('rejected crop keeps debt without committing accepted pixels and can resolve through its retained exact object',()=>{

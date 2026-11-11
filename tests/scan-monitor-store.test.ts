@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createScanMonitorStore,projectScanMonitorState} from '../src/features/card-scanner/scan-monitor-store';
-import {ScanGrid} from '../src/features/card-scanner/scan-grid';
-import {scanMonitorOutcome} from '../src/features/card-scanner/scan-monitor-outcome';
-import type {ScanMonitorState} from '../src/features/card-scanner/scan-monitor-store';
+import {createScanMonitorStore,projectScanMonitorState} from '../src/features/card-scanner/ui/scan-monitor-store';
+import {ScanGrid} from '../src/features/card-scanner/session/scan-grid';
+import {scanMonitorOutcome} from '../src/features/card-scanner/session/scan-monitor-outcome';
+import type {ScanMonitorState} from '../src/features/card-scanner/ui/scan-monitor-store';
 
 test('monitor updates synchronously before any batched result view and retains only display data',()=>{
  const store=createScanMonitorStore(),grid=new ScanGrid();let calls=0;
@@ -19,18 +19,72 @@ test('monitor updates synchronously before any batched result view and retains o
  assert.equal(store.getSnapshot()!.grid!.liveTop,19);
  assert.equal(calls,2);assert.equal(grid.liveViewport(19),false);
  assert.equal(grid.liveViewport(undefined),true);
- store.publish({...next,grid:grid.snapshot()});assert.equal(store.getSnapshot()!.grid!.liveTop,undefined);
+ store.publish({...next,grid:grid.snapshot()});
+ assert.equal(store.getSnapshot()!.grid!.liveTop,19,'last displayed row survives a transient viewport loss');
  store.clear();assert.equal(store.getSnapshot(),null);
- unsubscribe();store.publish(next);assert.equal(calls,4);
+ unsubscribe();store.publish(next);assert.equal(calls,3);
 });
 
 function snapshot():ScanMonitorState {
- return {currentRunRead:1,expected:394,capacity:450,interrupted:undefined,queued:39,activeReadings:0,unresolvedCount:0,hasInput:true,grid:{located:true,totalRows:55,estimatedTop:1,liveTop:1,liveTracking:true,
+ return {currentRunRead:1,expected:394,capacity:450,interrupted:undefined,queued:39,activeReadings:0,unresolvedCount:0,droppedFrames:0,hasInput:true,grid:{located:true,totalRows:55,estimatedTop:1,liveTop:1,liveTracking:true,
   cells:Array.from({length:40},(_,i)=>({status:i===0?'read':'waiting',row:Math.floor(i/10)+1})),
   inventory:Array.from({length:550},(_,i)=>({status:i===0?'read':'unknown',row:Math.floor(i/10)+1})),
   recent:{captured:40,read:1,waiting:39,review:0},
   recentFrame:{frame:1,cells:Array.from({length:40},(_,i)=>({status:i===0?'read':'waiting'}))}}};
 }
+
+test('projection carries collected and review counts without retaining card objects',()=>{
+ const projected=projectScanMonitorState({...snapshot(),currentRunNames:5,
+   cards:[{review:['장수 확인']},{review:[]}] });
+ assert.equal(projected.currentRunNames,5);
+ assert.equal(projected.review,1);
+ assert.equal('cards' in projected,false);
+});
+
+test('live row position survives a transient frame boundary',()=>{
+ const store=createScanMonitorStore();
+ const first={...snapshot(),grid:{...snapshot().grid!,liveTracking:true,liveTop:10}};
+ store.publish(first);
+ const lost={...first,grid:{...first.grid!,liveTracking:false,liveTop:undefined,recentFrame:undefined,
+   cells:Array.from({length:40},()=>({status:'unknown' as const}))}};
+ store.publish(lost);
+ assert.equal(store.getSnapshot()!.grid!.liveTracking,true);
+ assert.equal(store.getSnapshot()!.grid!.liveTop,10);
+});
+
+test('display grid keeps the last committed cells and frame across acquisition begin',()=>{
+ const store=createScanMonitorStore();
+ const first={...snapshot(),currentRunRead:20};
+ store.publish(first);const before=store.getSnapshot()!;
+ const cleared={...first,grid:{...first.grid!,cells:Array.from({length:40},()=>({status:'unknown' as const})),
+   recent:undefined,recentFrame:undefined}};
+ store.publish(cleared);const after=store.getSnapshot()!;
+ assert.equal(after.grid!.cells,before.grid!.cells);
+ assert.equal(after.grid!.recentFrame,before.grid!.recentFrame);
+ assert.equal(after.grid!.recent,before.grid!.recent);
+});
+
+test('header conflict alone immediately revokes and restores the completed monitor outcome',()=>{
+ const store=createScanMonitorStore();let calls=0;store.subscribe(()=>calls++);
+ const initial={...snapshot(),currentRunRead:394,queued:0,activeReadings:0,unresolvedFieldChanges:0};
+ const ended={busy:false,sharing:false};
+ store.publish(initial);
+ const complete=store.getSnapshot()!;
+ assert.equal(scanMonitorOutcome(complete,ended).kind,'complete');
+ store.publish({...initial,headerConflict:true});
+ const conflict=store.getSnapshot()!;
+ assert.equal(calls,2,'a header-only conflict must notify subscribers');
+ assert.equal(conflict.headerConflict,true);
+ assert.equal(scanMonitorOutcome(conflict,ended).kind,'review');
+ assert.equal(complete.headerConflict,undefined,'the prior snapshot stays unchanged');
+ store.publish({...initial,headerConflict:true});
+ assert.equal(calls,2,'an unchanged conflict does not cause another notification');
+ store.publish({...initial,headerConflict:false});
+ assert.equal(calls,3,'clearing only the conflict must notify subscribers');
+ assert.notEqual(store.getSnapshot()!.headerConflict,true);
+ assert.equal(scanMonitorOutcome(store.getSnapshot()!,ended).kind,'complete');
+ assert.equal(conflict.headerConflict,true,'the old warning snapshot stays unchanged');
+});
 
 test('equivalent cloned grid values preserve snapshots without extra notifications',()=>{
  const store=createScanMonitorStore();let calls=0;store.subscribe(()=>calls++);
@@ -69,9 +123,9 @@ test('reason, spatial, recent and header-only changes cannot be suppressed',()=>
   state=>{state.grid!.located=false;},state=>{state.grid!.totalRows=54;},
   state=>{state.grid!.estimatedTop=2;},state=>{state.grid!.liveTop=2;},
   state=>{state.grid!.liveTracking=false;},state=>{state.grid!.recent!.captured=30;},
-  state=>{state.grid!.recent!.waiting=30;},state=>{state.grid!.recent!.reading=1;},state=>{state.grid!.recent=undefined;},
+  state=>{state.grid!.recent!.waiting=30;},state=>{state.grid!.recent!.reading=1;},
   state=>{state.grid!.recentFrame!.frame=2;},state=>{state.grid!.recentFrame!.cells[1].status='reading';},
-  state=>{state.grid!.recentFrame!.cells[1].reason='가림';},state=>{state.grid!.recentFrame=undefined;},
+  state=>{state.grid!.recentFrame!.cells[1].reason='가림';},
   state=>{state.grid!.inventory!.pop();},state=>{state.grid!.inventory=undefined;},
   state=>{state.currentRunRead=2;},state=>{state.expected=393;},state=>{state.capacity=550;},
   state=>{state.queued=38;},state=>{state.activeReadings=1;},
@@ -156,15 +210,16 @@ test('recent frame-only changes notify immediately without repainting the absolu
  assert.equal(calls,3);assert.equal(store.getSnapshot()!.grid!.recentFrame!.frame,2);
  assert.equal(store.getSnapshot()!.grid!.recentFrame!.cells,reading.grid!.recentFrame!.cells,'a new receipt still shares unchanged markers');
  const cleared=structuredClone(replaced);delete cleared.grid!.recentFrame;store.publish(cleared);
- assert.equal(calls,4);assert.equal(store.getSnapshot()!.grid!.recentFrame,undefined);
- store.publish(structuredClone(cleared));assert.equal(calls,4);
- store.publish(replaced);assert.equal(calls,5);
+ assert.equal(calls,3,'a transient acquisition clear retains the last committed frame for display');
  assert.deepEqual(store.getSnapshot()!.grid!.recentFrame,replaced.grid!.recentFrame);
+ const nextFrame=structuredClone(replaced);nextFrame.grid!.recentFrame!.frame=3;nextFrame.grid!.recentFrame!.cells[2].status='read';
+ store.publish(nextFrame);assert.equal(calls,4);assert.equal(store.getSnapshot()!.grid!.recentFrame!.frame,3);
+ store.publish(structuredClone(cleared));assert.equal(calls,4);assert.equal(store.getSnapshot()!.grid!.recentFrame!.frame,3);
 });
 
 test('raw state projects unresolved counts and input presence without retaining diagnostic images or sampled counters',()=>{
  const store=createScanMonitorStore();let calls=0;store.subscribe(()=>calls++);
- const raw={...snapshot(),sampled:1,unidentified:[{image:'private crop one',time:1,pending:false}],cards:['private inventory']};
+ const raw={...snapshot(),sampled:1,unidentified:[{image:'private crop one',time:1,pending:false}],unresolvedObservations:0,cards:['private inventory']};
  delete raw.hasInput;delete raw.unresolvedCount;
  store.publish(raw);const first=store.getSnapshot()!;
  assert.equal(first.unresolvedCount,1);assert.equal(first.hasInput,true);
@@ -181,7 +236,7 @@ test('raw state projects unresolved counts and input presence without retaining 
 
 test('changed-field-only feedback publishes immediately and survives image-free projection',()=>{
  const store=createScanMonitorStore();let calls=0;store.subscribe(()=>calls++);
- const ready={...snapshot(),currentRunRead:394,queued:0,unidentified:[],unresolvedFieldChanges:0};
+ const ready={...snapshot(),currentRunRead:394,queued:0,unidentified:[],unresolvedObservations:0,unresolvedFieldChanges:0};
  store.publish(ready);const original=store.getSnapshot();
  store.publish({...ready,unresolvedFieldChanges:1});
  const current=store.getSnapshot()!;
@@ -194,4 +249,44 @@ test('changed-field-only feedback publishes immediately and survives image-free 
  const malformed=projectScanMonitorState({...ready,unresolvedFieldChanges:Infinity});
  assert.equal(malformed.unresolvedFieldChanges,undefined);assert.equal(malformed.unresolvedFieldChangesUnavailable,true);
  store.publish(malformed);assert.equal(scanMonitorOutcome(store.getSnapshot(),{busy:false,sharing:false}).kind,'review');
+});
+
+test('ledger-only unresolved feedback and dropped frames revoke a completed outcome',()=>{
+ const store=createScanMonitorStore();let calls=0;store.subscribe(()=>calls++);
+ const base={...snapshot(),sampled:1,currentRunRead:394,queued:0,unidentified:[],unresolvedObservations:0,unresolvedFieldChanges:0};
+ store.publish(base);assert.equal(scanMonitorOutcome(store.getSnapshot(),{busy:false,sharing:false}).kind,'complete');
+ store.publish({...base,unresolvedObservations:2});
+ assert.equal(store.getSnapshot()!.unresolvedCount,2);
+ assert.equal(scanMonitorOutcome(store.getSnapshot(),{busy:false,sharing:false}).kind,'review');
+ assert.equal('unidentified' in store.getSnapshot()!,false);
+ store.publish(base);assert.equal(scanMonitorOutcome(store.getSnapshot(),{busy:false,sharing:false}).kind,'complete');
+ store.publish({...base,droppedFrames:1});
+ const lost=scanMonitorOutcome(store.getSnapshot(),{busy:false,sharing:false});
+ assert.equal(lost.kind,'review');assert.match(lost.message,/다시 스캔/);assert.equal(calls,4);
+});
+
+test('completion diagnostics use their own display lane without grid or feedback publications',()=>{
+ const store=createScanMonitorStore(),input=snapshot();let calls=0,publications=0,gridCalls=0;
+ store.subscribe(()=>calls++);
+ store.setFeedback({publish(){publications++;},grid(){gridCalls++;},cancel(){}} as unknown as NonNullable<Parameters<typeof store.setFeedback>[0]>);
+ store.publish(input);
+ const previous=store.getSnapshot()!,beforePublications=publications,beforeGrid=gridCalls;
+ const diagnostic={gate:'latest-observations',expected:394,identities:394,names:394,fields:394,unresolved:13,
+  inputPending:false,headerAvailable:true,headerAttempts:0,headerMismatches:0,headerErrors:0} as const;
+ store.publishAutoCompletion(diagnostic);
+ assert.equal(calls,2);assert.equal(publications,beforePublications);assert.equal(gridCalls,beforeGrid);
+ assert.equal(store.getSnapshot()!.grid,previous.grid);assert.equal(store.getSnapshot()!.autoCompletionDiagnostic?.gate,'latest-observations');
+ store.publishAutoCompletion({...diagnostic,unresolved:12});assert.equal(calls,2,'unchanged gate does not redraw');
+ store.publish(structuredClone(input));assert.equal(calls,2,'ordinary stale feedback does not erase current gate');
+ store.publishAutoCompletion({...diagnostic,gate:'hold'});assert.equal(calls,3);
+ assert.equal(store.getSnapshot()!.autoCompletionDiagnostic?.gate,'hold');
+ store.clear();assert.equal(store.getSnapshot(),null);
+});
+
+test('historical-only changes notify the monitor without changing current status',()=>{
+ const store=createScanMonitorStore();let calls=0;store.subscribe(()=>calls++);
+ const input=snapshot();input.grid!.inventory![1]={status:'unknown',row:1};store.publish(input);
+ const next=structuredClone(input);next.grid!.inventory![1].historical=true;store.publish(next);
+ assert.equal(calls,2);assert.equal(store.getSnapshot()!.grid!.inventory![1].historical,true);
+ assert.equal(store.getSnapshot()!.grid!.inventory![1].status,'unknown');
 });

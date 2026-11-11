@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {convertNativeYuvToRgba, nativeYuvDescriptorJson, NATIVE_YUV_RECIPES, planNativeYuvFrame,
   UnsupportedNativeYuvError, type NativeYuvFrameMetadata, type NativeYuvPlaneLayout} from '../dev/native-yuv-recipe';
-import {MAX_FRAME_BYTES} from '../src/features/card-scanner/exact-recording-codec';
+import {MAX_FRAME_BYTES} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 
 function metadata(name: 'bt709' | 'smpte170m' = 'bt709', format = 'I420', width = 2, height = 2): NativeYuvFrameMetadata {
   return {format, codedWidth: width, codedHeight: height, displayWidth: width, displayHeight: height,

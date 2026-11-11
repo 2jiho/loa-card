@@ -1,15 +1,15 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
-import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/scanner-name-configuration';
-import type {PreparedScanner} from '../src/features/card-scanner/scanner-preparation';
+import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/session/scanner-name-configuration';
+import type {PreparedScanner} from '../src/features/card-scanner/session/scanner-preparation';
 
 const continued={version:1,rawResultPolicy:'continue'} as const;
 type Resource={kind:string;disposals:number;dispose():Promise<void>;ready():Promise<void>};
 let fixtureId=0;
-async function matchingFixture(run:(fixture:{preparation:typeof import('../src/features/card-scanner/scanner-preparation');
-  takeMatching:typeof import('../src/features/card-scanner/matching-scanner-preparation').takeMatchingPreparedScanner;
-  prepare:typeof import('../src/features/card-scanner/scanner-preparation').prepareScanner;
+async function matchingFixture(run:(fixture:{preparation:typeof import('../src/features/card-scanner/session/scanner-preparation');
+  takeMatching:typeof import('../src/features/card-scanner/session/matching-scanner-preparation').takeMatchingPreparedScanner;
+  prepare:typeof import('../src/features/card-scanner/session/scanner-preparation').prepareScanner;
   state:{resources:Resource[];onDispose:((kind:string)=>void)|null;block:((kind:string)=>Promise<void>)|null;failure:Error|null}})=>Promise<void>){
   const id=++fixtureId,bridgeKey=`__loaCardMatchingPreparation${id}`;
   const globals=globalThis as unknown as Record<string,unknown>,navigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
@@ -24,9 +24,9 @@ async function matchingFixture(run:(fixture:{preparation:typeof import('../src/f
   globals[bridgeKey]={detector:async()=>resource('detector'),recognizer:async()=>resource('reader'),
     acquisition:()=>resource('acquisition'),visual:()=>undefined};
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{hardwareConcurrency:1}});
-  const preparationUrl=new URL(`../src/features/card-scanner/scanner-preparation.ts?test=matching-${id}`,import.meta.url).href;
-  const helperUrl=new URL(`../src/features/card-scanner/matching-scanner-preparation.ts?test=matching-${id}`,import.meta.url).href;
-  const dependencies:Record<string,string>={'./detector':'detector','./recognizer':'recognizer','./acquisition-client':'acquisition','./visual-client':'visual'};
+  const preparationUrl=new URL(`../src/features/card-scanner/session/scanner-preparation.ts?test=matching-${id}`,import.meta.url).href;
+  const helperUrl=new URL(`../src/features/card-scanner/session/matching-scanner-preparation.ts?test=matching-${id}`,import.meta.url).href;
+  const dependencies:Record<string,string>={'../acquisition/detector':'detector','../recognition/recognizer':'recognizer','../acquisition/acquisition-client':'acquisition','../recognition/visual-client':'visual'};
   const exports:Record<string,string>={detector:'createDetector',recognizer:'createRecognizer',acquisition:'createAcquisitionClient',visual:'createVisualClient'};
   const hooks=registerHooks({
     resolve(specifier,context,nextResolve){
@@ -41,11 +41,11 @@ async function matchingFixture(run:(fixture:{preparation:typeof import('../src/f
       return nextLoad(url,context);
     },
   });
-  let preparation:typeof import('../src/features/card-scanner/scanner-preparation')|undefined;
+  let preparation:typeof import('../src/features/card-scanner/session/scanner-preparation')|undefined;
   const pools:PreparedScanner[]=[];
   try{
     preparation=await import(preparationUrl);const owned=preparation;
-    const helper=await import(helperUrl) as typeof import('../src/features/card-scanner/matching-scanner-preparation');
+    const helper=await import(helperUrl) as typeof import('../src/features/card-scanner/session/matching-scanner-preparation');
     const prepare:typeof owned.prepareScanner=async(...args)=>{const pool=await owned.prepareScanner(...args);pools.push(pool);return pool;};
     await run({preparation:owned,takeMatching:helper.takeMatchingPreparedScanner,prepare,state});
   }finally{

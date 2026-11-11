@@ -1,11 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {UnknownLifecycle,hashUnknownLifecycle,parseUnknownFact,parseUnknownSeed,parseUnknownCheckpoint,
-  unknownKeyId,unknownVersionId} from '../src/features/card-scanner/unknown-lifecycle';
-import {UNKNOWN_LIFECYCLE_LIMITS,type UnknownSeed,type UnknownUpsert,type UnknownFact} from '../src/features/card-scanner/unknown-lifecycle-types';
-import type {ObservationSource} from '../src/features/card-scanner/observation-execution';
-import {updateUnknown} from '../src/features/card-scanner/unknown-observations';
-import {ConfirmedNameGroups} from '../src/features/card-scanner/confirmed-name-groups';
+  unknownKeyId,unknownVersionId} from '../src/features/card-scanner/session/unknown-lifecycle';
+import {UNKNOWN_LIFECYCLE_LIMITS,type UnknownSeed,type UnknownUpsert,type UnknownFact} from '../src/features/card-scanner/session/unknown-lifecycle-types';
+import type {ObservationSource} from '../src/features/card-scanner/session/observation-execution';
+import {updateUnknown} from '../src/features/card-scanner/session/unknown-observations';
+import {ConfirmedNameGroups} from '../src/features/card-scanner/session/confirmed-name-groups';
 
 const seed:UnknownSeed={version:1,sessionId:'session',origin:'scan',limits:UNKNOWN_LIFECYCLE_LIMITS};
 const key=(group=1)=>({kind:'group' as const,sessionId:'session',group});

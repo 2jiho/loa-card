@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
+import { hostname } from 'node:os';
 import { link, lstat, mkdir, open, readdir, rename, rm, unlink } from 'node:fs/promises';
 import { basename, extname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { parseScanResult } from './scan-case-results.mjs';
@@ -7,15 +8,59 @@ import { parseScanResult } from './scan-case-results.mjs';
 export const DEFAULT_CORPUS_ROOT = 'fixtures/local/corpus';
 export const MAX_CORPUS_RUN_BYTES = 16 * 1024 * 1024;
 const HASH = /^[a-f0-9]{64}$/;
+const SELECTION_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+const MAX_SELECTION_BYTES = 256 * 1024;
 const MAX_INPUTS = 1_000;
 const MAX_MANIFEST_BYTES = 2 * 1024 * 1024;
 const EXTENSIONS = {
   video: new Set(['.mp4', '.webm', '.mov', '.m4v', '.mkv']),
   images: new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif']),
   replay: new Set(['.loareplay']),
+  'raw-session': new Set(['.loaraw']),
 };
 
 function fail(message) { throw new Error(message); }
+
+/** Describe a writer lock without attempting to change it. A live PID is not
+ * proof of ownership (PIDs can be reused), and an unknown or dead owner is not
+ * permission to delete a lock while any writer may still be active. */
+export async function inspectCorpusWriterLock({ root = DEFAULT_CORPUS_ROOT } = {}) {
+  const path = join(resolve(root), '.write.lock');
+  if (!await safePath(path, { missing: true })) return { state: 'absent' };
+  let handle;
+  try {
+    ({ handle } = await readHandle(path));
+    const stat = await handle.stat();
+    if (stat.size < 1 || stat.size > 2048) return { state: 'unknown' };
+    const value = JSON.parse(await handle.readFile({ encoding: 'utf8' }));
+    if (!value || Array.isArray(value) || typeof value !== 'object' ||
+      Object.keys(value).sort().join(',') !== 'action,createdAt,host,pid,token,version' ||
+      value.version !== 1 || !['add', 'run'].includes(value.action) ||
+      !Number.isSafeInteger(value.pid) || value.pid < 1 || typeof value.host !== 'string' || !value.host || value.host.length > 255 ||
+      typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) ||
+      typeof value.token !== 'string' || !/^[a-f0-9-]{36}$/i.test(value.token)) return { state: 'unknown' };
+    let processState = 'unknown';
+    if (value.host === hostname()) {
+      try { process.kill(value.pid, 0); processState = 'present'; }
+      catch (error) { if (error.code === 'ESRCH') processState = 'absent'; }
+    }
+    return { state: 'owned', owner: value, processState };
+  } catch { return { state: 'unknown' }; }
+  finally { await handle?.close(); }
+}
+
+async function acquireCorpusWriter(path, action) {
+  const lock = await open(path, 'wx', 0o600);
+  try {
+    const owner = { version: 1, action, pid: process.pid, host: hostname(), createdAt: new Date().toISOString(), token: randomUUID() };
+    await lock.writeFile(`${JSON.stringify(owner)}\n`);
+    await lock.sync();
+    return lock;
+  } catch (error) {
+    try { await lock.close(); } finally { await unlink(path); }
+    throw error;
+  }
+}
 function contained(parent, child) {
   const remainder = relative(parent, child);
   return remainder !== '' && !isAbsolute(remainder) && remainder !== '..' && !remainder.startsWith(`..${sep}`);
@@ -62,7 +107,8 @@ async function readHandle(path) {
   } catch (error) { await handle.close(); throw error; }
 }
 
-async function digestFile(path, copyTo) {
+async function digestFile(path, copyTo, signal) {
+  signal?.throwIfAborted();
   const { handle, before } = await readHandle(path);
   const hash = createHash('sha256');
   let bytes = 0;
@@ -72,19 +118,23 @@ async function digestFile(path, copyTo) {
     const buffer = Buffer.allocUnsafe(256 * 1024);
     // A single bounded buffer streams both hashing and copying, independent of file size.
     for (;;) {
+      signal?.throwIfAborted();
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
       if (!bytesRead) break;
       hash.update(buffer.subarray(0, bytesRead)); bytes += bytesRead;
       if (output) {
         let offset = 0;
         while (offset < bytesRead) {
+          signal?.throwIfAborted();
           const { bytesWritten } = await output.write(buffer, offset, bytesRead - offset, null);
           if (!bytesWritten) fail('Copy did not make progress.');
           offset += bytesWritten;
         }
       }
     }
+    signal?.throwIfAborted();
     await output?.sync();
+    signal?.throwIfAborted();
     const after = await handle.stat();
     if (before.size !== bytes || after.size !== bytes || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
       fail('An input changed during registration or verification; retry with a stable file.');
@@ -95,8 +145,9 @@ async function digestFile(path, copyTo) {
 
 function chooseKind(files, requested) {
   const kind = requested ?? (files.every(path => EXTENSIONS.images.has(extname(path).toLowerCase())) ? 'images'
-    : files.length === 1 && EXTENSIONS.replay.has(extname(files[0]).toLowerCase()) ? 'replay' : 'video');
-  if (!Object.hasOwn(EXTENSIONS, kind)) fail('Kind must be video, images, or replay.');
+    : files.length === 1 && EXTENSIONS.replay.has(extname(files[0]).toLowerCase()) ? 'replay'
+    : files.length === 1 && EXTENSIONS['raw-session'].has(extname(files[0]).toLowerCase()) ? 'raw-session' : 'video');
+  if (!Object.hasOwn(EXTENSIONS, kind)) fail('Kind must be video, images, replay, or raw-session.');
   if (kind !== 'images' && files.length !== 1) fail('A video or replay case requires exactly one input; use separate cases.');
   if (files.some(path => !EXTENSIONS[kind].has(extname(path).toLowerCase()))) fail('Input extension does not match the case kind.');
   return kind;
@@ -170,17 +221,76 @@ async function readManifest(root, id) {
   return manifest;
 }
 
-async function objectMatches(root, input) {
-  const digest = await digestFile(join(root, 'objects', input.sha256));
+async function objectMatches(root, input, signal) {
+  const digest = await digestFile(join(root, 'objects', input.sha256), undefined, signal);
   if (digest.sha256 !== input.sha256 || digest.bytes !== input.bytes) fail('Object checksum mismatch.');
 }
 
+/** Client-reported selection facts; never interpreted as capture time. */
+export function validateCorpusInputSelection(value, count) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype ||
+      Object.keys(value).sort().join(',') !== 'id,lastModifiedMs,registrationStartedAt,selectedAt' ||
+      typeof value.id !== 'string' || !SELECTION_ID.test(value.id) ||
+      !Array.isArray(value.lastModifiedMs) || value.lastModifiedMs.length !== count ||
+      value.lastModifiedMs.some(time => time !== null && (!Number.isSafeInteger(time) || time < 0))) fail('Invalid input selection metadata.');
+  const timestamp = time => {
+    if (typeof time !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(time)) return false;
+    const date = new Date(time); return Number.isFinite(date.getTime()) && date.toISOString() === time;
+  };
+  if (!(value.selectedAt === null || timestamp(value.selectedAt)) || !timestamp(value.registrationStartedAt))
+    fail('Invalid input selection timestamp.');
+  return { id: value.id, selectedAt: value.selectedAt, registrationStartedAt: value.registrationStartedAt, lastModifiedMs: [...value.lastModifiedMs] };
+}
+
+function selectionContent(caseId, kind, selection, inputs) {
+  const value = { version: 1, caseId, kind, selection,
+    inputs: inputs.map(({ index, extension, bytes, sha256 }) => ({ index, extension, bytes, sha256 })), captureTime: null };
+  const bytes = Buffer.from(`${JSON.stringify(value)}\n`, 'utf8');
+  if (bytes.length > MAX_SELECTION_BYTES) fail('Input selection metadata exceeds its size limit.');
+  return { bytes, sha256: createHash('sha256').update(bytes).digest('hex') };
+}
+
+/** Names contain the immutable record checksum; a UUID may have exactly one
+ * checksum under the single-writer lock. Legacy UUID-only names are retained
+ * but can be promoted only by a byte-identical new submission. */
+async function selectionEntries(directory, id) {
+  const names = await readdir(directory);
+  const legacy = `${id}.json`, prefix = `${id}-`;
+  const relevant = names.filter(name => name === legacy || name.startsWith(prefix));
+  for (const name of relevant) {
+    if (name !== legacy && !new RegExp(`^${id}-[a-f0-9]{64}\\.json$`).test(name)) fail('Invalid input selection filename.');
+  }
+  if (relevant.filter(name => name !== legacy).length > 1) fail('Input selection ID has conflicting records.');
+  return relevant;
+}
+async function publishSelection(temp, directory, id, content, signal) {
+  signal?.throwIfAborted();
+  const name = `${id}-${content.sha256}.json`, names = await selectionEntries(directory, id);
+  for (const existing of names) {
+    const stored = await readCorpusBytes(join(directory, existing), MAX_SELECTION_BYTES);
+    if (!stored.equals(content.bytes) || existing !== `${id}.json` && existing !== name)
+      fail('Input selection ID conflicts with an existing record.');
+  }
+  try { await link(temp, join(directory, name)); }
+  catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const stored = await readCorpusBytes(join(directory, name), MAX_SELECTION_BYTES);
+    if (!stored.equals(content.bytes)) fail('Input selection ID conflicts with an existing record.');
+  }
+}
+
 /** Register one ordered input sequence. Never creates an expected result or edits an existing case. */
-export async function addCorpusCase(files, { root = DEFAULT_CORPUS_ROOT, name, kind: requestedKind } = {}) {
+export async function addCorpusCase(files, { root = DEFAULT_CORPUS_ROOT, name, kind: requestedKind, signal, expectedInputs, selection: rawSelection } = {}) {
+  signal?.throwIfAborted();
   if (!Array.isArray(files) || !files.length || files.length > MAX_INPUTS || Array.from(files).some(path => typeof path !== 'string' || !path)) {
     fail(`Provide between 1 and ${MAX_INPUTS} input files.`);
   }
+  if (expectedInputs !== undefined && (!Array.isArray(expectedInputs) || expectedInputs.length !== files.length ||
+    expectedInputs.some(input => !input || typeof input.sha256 !== 'string' || !HASH.test(input.sha256) ||
+      !Number.isSafeInteger(input.bytes) || input.bytes < 0))) fail('Invalid expected input checksums.');
   const kind = chooseKind(files, requestedKind);
+  const selection = rawSelection === undefined ? undefined : validateCorpusInputSelection(rawSelection, files.length);
+  if (selection && kind === 'raw-session') fail('Raw sessions do not accept direct selection metadata.');
   const label = name === undefined ? basename(files[0]) : name;
   if (typeof label !== 'string' || !label.trim() || label.length > 200 || /[\r\n\0]/.test(label)) fail('Case name must be a short non-empty single line.');
   const corpus = resolve(root);
@@ -195,8 +305,8 @@ export async function addCorpusCase(files, { root = DEFAULT_CORPUS_ROOT, name, k
   await safePath(join(corpus, '.tmp'), { create: true });
   const lockPath = join(corpus, '.write.lock');
   let lock;
-  try { lock = await open(lockPath, 'wx'); }
-  catch (error) { if (error.code === 'EEXIST') fail('Corpus is busy (.write.lock exists); do not remove the lock while a writer is active.'); throw error; }
+  try { lock = await acquireCorpusWriter(lockPath, 'add'); }
+  catch (error) { if (error.code === 'EEXIST') fail('Corpus is busy (.write.lock exists); inspect the lock and stop all writers before recovery.'); throw error; }
   const stage = join(corpus, '.tmp', randomUUID());
   const createdObjects = [];
   let committed = false;
@@ -205,9 +315,12 @@ export async function addCorpusCase(files, { root = DEFAULT_CORPUS_ROOT, name, k
     const inputs = [];
     const staged = new Map();
     for (const [index, file] of files.entries()) {
+      signal?.throwIfAborted();
       const temporary = join(stage, `source-${index}`);
       // One pass captures the bytes and their identity together; never hash then copy the source again.
-      const digest = await digestFile(file, temporary);
+      const digest = await digestFile(file, temporary, signal);
+      if (expectedInputs && (digest.sha256 !== expectedInputs[index].sha256 || digest.bytes !== expectedInputs[index].bytes))
+        fail('Input checksum changed before corpus registration.');
       const extension = extname(file).toLowerCase();
       const input = { index, name: basename(file), ...digest, extension, path: inputPath(index, extension), object: `objects/${digest.sha256}` };
       inputs.push(input);
@@ -216,12 +329,35 @@ export async function addCorpusCase(files, { root = DEFAULT_CORPUS_ROOT, name, k
     }
     const id = corpusCaseId(kind, inputs.map(input => input.sha256));
     const destination = join(corpus, 'cases', id);
+    let selectionReceipt;
+    let selectionTemp;
+    if (selection) {
+      const content = selectionContent(id, kind, selection, inputs);
+      selectionTemp = join(stage, 'selection.json');
+      const selectionFile = await open(selectionTemp, 'wx', 0o600);
+      try { await selectionFile.writeFile(content.bytes); await selectionFile.sync(); }
+      finally { await selectionFile.close(); }
+      // The global immutable ID claim is published first. An interrupted case
+      // commit may leave an orphan claim, which a byte-identical retry can
+      // finish; the ID can never be silently reused for a different input.
+      const selections = join(corpus, 'selections');
+      await safePath(selections, { create: true });
+      await publishSelection(selectionTemp, selections, selection.id, content, signal);
+      selectionReceipt = { id: selection.id, sha256: content.sha256 };
+    }
     if (await safePath(destination, { missing: true })) {
       const existing = await readManifest(corpus, id);
-      await verifyCase(corpus, existing);
-      return { created: false, manifest: existing };
+      await verifyCase(corpus, existing, new Set(), signal);
+      if (selection && selectionTemp) {
+        const selections = join(destination, 'selections');
+        await safePath(selections, { create: true });
+        await publishSelection(selectionTemp, selections, selection.id, selectionContent(id, kind, selection, inputs), signal);
+      }
+      signal?.throwIfAborted();
+      return { created: false, manifest: existing, ...(selectionReceipt ? { selection: selectionReceipt } : {}) };
     }
     for (const { temporary, input } of staged.values()) {
+      signal?.throwIfAborted();
       const object = join(corpus, 'objects', input.sha256);
       try {
         // link is exclusive and atomic; never replace an existing content-addressed object.
@@ -229,12 +365,13 @@ export async function addCorpusCase(files, { root = DEFAULT_CORPUS_ROOT, name, k
         createdObjects.push(object);
       } catch (error) {
         if (error.code !== 'EEXIST') fail('The corpus filesystem must support hardlinks; no duplicate-copy fallback was used.');
-        await objectMatches(corpus, input);
+        await objectMatches(corpus, input, signal);
       }
     }
     const caseStage = join(stage, 'case');
     await mkdir(caseStage); await mkdir(join(caseStage, 'input'));
     for (const input of inputs) {
+      signal?.throwIfAborted();
       await safePath(join(corpus, 'objects', input.sha256));
       await link(join(corpus, 'objects', input.sha256), join(caseStage, ...input.path.split('/')));
     }
@@ -243,9 +380,17 @@ export async function addCorpusCase(files, { root = DEFAULT_CORPUS_ROOT, name, k
     const manifestFile = await open(join(caseStage, 'manifest.json'), 'wx');
     try { await manifestFile.writeFile(`${JSON.stringify(manifest, null, 2)}\n`); await manifestFile.sync(); }
     finally { await manifestFile.close(); }
+    if (selection && selectionTemp) {
+      const selections = join(caseStage, 'selections');
+      await mkdir(selections);
+      await link(selectionTemp, join(selections, `${selection.id}-${selectionReceipt.sha256}.json`));
+    }
+    signal?.throwIfAborted();
     await rename(caseStage, destination);
+    // Atomic rename commits the case. Once it succeeds, cancellation must not
+    // remove its objects even if the client disconnects before its receipt.
     committed = true;
-    return { created: true, manifest };
+    return { created: true, manifest, ...(selectionReceipt ? { selection: selectionReceipt } : {}) };
   } finally {
     // Only this invocation's UUID directory and newly created objects are eligible for rollback.
     try {
@@ -273,6 +418,46 @@ export async function listCorpusCases({ root = DEFAULT_CORPUS_ROOT } = {}) {
 /** Read the validated manifest without following caller-provided input paths. */
 export async function readCorpusCase({ root = DEFAULT_CORPUS_ROOT, id } = {}) {
   return readManifest(resolve(root), id);
+}
+
+/** Check a selection claim against its immutable global ID and the ordered
+ * case inputs. Reported selection/file times remain untrusted metadata. */
+export async function readCorpusInputSelection({ root = DEFAULT_CORPUS_ROOT, id, selectionId, signal } = {}) {
+  signal?.throwIfAborted();
+  const corpus = resolve(root), manifest = await readManifest(corpus, id);
+  if (typeof selectionId !== 'string' || !SELECTION_ID.test(selectionId)) fail('Invalid input selection ID.');
+  const caseDir = join(corpus, 'cases', id, 'selections'), globalDir = join(corpus, 'selections');
+  // Resolve directory components without following a replaced junction.
+  await safePath(caseDir); await safePath(globalDir);
+  const localNames = (await selectionEntries(caseDir, selectionId)).filter(name => name !== `${selectionId}.json`);
+  const globalNames = (await selectionEntries(globalDir, selectionId)).filter(name => name !== `${selectionId}.json`);
+  if (localNames.length !== 1 || globalNames.length !== 1 || localNames[0] !== globalNames[0])
+    fail('Input selection checksum claim is missing or inconsistent.');
+  const bytes = await readCorpusBytes(join(caseDir, localNames[0]), MAX_SELECTION_BYTES);
+  const global = await readCorpusBytes(join(globalDir, globalNames[0]), MAX_SELECTION_BYTES);
+  signal?.throwIfAborted();
+  if (!bytes.equals(global)) fail('Input selection and global ID claim do not match.');
+  let record;
+  try { record = JSON.parse(bytes.toString('utf8')); } catch { fail('Invalid input selection record.'); }
+  if (!record || typeof record !== 'object' || Array.isArray(record) ||
+      Object.keys(record).sort().join(',') !== 'captureTime,caseId,inputs,kind,selection,version' ||
+      record.version !== 1 || record.caseId !== id || record.kind !== manifest.kind || record.captureTime !== null ||
+      !Array.isArray(record.inputs) || record.inputs.length !== manifest.inputs.length) fail('Invalid input selection record.');
+  const selection = validateCorpusInputSelection(record.selection, manifest.inputs.length);
+  if (selection.id !== selectionId) fail('Input selection ID does not match its record.');
+  const inputs = record.inputs.map((input, index) => {
+    if (!input || typeof input !== 'object' || Array.isArray(input) ||
+        Object.keys(input).sort().join(',') !== 'bytes,extension,index,sha256' || input.index !== index ||
+        !EXTENSIONS[manifest.kind].has(input.extension) || input.bytes !== manifest.inputs[index].bytes ||
+        input.sha256 !== manifest.inputs[index].sha256) fail('Input selection does not match ordered case inputs.');
+    return { index, extension: input.extension, bytes: input.bytes, sha256: input.sha256 };
+  });
+  const expected = selectionContent(id, manifest.kind, selection, inputs);
+  if (!bytes.equals(expected.bytes) || localNames[0] !== `${selectionId}-${expected.sha256}.json`)
+    fail('Input selection record or checksum claim is invalid.');
+  signal?.throwIfAborted();
+  return { record: { version: 1, caseId: id, kind: manifest.kind, selection, inputs, captureTime: null },
+    sha256: expected.sha256, scope: 'client-reported-selection-and-ordered-case-identity-only' };
 }
 
 /** Sanitized errors suitable for both the CLI and the loopback-only dev route. */
@@ -355,7 +540,7 @@ export async function storeCorpusRun(bytes, { id, root = DEFAULT_CORPUS_ROOT } =
       !input || input.index !== index || input.sha256 !== manifest.inputs[index].sha256 || input.bytes !== manifest.inputs[index].bytes)) {
       invalidRun('Run report inputs do not match the case input sequence, hashes, and sizes.');
     }
-    try { lock = await open(lockPath, 'wx'); }
+    try { lock = await acquireCorpusWriter(lockPath, 'run'); }
     catch (error) {
       if (error.code === 'EEXIST') throw new CorpusRunError('CORPUS_BUSY', 'Corpus is busy; another writer holds the lock.');
       throw error;
@@ -409,18 +594,19 @@ export async function openCorpusInput({ root = DEFAULT_CORPUS_ROOT, id, index } 
   return { handle: opened.handle, input };
 }
 
-async function verifyCase(root, manifest, verifiedObjects = new Set()) {
+async function verifyCase(root, manifest, verifiedObjects = new Set(), signal) {
   for (const input of manifest.inputs) {
     if (!verifiedObjects.has(input.sha256)) {
-      await objectMatches(root, input); verifiedObjects.add(input.sha256);
+      await objectMatches(root, input, signal); verifiedObjects.add(input.sha256);
     }
-    const digest = await digestFile(join(root, 'cases', manifest.id, ...input.path.split('/')));
+    const digest = await digestFile(join(root, 'cases', manifest.id, ...input.path.split('/')), undefined, signal);
     if (digest.sha256 !== input.sha256 || digest.bytes !== input.bytes) fail('Case input checksum mismatch.');
   }
 }
 
 /** Verify persisted bytes and ordered case identity, never recognition accuracy. */
-export async function verifyCorpus({ root = DEFAULT_CORPUS_ROOT, id } = {}) {
+export async function verifyCorpus({ root = DEFAULT_CORPUS_ROOT, id, signal } = {}) {
+  signal?.throwIfAborted();
   const corpus = resolve(root);
   await safePath(corpus);
   const ids = id === undefined ? (await listCorpusCases({ root: corpus })).map(item => item.id) : [validId(id)];
@@ -428,8 +614,9 @@ export async function verifyCorpus({ root = DEFAULT_CORPUS_ROOT, id } = {}) {
   let inputs = 0;
   let bytes = 0;
   for (const caseId of ids) {
+    signal?.throwIfAborted();
     const manifest = await readManifest(corpus, caseId);
-    await verifyCase(corpus, manifest, objects);
+    await verifyCase(corpus, manifest, objects, signal);
     inputs += manifest.inputs.length;
     bytes += manifest.inputs.reduce((sum, input) => sum + input.bytes, 0);
   }

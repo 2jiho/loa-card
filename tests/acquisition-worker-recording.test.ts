@@ -4,20 +4,20 @@ import assert from 'node:assert/strict';
 test('acquisition forwards its immutable source after draw without recorder readback, keeping crop canvas and ownership separate',async()=>{
  const descriptors=Object.fromEntries(['self','OffscreenCanvas'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
  const replies:any[]=[],recorded:{message:any;transfers:any}[]=[],draws:any[]=[];
- let portClosed=0,throwTransfer=false;
+ let portClosed=0,throwTransfer=false,throwGap=false,throwEnd=false;
  class Canvas {
   constructor(public width:number,public height:number){}
   getContext(){return {drawImage:(bitmap:any)=>{draws.push(bitmap);},getImageData:()=>{throw Error('recording must not perform acquisition-worker readback');}};}
  }
  const scope=Object.assign(Object.create(globalThis),{onmessage:null as any,postMessage(value:any){replies.push(value);}});
  const port={onmessage:null as any,start(){},close(){portClosed++;},postMessage(message:any,transfers:any){
-  if(throwTransfer&&message.kind==='frame')throw Error('transfer failed');recorded.push({message,transfers});
+  if(throwTransfer&&message.kind==='frame'||throwGap&&message.kind==='gap'||throwEnd&&message.kind==='end')throw Error('transfer failed');recorded.push({message,transfers});
  }};
  const input=(width=2,height=2)=>({width,height,closed:0,close(){this.closed++;}});
  const layout={cells:[],header:{},growthPoints:{},sort:{},area:{},scrollbar:{},scale:1};
  Object.defineProperty(globalThis,'self',{configurable:true,value:scope});Object.defineProperty(globalThis,'OffscreenCanvas',{configurable:true,value:Canvas});
  try{
-  await import('../src/features/card-scanner/acquisition-worker');
+  await import('../src/features/card-scanner/acquisition/acquisition-worker');
   await scope.onmessage({data:{kind:'record',port}});
   const first=input();await scope.onmessage({data:{id:1,bitmap:first,layout,time:1.25,phase:'input'}});
   assert.equal(first.closed,0,'forwarded input is no longer owned by acquisition');assert.equal(draws[0],first);
@@ -34,7 +34,16 @@ test('acquisition forwards its immutable source after draw without recorder read
   assert.equal(failed.closed,1);assert.equal(recorded.at(-1)!.message.kind,'gap');assert.equal(replies.at(-1).id,5,'recorder failure must not block crop delivery');
   throwTransfer=false;const large=input(4000,3000);await scope.onmessage({data:{id:6,bitmap:large,recordOnly:true,time:6}});
   assert.equal(large.closed,1);assert.equal(recorded.at(-1)!.message.kind,'gap');
-  await scope.onmessage({data:{kind:'record-end'}});assert.equal(portClosed,1);
+  throwTransfer=true;throwGap=true;port.onmessage({data:{kind:'credit',bytes:16}});
+  const lost=input();await scope.onmessage({data:{id:8,bitmap:lost,layout,time:8}});
+  assert.equal(lost.closed,1);assert.equal(replies.at(-1).id,8,'failed recording must not block acquisition result');
+  assert.equal(replies.filter(reply=>reply.recordingIssue).length,1);
+  const lostAgain=input(4000,3000);await scope.onmessage({data:{id:9,bitmap:lostAgain,recordOnly:true,time:9}});
+  assert.equal(lostAgain.closed,1);assert.equal(replies.at(-1).id,9,'failed gap-only send must not block acquisition');
+  assert.equal(replies.filter(reply=>reply.recordingIssue).length,1,'only one issue per recording');
+  throwGap=false;
+  throwEnd=true;await scope.onmessage({data:{kind:'record-end'}});assert.equal(portClosed,1);
+  assert.equal(replies.at(-1).recordingEnded,true,'failed end still acknowledges cleanup');
   const normal=input();await scope.onmessage({data:{id:7,bitmap:normal,layout,time:7}});assert.equal(normal.closed,1,'unrecorded inputs retain old release behavior');
  }finally{for(const [key,descriptor] of Object.entries(descriptors))if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}
 });

@@ -1,7 +1,7 @@
-import {createRecognizer,cardHasLabel} from '../src/features/card-scanner/recognizer';
-import {CardReadBudget,CardReadTimeout} from '../src/features/card-scanner/card-read-budget';
-import {inspectCapture} from '../src/features/card-scanner/capture-quality';
-import {countReliability} from '../src/features/card-scanner/count-confidence';
+import {createRecognizer,cardHasLabel} from '../src/features/card-scanner/recognition/recognizer';
+import {CardReadBudget,CardReadTimeout} from '../src/features/card-scanner/recognition/card-read-budget';
+import {inspectCapture} from '../src/features/card-scanner/acquisition/capture-quality';
+import {countReliability} from '../src/features/card-scanner/recognition/count-confidence';
 import {CARD_CROP_PROOF_LIMITS as LIMITS,verifyCardCropPng,measureCardCropRgba,decodeCardCropBitmap,sha256CardCropBytes} from './card-crop-proof-core';
 import {parseCardCropProofRoute,parseSelectedCardCropProof} from './card-crop-proof-routing';
 import {runCardCropProofSequence,cardCropProofCompleted} from './card-crop-proof-execution';

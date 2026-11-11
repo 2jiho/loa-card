@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import {IDBObjectStore} from 'fake-indexeddb';
 import {createReproductionSessionStore,REPRODUCTION_DATABASE_VERSION,SESSION_LEASE_MS,MAX_SESSION_CHUNK_BYTES,
-  MAX_SESSION_DETAILS_BYTES,DEFAULT_SESSION_LIMITS,SessionStorageLimitError} from '../src/features/card-scanner/reproduction-session-store';
-import type {SessionStart,SessionStoreOptions} from '../src/features/card-scanner/reproduction-session-store';
+  MAX_SESSION_DETAILS_BYTES,DEFAULT_SESSION_LIMITS,SessionStorageLimitError} from '../src/features/card-scanner/reproduction/reproduction-session-store';
+import type {SessionStart,SessionStoreOptions} from '../src/features/card-scanner/reproduction/reproduction-session-store';
 
 const environment={browser:'test',catalog:'test-data',build:'test-build'};
 

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createNameReader} from '../src/features/card-scanner/name-reader';
+import {createNameReader} from '../src/features/card-scanner/recognition/name-reader';
 
 test('count OCR reuses only identical raw pixels, dimensions and maximum, not just a white mask',async()=>{
   const oldWorker=globalThis.Worker,oldDocument=globalThis.document;

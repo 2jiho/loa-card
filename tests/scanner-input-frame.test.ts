@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyScannerInput, normalizeScannerInputFrame, parseScannerInputProvenance, type ScannerInputFrame } from '../src/features/card-scanner/scanner-input-frame';
+import { copyScannerInput, normalizeScannerInputFrame, parseScannerInputProvenance, type ScannerInputFrame } from '../src/features/card-scanner/capture/scanner-input-frame';
 
 const element = {} as HTMLCanvasElement;
 const metadata = { frameId: 12, captureTime: 1.25, phase: 'recovery', pixelHash: 'a'.repeat(64) };

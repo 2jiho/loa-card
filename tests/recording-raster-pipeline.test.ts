@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createRecordingRasterPipeline,type RasterWorker} from '../src/features/card-scanner/recording-raster-pipeline';
-import type {RecordingRasterInput} from '../src/features/card-scanner/recording-input-raster';
+import {createRecordingRasterPipeline,type RasterWorker} from '../src/features/card-scanner/reproduction/recording-raster-pipeline';
+import type {RecordingRasterInput} from '../src/features/card-scanner/reproduction/recording-input-raster';
 
 const turn=()=>new Promise<void>(resolve=>setImmediate(resolve));
 function bitmap(tag=1,width=1,height=1){return {width,height,tag,closed:0,close(){this.closed++;}};}

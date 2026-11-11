@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createCtcLexicon, joinCtcLines } from "../src/features/card-scanner/ctc-lexicon.ts";
-import { decodeCtc } from "../src/features/card-scanner/ctc-decoder.ts";
-import { matchCtcCardName } from "../src/features/card-scanner/ctc-name-match.ts";
-import { confirmName } from "../src/features/card-scanner/name-confidence.ts";
+import { createCtcLexicon, joinCtcLines } from "../src/features/card-scanner/recognition/ctc-lexicon.ts";
+import { decodeCtc } from "../src/features/card-scanner/recognition/ctc-decoder.ts";
+import { matchCtcCardName } from "../src/features/card-scanner/recognition/ctc-name-match.ts";
+import { confirmName } from "../src/features/card-scanner/recognition/name-confidence.ts";
 
 const characters = ["", "가", "디", "딘", "언", "루", "보"];
 const cards = [{ id: "1", name: "가디언 루", rarity: 4 }, { id: "2", name: "가디언 보", rarity: 4 }];

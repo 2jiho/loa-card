@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {packPixels,unpackPixels,deflate,pixelHash,entryParts,exactPixels,exactEntries,exactReplayFrames,executionSummary,inflate,fastCompress,fastInflate} from '../src/features/card-scanner/exact-recording-codec';
+import {packPixels,unpackPixels,deflate,pixelHash,entryParts,exactPixels,exactEntries,exactReplayFrames,executionSummary,inflate,fastCompress,fastInflate} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 const signal=()=>new AbortController().signal;
 async function archive(images:Uint8Array[]){const parts:BlobPart[]=[];for(let i=0;i<images.length;i++)parts.push(...entryParts({kind:'frame',id:i+1,time:i/10,width:images[i].length/4,height:1,key:i===0||images[i].length!==images[i-1].length,hash:await pixelHash(images[i] as Uint8Array<ArrayBuffer>)},await deflate(packPixels(images[i],images[i-1]))));return new Blob(parts);}
 test('lossless deltas preserve one pixel changes, identical frames, final short blocks and resize',async()=>{

@@ -1,9 +1,9 @@
 import {comparePaintedRgbaPasses,MAX_NATIVE_PLANE_ENCODED_BYTES,NATIVE_PLANE_PREPARATION_URL,NATIVE_PLANE_VIDEO_URL,parseNativePlaneSource} from './native-plane-proof-worker';
 import type {NativePlaneSource,PaintedRgbaRecord} from './native-plane-proof-worker';
-import {decodedRgbaFrames} from '../src/features/card-scanner/decoded-rgba-client';
-import type {DecodedRgbaPreference} from '../src/features/card-scanner/decoded-rgba-client';
-import {MAX_FRAME_BYTES} from '../src/features/card-scanner/exact-recording-codec';
-import {waitForInput} from '../src/features/card-scanner/input-source';
+import {decodedRgbaFrames} from '../src/features/card-scanner/acquisition/decoded-rgba-client';
+import type {DecodedRgbaPreference} from '../src/features/card-scanner/acquisition/decoded-rgba-client';
+import {MAX_FRAME_BYTES} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {waitForInput} from '../src/features/card-scanner/capture/input-source';
 
 type Job={id:number;mode:'native'|'postpaint';controller:AbortController;worker?:Worker;halt?:string;deadline?:ReturnType<typeof setTimeout>;grace?:ReturnType<typeof setTimeout>;lastProgress?:unknown};
 const run=document.querySelector<HTMLButtonElement>('#run')!,stop=document.querySelector<HTMLButtonElement>('#stop')!,

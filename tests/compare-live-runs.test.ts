@@ -18,6 +18,19 @@ test('records input, recording and visibility differences',()=>{
   const a=run(),b=run();b.validation.input[0].sha256='c'.repeat(64);b.validation.recordingEnabled=true;b.validation.visibility.everHidden=true;
   assert.deepEqual(compareLiveRuns(a,b).contextDifferences,['input','recording','visibility']);
 });
+test('separates fast-lane experiment requests from dispatch evidence and missing history',()=>{
+  const a=run() as any,b=run() as any;
+  a.validation.fastOcrAssistRequested=false;b.validation.fastOcrAssistRequested=true;
+  b.performance.fastOcrAssist={requested:true,dispatches:1,settled:1,wallMs:12};
+  const result=compareLiveRuns(a,b);
+  assert.ok(result.contextDifferences.includes('fastOcrAssistRequested'));
+  assert.equal(result.before.fastOcrAssist.requested,false);
+  assert.equal(result.after.fastOcrAssist.evidence.dispatches,1);
+  delete a.validation.fastOcrAssistRequested;
+  assert.equal(compareLiveRuns(a,b).before.fastOcrAssist.requestStatus,'unknown');
+  a.validation.fastOcrAssistRequested=false;a.performance.fastOcrAssist={requested:true,dispatches:1};
+  assert.equal(compareLiveRuns(a,b).before.fastOcrAssist.consistency,'conflict');
+});
 test('rejects changing source and prefilled baselines',()=>{
   const a=run(),b=run();b.validation.sourceChanged=true;assert.throws(()=>compareLiveRuns(a,b),/source/);
   b.validation.sourceChanged=false;b.validation.startedWithCards=1;assert.throws(()=>compareLiveRuns(a,b),/empty-list/);
@@ -64,6 +77,17 @@ test('last identified card timing uses only scanner clocks and never certifies c
   }
 });
 
+test('auto-stop delay and remaining processing use scanner clock without inferring an unrecorded stop',()=>{
+  const a=run();Object.assign(a.performance,{finishTiming:{lastCardInputMs:20,autoStoppedMs:70,finishedMs:90}});
+  const result=compareLiveRuns(a,run());
+  assert.equal(result.before.afterLastIdentifiedToAutoStopMs,50);
+  assert.equal(result.before.afterAutoStopMs,20);
+  assert.equal(result.after.afterLastIdentifiedToAutoStopMs,null);
+  assert.equal(result.after.afterAutoStopMs,null);
+  Object.assign(a.performance,{finishTiming:{lastCardInputMs:20,autoStoppedMs:100,finishedMs:90}});
+  assert.equal(compareLiveRuns(a,run()).before.afterAutoStopMs,null);
+});
+
 test('feedback with no receipts cannot report zero latency or borrow React commit timing',()=>{
   const a=run();Object.assign(a.performance,{monitorPresentation:{p95Ms:2},feedbackReceipts:{byKind:{
     'crop-queued':{samples:0,offeredValidFacts:100,receipts:0,factToReceipt:{p95Ms:0}},
@@ -87,4 +111,79 @@ test('feedback stages retain separate bounded samples and partial coverage',()=>
     Object.assign(a.performance,{feedbackReceipts:{byKind:{viewport:{samples,factToReceipt:{p95Ms:1}}}}});
     assert.equal(compareLiveRuns(a,run()).before.feedback.viewport.factToReceiptP95Ms,null);
   }
+});
+
+test('구 보고서의 게이트 요청과 입력 종류는 미설정이 아니라 알 수 없음이다',()=>{
+  const result=compareLiveRuns(run(),run());
+  assert.equal(result.before.latestPixelGate.requested,null);assert.equal(result.before.latestPixelGate.requestStatus,'unknown');
+  assert.equal(result.before.latestPixelGate.evidence.status,'unknown');
+  assert.ok(result.missingContext.includes('latestPixelGateRequested'));
+  assert.ok(result.missingContext.includes('inputKind'));assert.ok(result.missingContext.includes('cropRecordingRequested'));
+  assert.ok(result.missingContext.includes('obstructionFenceRequested'));assert.equal(result.before.obstructionFence.requestStatus,'unknown');
+});
+test('관측 근거 정책 차이와 구 보고서의 미기록을 구분한다',()=>{
+  const a=run() as any,b=run() as any;
+  a.validation.freshnessVersion=1;b.validation.freshnessVersion=2;
+  const changed=compareLiveRuns(a,b);
+  assert.ok(changed.contextDifferences.includes('freshnessVersion'));
+  assert.equal(changed.before.freshnessVersion,1);assert.equal(changed.after.freshnessVersion,2);
+  for(const missing of [undefined,null,0,3,'1']){
+    a.validation.freshnessVersion=missing;b.validation.freshnessVersion=missing;
+    const unknown=compareLiveRuns(a,b);
+    assert.equal(unknown.before.freshnessVersion,null);
+    assert.ok(unknown.missingContext.includes('freshnessVersion'));
+  }
+});
+test('가림 실험 요청과 재생 지원 여부는 구 보고서 불명과 구별한다',()=>{
+  const a=run() as any,b=run() as any;a.validation.obstructionFenceRequested=false;b.validation.obstructionFenceRequested=true;
+  b.validation.obstructionStateReplay='unsupported';b.performance.obstructionExperiment={notices:2,pending:1,replaySupported:false};
+  const result=compareLiveRuns(a,b);assert.ok(result.contextDifferences.includes('obstructionFenceRequested'));
+  assert.equal(result.before.obstructionFence.requested,false);assert.equal(result.after.obstructionFence.requested,true);
+  assert.equal(result.after.obstructionFence.stateReplay,'unsupported');assert.equal(result.after.obstructionFence.evidence.pending,1);
+});
+test('거절 이미지 전송 실험의 명시적 요청과 구 보고서의 미기록을 구분한다',()=>{
+ const a=run() as any,b=run() as any;
+ a.validation.rejectedTransportRequested=false;b.validation.rejectedTransportRequested=true;
+ b.runtimeConfiguration.rejectedTransportRequested=true;
+ const changed=compareLiveRuns(a,b);
+ assert.ok(changed.contextDifferences.includes('rejectedTransportRequested'));
+ assert.deepEqual(changed.after.rejectedTransport,{requestStatus:'recorded',requested:true});
+ delete a.validation.rejectedTransportRequested;
+ const unknown=compareLiveRuns(a,b);
+ assert.ok(unknown.missingContext.includes('rejectedTransportRequested'));
+ assert.equal(unknown.before.rejectedTransport.requestStatus,'unknown');
+ b.runtimeConfiguration.rejectedTransportRequested=false;
+ assert.equal(compareLiveRuns(a,b).after.rejectedTransport.requestStatus,'conflict');
+});
+test('요청·계측·영상 입력을 구분하고 없는 계측을 비활성으로 단정하지 않는다',()=>{
+  const a=run() as any,b=run() as any;
+  for(const item of [a,b]){item.validation.scheduling='paced-native-video-screen-loop';item.validation.input[0].type='video/mp4';item.cropEvidence=null;}
+  a.validation.latestPixelGateRequested=false;b.validation.latestPixelGateRequested=true;
+  b.runtimeConfiguration.latestPixelGateRequested=true;
+  b.performance.completionPixelGate={referenceSamples:10,currentSamples:1,matches:0,mismatches:1,unavailable:0};
+  const result=compareLiveRuns(a,b);
+  assert.ok(result.contextDifferences.includes('latestPixelGateRequested'));
+  assert.ok(!result.missingContext.includes('inputKind'));assert.equal(result.before.inputKind,'video-capture-stream');
+  assert.equal(result.before.cropRecordingRequested,false);assert.equal(result.before.latestPixelGate.requested,false);
+  assert.equal(result.before.latestPixelGate.evidence.status,'unknown');
+  assert.equal(result.after.latestPixelGate.requested,true);
+  assert.equal(result.after.latestPixelGate.evidence.status,'instrumentation-observed');
+  assert.equal(result.after.latestPixelGate.evidence.mismatches,1);
+  assert.equal(result.after.latestPixelGate.consistency,'unproven');
+});
+test('설정 충돌·잘못된 값·계측 모순은 성공으로 표현하지 않는다',()=>{
+  const a=run() as any,b=run() as any;
+  a.validation.latestPixelGateRequested=true;a.runtimeConfiguration.latestPixelGateRequested=false;
+  assert.equal(compareLiveRuns(a,b).before.latestPixelGate.requestStatus,'conflict');
+  a.validation.latestPixelGateRequested='false';delete a.runtimeConfiguration.latestPixelGateRequested;
+  assert.equal(compareLiveRuns(a,b).before.latestPixelGate.requestStatus,'invalid');
+  a.validation.latestPixelGateRequested=false;a.performance.completionPixelGate={referenceSamples:0,currentSamples:0,matches:0,mismatches:0,unavailable:0};
+  assert.equal(compareLiveRuns(a,b).before.latestPixelGate.consistency,'conflict');
+  a.performance.completionPixelGate.currentSamples=-1;
+  assert.equal(compareLiveRuns(a,b).before.latestPixelGate.evidence.status,'invalid');
+});
+test('이미지나 불명 입력은 video captureStream으로 분류하지 않는다',()=>{
+  const a=run() as any,b=run() as any;a.validation.scheduling='paced-native-video-screen-loop';a.validation.input[0].type='image/png';
+  b.validation.scheduling='unrecorded-screen-share';b.validation.input[0].type='video/mp4';
+  const result=compareLiveRuns(a,b);assert.ok(result.missingContext.includes('inputKind'));assert.equal(result.before.inputKind,null);assert.equal(result.after.inputKind,null);
 });

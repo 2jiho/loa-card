@@ -1,4 +1,4 @@
-import {runJoinedWorkers} from '../../src/features/card-scanner/joined-workers';
+import {runJoinedWorkers} from '../../src/features/card-scanner/capture/joined-workers';
 
 /** Recovery runs after capture: add image-only capacity, never more OCR models. */
 export function recoveryVisualLanes(cores:number,readers:number) {

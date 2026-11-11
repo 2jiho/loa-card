@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {pixelHash} from '../src/features/card-scanner/recording-frame-integrity';
+import {pixelHash} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
 
 const emptyLayout={cells:[],header:{},growthPoints:{},sort:{},area:{},scrollbar:{},scale:1};
 async function runtime(run:(h:any)=>Promise<void>){
@@ -23,7 +23,7 @@ async function runtime(run:(h:any)=>Promise<void>){
   Object.defineProperty(globalThis,'self',{configurable:true,value:scope});Object.defineProperty(globalThis,'OffscreenCanvas',{configurable:true,value:Canvas});
   Object.defineProperty(globalThis,'ImageData',{configurable:true,value:class{constructor(readonly data:Uint8ClampedArray,readonly width:number,readonly height:number){}}});
   const send=(data:any)=>scope.onmessage({data});
-  try{const url=new URL('../src/features/card-scanner/acquisition-worker.ts',import.meta.url);url.searchParams.set('prepared-runtime-test',crypto.randomUUID());
+  try{const url=new URL('../src/features/card-scanner/acquisition/acquisition-worker.ts',import.meta.url);url.searchParams.set('prepared-runtime-test',crypto.randomUUID());
     await import(url.href);await run({send,replies,draws,puts,reads});}
   finally{for(const [name,value]of Object.entries(prior))if(value)Object.defineProperty(globalThis,name,value);else Reflect.deleteProperty(globalThis,name);}
 }

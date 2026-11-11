@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { growthDisplayRows } from '../src/features/growth/growth-display';
 import { compareGrowthCandidates, type GrowthMaster } from '../src/features/growth/optimizer';
 import { completeGrowth, undoGrowth } from '../src/features/growth/complete-growth';
-import type { ScannerState } from '../src/features/card-scanner/scanner';
+import type { ScannerState } from '../src/features/card-scanner/orchestration/scanner';
 
 const master: GrowthMaster = { version: 'test', targets: [{ id: 'd', name: '악마' }],
   cards: ['a', 'b', 'c', 'd'].map((id, i) => ({ id, name: id, rarity: 0,

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createLiveCapturePipeline,parseLiveCaptureDecision} from '../src/features/card-scanner/live-capture-pipeline';
-import type {LiveCaptureDecision} from '../src/features/card-scanner/live-capture-pipeline';
-import {InputDecisionReplay} from '../src/features/card-scanner/live-input-decision-replay';
+import {createLiveCapturePipeline,parseLiveCaptureDecision} from '../src/features/card-scanner/capture/live-capture-pipeline';
+import type {LiveCaptureDecision} from '../src/features/card-scanner/capture/live-capture-pipeline';
+import {InputDecisionReplay} from '../src/features/card-scanner/reproduction/live-input-decision-replay';
 
 function deferred<T=void>() {
   let resolve!:(value:T|PromiseLike<T>)=>void,reject!:(error:unknown)=>void;

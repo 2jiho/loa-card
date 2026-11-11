@@ -1,11 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createNameReader} from '../src/features/card-scanner/name-reader';
-import {CardReadBudget,CardReadTimeout} from '../src/features/card-scanner/card-read-budget';
-import {createGrayNameFirstLine,NAME_GRAY_FIRST_RECIPE} from '../src/features/card-scanner/name-gray-first';
-import type {CatalogName} from '../src/features/card-scanner/card-dictionary';
-import type {NameAttempt} from '../src/features/card-scanner/name-diagnostics';
-import type {NeuralReading} from '../src/features/card-scanner/neural-reader';
+import {createNameReader} from '../src/features/card-scanner/recognition/name-reader';
+import {CardReadBudget,CardReadTimeout} from '../src/features/card-scanner/recognition/card-read-budget';
+import {createGrayNameFirstLine,NAME_GRAY_FIRST_RECIPE} from '../src/features/card-scanner/recognition/name-gray-first';
+import type {CatalogName} from '../src/features/card-scanner/recognition/card-dictionary';
+import type {NameAttempt} from '../src/features/card-scanner/recognition/name-diagnostics';
+import type {NeuralReading} from '../src/features/card-scanner/recognition/neural-reader';
 
 type Request={id:number;type:string;model:string;width:number;height:number;data:Uint8ClampedArray;useLexicon:boolean;nameLine?:{group:string;line:number}};
 const catalog=[{id:'raw',name:'벨루마테',rarity:2},{id:'other',name:'아크투루스',rarity:2}];

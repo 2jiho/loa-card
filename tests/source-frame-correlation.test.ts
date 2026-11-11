@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {correlateSourceFrame,parseSourceFrameCorrelation,sameSourceFrameCorrelation} from '../src/features/card-scanner/source-frame-correlation';
+import {correlateSourceFrame,parseSourceFrameCorrelation,sameSourceFrameCorrelation} from '../src/features/card-scanner/capture/source-frame-correlation';
 
 test('source correlation is small detached immutable metadata, preserving native signed offsets',()=>{
   const input={mediaTime:4.5,presentedFrames:135,frameTimestampUs:4_500_000};

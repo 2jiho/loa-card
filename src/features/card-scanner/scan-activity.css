@@ -18,7 +18,8 @@
 .scan-film-card.is-reading small { color:var(--accent); }
 .scan-film-card.is-review small { color:var(--danger); }
 .scan-film-empty { position:absolute; top:48px; margin:0; color:var(--muted); font-size:12px; }
-.scan-attention { padding:16px 20px; margin:0 0 20px; border-color:var(--accent-line); scroll-margin-top:20px; }
+.scan-attention { box-sizing:border-box; height:240px; overflow:auto; overscroll-behavior:contain; padding:16px 20px; margin:0 0 20px; border-color:var(--accent-line); scroll-margin-top:20px; }
+.scan-attention:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .scan-attention h2 { font-size:14px; }
 .scan-attention h2 span { color:var(--accent); margin-left:6px; font-variant-numeric:tabular-nums; }
 .scan-attention-group { margin-top:12px; }

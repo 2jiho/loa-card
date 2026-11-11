@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { confirmCounter, parseCounterEvidence } from "../src/features/card-scanner/counter-evidence.ts";
-import type { CounterReading } from "../src/features/card-scanner/counter-evidence.ts";
+import { confirmCounter, parseCounterEvidence } from "../src/features/card-scanner/recognition/counter-evidence.ts";
+import type { CounterReading } from "../src/features/card-scanner/recognition/counter-evidence.ts";
 const n = (text: string, confidence: number, variant: string): CounterReading => ({ engine: "neural", text, confidence, variant });
 const t = (text: string, confidence: number, variant = "tight"): CounterReading => ({ engine: "tesseract", text, confidence, variant });
 
@@ -24,7 +24,8 @@ test("moderate +9 confidence needs agreement from the other OCR engine", () => {
   assert.equal(confirmCounter([...neural, t("+9.", 67)], 9), 9);
   assert.equal(confirmCounter([...neural, t("+2", 99)], 9), null);
 });
-test("an out-of-range background digit cannot be shortened; masked crop must independently agree", () => {
+test("an out-of-range reading needs a matching masked crop variant before shortening", () => {
+  // These are simulated OCR outputs from variants, not independent source frames.
   const neural = [n("+19", 83, "raw"), n("+1", 100, "tight")];
   assert.equal(confirmCounter(neural, 15), null);
   assert.equal(confirmCounter([...neural, n("+1", 95, "mask")], 15), 1);

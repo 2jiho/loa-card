@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {parseFrameStorage,parseNativeYuvMetadata,prepareNativeStorage,restoreFrameStorage,rgbaFrameStorage,
-  frameStorageSignature,frameStoredBytes,frameDecodeWorkBytes} from '../src/features/card-scanner/native-frame-storage';
+  frameStorageSignature,frameStoredBytes,frameDecodeWorkBytes} from '../src/features/card-scanner/reproduction/native-frame-storage';
 import {convertNativeYuvToRgba,nativeYuvDescriptorJson,planNativeYuvFrame,
-  type NativeYuvFrameMetadata} from '../src/features/card-scanner/native-yuv-recipe';
-import {MAX_FRAME_BYTES,pixelHash} from '../src/features/card-scanner/recording-frame-integrity';
+  type NativeYuvFrameMetadata} from '../src/features/card-scanner/acquisition/native-yuv-recipe';
+import {MAX_FRAME_BYTES,pixelHash} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
 
 function metadata(name:'bt709'|'smpte170m'='bt709',format:'I420'|'NV12'='I420',width=4,height=4):NativeYuvFrameMetadata {
   return {format,codedWidth:width,codedHeight:height,displayWidth:width,displayHeight:height,

@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
-import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/scanner-name-configuration';
-import type {PreparedScanner} from '../src/features/card-scanner/scanner-preparation';
+import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/session/scanner-name-configuration';
+import type {PreparedScanner} from '../src/features/card-scanner/session/scanner-preparation';
 
 const continued={version:1,rawResultPolicy:'continue'} as const;
 
@@ -18,8 +18,8 @@ test('contrast-enabled preparation passes the option to every reader and rejects
 });
 type Resource={kind:string;disposals:number;dispose():Promise<void>;ready():Promise<void>};
 let fixtureId=0;
-async function fakePreparation(run:(fixture:{module:typeof import('../src/features/card-scanner/scanner-preparation');
-  prepare:typeof import('../src/features/card-scanner/scanner-preparation').prepareScanner;
+async function fakePreparation(run:(fixture:{module:typeof import('../src/features/card-scanner/session/scanner-preparation');
+  prepare:typeof import('../src/features/card-scanner/session/scanner-preparation').prepareScanner;
   state:{resources:Resource[];options:{nameRawResultPolicy:string}[];signals:AbortSignal[];readerFailure:number;
     acquisitionFailure:boolean;disposeFailure:string|null;visualUnavailable:boolean;detectorGate:Promise<void>|null}})=>Promise<void>,cores=8){
   const id=++fixtureId,bridgeKey=`__loaCardPrepareTest${id}`;
@@ -41,8 +41,8 @@ async function fakePreparation(run:(fixture:{module:typeof import('../src/featur
     visual(signal:AbortSignal){state.signals.push(signal);return state.visualUnavailable?undefined:resource('visual');},
   };
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{hardwareConcurrency:cores}});
-  const moduleUrl=new URL(`../src/features/card-scanner/scanner-preparation.ts?test=ownership-${id}`,import.meta.url).href;
-  const dependencies:Record<string,string>={'./detector':'detector','./recognizer':'recognizer','./acquisition-client':'acquisition','./visual-client':'visual'};
+  const moduleUrl=new URL(`../src/features/card-scanner/session/scanner-preparation.ts?test=ownership-${id}`,import.meta.url).href;
+  const dependencies:Record<string,string>={'../acquisition/detector':'detector','../recognition/recognizer':'recognizer','../acquisition/acquisition-client':'acquisition','../recognition/visual-client':'visual'};
   const exports:Record<string,string>={detector:'createDetector',recognizer:'createRecognizer',acquisition:'createAcquisitionClient',visual:'createVisualClient'};
   const hooks=registerHooks({
     resolve(specifier,context,nextResolve){
@@ -56,7 +56,7 @@ async function fakePreparation(run:(fixture:{module:typeof import('../src/featur
       return nextLoad(url,context);
     },
   });
-  let module:typeof import('../src/features/card-scanner/scanner-preparation')|undefined;
+  let module:typeof import('../src/features/card-scanner/session/scanner-preparation')|undefined;
   const pools:PreparedScanner[]=[];
   try{
     module=await import(moduleUrl);
@@ -94,6 +94,40 @@ test('ordinary preparation keeps the normal policy and invalid or pre-aborted in
     assert.deepEqual(module.preparedScannerConfiguration(pool),NORMAL_SCANNER_NAME_CONFIGURATION);
     assert.ok(state.options.every(value=>value.nameRawResultPolicy==='resample'));
   });
+});
+
+test('failed owned cleanup reports uncertainty while preserving the original setup error',async()=>{
+ await fakePreparation(async({prepare,state})=>{
+  state.readerFailure=2;state.disposeFailure='reader-1';const reports:unknown[]=[];
+  await assert.rejects(prepare(()=>{},new AbortController().signal,NORMAL_SCANNER_NAME_CONFIGURATION,
+   {onCleanupUncertain:error=>{reports.push(error);}}),/reader setup failed/);
+  assert.equal(reports.length,1);assert.ok(reports[0] instanceof AggregateError);
+  assert.ok(state.resources.every(resource=>resource.disposals===1));
+ });
+});
+
+test('late detector cleanup after cancellation reports failure but cancellation remains primary',async()=>{
+ await fakePreparation(async({prepare,state})=>{
+  let release!:()=>void;state.detectorGate=new Promise<void>(resolve=>{release=resolve;});
+  state.disposeFailure='detector';const abort=new AbortController();let report!:()=>void;
+  const reported=new Promise<void>(resolve=>{report=resolve;});
+  const pending=prepare(()=>{},abort.signal,NORMAL_SCANNER_NAME_CONFIGURATION,{onCleanupUncertain:()=>report()});
+  abort.abort();await assert.rejects(pending,{name:'AbortError'});release();
+  await Promise.race([reported,new Promise<never>((_,reject)=>setTimeout(()=>reject(Error('late cleanup was not reported')),500))]);
+  assert.equal(state.resources.find(resource=>resource.kind==='detector')?.disposals,1);
+ });
+});
+
+test('cancelled preparation exposes pending late detector cleanup until it actually settles',async()=>{
+ await fakePreparation(async({prepare,state})=>{
+  let release!:()=>void;state.detectorGate=new Promise<void>(resolve=>{release=resolve;});
+  const abort=new AbortController();const fences:Promise<void>[]=[];
+  const pending=prepare(()=>{},abort.signal,NORMAL_SCANNER_NAME_CONFIGURATION,{onCleanupPending:fence=>fences.push(fence)});
+  abort.abort();await assert.rejects(pending,{name:'AbortError'});
+  assert.equal(fences.length,1);let settled=false;void fences[0].then(()=>{settled=true;});
+  await new Promise(resolve=>setTimeout(resolve,0));assert.equal(settled,false);
+  release();await fences[0];assert.equal(state.resources.find(resource=>resource.kind==='detector')?.disposals,1);
+ });
 });
 
 test('claim validates configuration without consuming a mismatched pool and transfers it only once',async()=>{

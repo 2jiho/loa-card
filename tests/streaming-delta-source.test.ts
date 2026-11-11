@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fastCompress,fastInflate,packPixels,unpackPixels} from '../src/features/card-scanner/exact-recording-codec';
-import {decodeFastPixelPatchFromSource,STREAM_PATCH_SOURCE_LIMITS as STREAM_PATCH_LIMITS,type SourceStreamPatchOptions} from '../src/features/card-scanner/streaming-delta-source';
+import {fastCompress,fastInflate,packPixels,unpackPixels} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {decodeFastPixelPatchFromSource,STREAM_PATCH_SOURCE_LIMITS as STREAM_PATCH_LIMITS,type SourceStreamPatchOptions} from '../src/features/card-scanner/capture/streaming-delta-source';
 // Byte-level regression cases cover the explicit bounded slice input path.
 // Separate tests exercise native BYOB, so these expectations remain identical.
 const decodeFastPixelPatch=(blob:Blob,target:Uint8Array<ArrayBuffer>,options:SourceStreamPatchOptions={})=>{

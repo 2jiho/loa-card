@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatScanTime, readingEstimate } from '../src/features/card-scanner/read-progress';
+import { formatScanTime, readingEstimate } from '../src/features/card-scanner/ui/read-progress';
 
 test('reading ETA needs the full collection and a sustained recent rate', () => {
   const samples = [{time:0,completed:0},{time:3,completed:3},{time:6,completed:6}];

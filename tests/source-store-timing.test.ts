@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {SourceStoreTiming,type SourceStoreTimingRecord,type SourceStoreWorkerTiming} from '../src/features/card-scanner/source-store-timing';
+import {SourceStoreTiming,type SourceStoreTimingRecord,type SourceStoreWorkerTiming} from '../src/features/card-scanner/reproduction/source-store-timing';
 
 const record=(id:number):SourceStoreTimingRecord=>({id,width:1920,height:1080,time:id/30,role:id===1?'input':'recovery'});
 const preparation={copyMs:2,conversionHashMs:4,rasterMs:0,totalMs:7};

@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createScannerFeedback} from '../src/features/card-scanner/scanner-feedback';
-import type {FeedbackGridCell} from '../src/features/card-scanner/scanner-feedback';
-import type {ObservationFact,ObservationSource} from '../src/features/card-scanner/observation-execution';
-import type {ScanGridSnapshot} from '../src/features/card-scanner/scan-grid';
+import {createScannerFeedback} from '../src/features/card-scanner/ui/scanner-feedback';
+import type {FeedbackGridCell} from '../src/features/card-scanner/ui/scanner-feedback';
+import type {ObservationFact,ObservationSource} from '../src/features/card-scanner/session/observation-execution';
+import type {ScanGridSnapshot} from '../src/features/card-scanner/session/scan-grid';
 
 const source=(id=1,slot=0):ObservationSource=>({sessionId:'session-1',frameId:id,observationId:`observation-${id}`,
   captureOrder:id,captureTime:40_000+id,phase:'input',slot});

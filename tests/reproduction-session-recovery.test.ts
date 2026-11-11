@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
-import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction-session-store';
+import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction/reproduction-session-store';
 import {clearReproduction,listReproductionSessions,loadReproductionSession,createReproductionBundle,openReproduction,replaySettings,
- beginReproduction,loadSessionDiagnosticSummary} from '../src/features/card-scanner/scan-reproduction';
-import {entryParts,packPixels,fastCompress,pixelHash,exactPixels,executionSummary} from '../src/features/card-scanner/exact-recording-codec';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+ beginReproduction,loadSessionDiagnosticSummary} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import {entryParts,packPixels,fastCompress,pixelHash,exactPixels,executionSummary} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 const signal=()=>new AbortController().signal;
 const environment={browser:'test',catalog:'test',build:'test'};
 

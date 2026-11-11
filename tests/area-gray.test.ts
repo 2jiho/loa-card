@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { areaGray } from "../src/features/card-scanner/area-gray";
+import { areaGray } from "../src/features/card-scanner/acquisition/area-gray";
 import { createHash } from 'node:crypto';
 
 test('overlap reuse preserves pre-optimization Float32 outputs at native and fractional scales', () => {
@@ -14,6 +14,19 @@ test('overlap reuse preserves pre-optimization Float32 outputs at native and fra
   for(const [width,height,expected] of cases) {
     const pixels=Uint8Array.from({length:width*height*4},(_,i)=>(i*73+Math.floor(i/17)*31)%256);
     const result=areaGray(pixels,width,height);
+    assert.equal(createHash('sha256').update(new Uint8Array(result.buffer)).digest('hex'),expected);
+  }
+});
+test('alternating image widths and bin counts preserves pre-cache pixel results', () => {
+  const cases = [
+    [140,210,24,32,'0274af2dc47fa2174339daa6dda025d4e4603aca6256f5e958d75953bcc3495d'],
+    [140,210,23,31,'4b23715323bc4b98eceb99b5a10c26d351284bc960cb95f9fc62b36621b8fc26'],
+    [139,209,24,32,'b9fb3574a8dd1b7845f29dc20cc387e13e19d30de272f630984292ce7e15e800'],
+    [3,1,2,1,'793fb69566d1e2ab6819ffbdda68eedfdb55f18c349b9ee9ca7a68121a6664ba'],
+  ] as const;
+  for(const [width,height,columns,rows,expected] of [...cases,...cases.slice(0,3)]){
+    const pixels=Uint8Array.from({length:width*height*4},(_,i)=>(i*73+Math.floor(i/17)*31)%256);
+    const result=areaGray(pixels,width,height,columns,rows);
     assert.equal(createHash('sha256').update(new Uint8Array(result.buffer)).digest('hex'),expected);
   }
 });

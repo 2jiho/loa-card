@@ -1,6 +1,6 @@
-import type { Reference } from '../../src/features/card-scanner/recognizer';
-import type { PortraitEvidence, PortraitTextEvidence } from '../../src/features/card-scanner/portrait-matcher';
-import { areaGray } from '../../src/features/card-scanner/area-gray';
+import type { Reference } from '../../src/features/card-scanner/recognition/recognizer';
+import type { PortraitEvidence, PortraitTextEvidence } from '../../src/features/card-scanner/recognition/portrait-matcher';
+import { areaGray } from '../../src/features/card-scanner/acquisition/area-gray';
 
 export interface MaskedAtlas { width: number; height: number; indices: number[]; cards: Record<string, string> }
 export interface PortraitPixels { pixels: ArrayLike<number>; width: number; height: number }

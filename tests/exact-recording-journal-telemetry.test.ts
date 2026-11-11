@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createExactRecording,type ExactJournalMirrorStats,type ExactRecorder} from '../src/features/card-scanner/exact-recording';
-import type {RecordingJournal} from '../src/features/card-scanner/recording-journal';
+import {createExactRecording,type ExactJournalMirrorStats,type ExactRecorder} from '../src/features/card-scanner/reproduction/exact-recording';
+import type {RecordingJournal} from '../src/features/card-scanner/persistence/recording-journal';
 
 type Message={kind:string;[key:string]:unknown};
 class JournalWorker {

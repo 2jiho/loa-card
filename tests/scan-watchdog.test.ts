@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {guardScan,ScanProgressClock,ScanStalledError,scanLimits} from '../src/features/card-scanner/scan-watchdog.ts';
-import type {ScannerState} from '../src/features/card-scanner/scanner';
+import {guardScan,ScanProgressClock,ScanStalledError,scanLimits} from '../src/features/card-scanner/ui/scan-watchdog.ts';
+import type {ScannerState} from '../src/features/card-scanner/orchestration/scanner';
 
 const snapshot=(extra:Partial<ScannerState>={}):ScannerState=>({status:'처리 중',percent:0,sampled:0,stable:0,
   expected:null,capacity:null,cards:[],located:true,unreadable:0,queued:0,droppedFrames:0,unidentified:[],workPhase:'recovery',...extra});
@@ -55,6 +55,37 @@ test('long processing with progress continues and stationary live sharing is not
   const clock=new ScanProgressClock(0);clock.ready(0);
   for(let i=1;i<=60;i++){clock.observe(snapshot({sampled:i}),i*30_000);assert.equal(clock.check(i*30_000,true,false),null);}
   assert.equal(clock.check(10_000_000,true,true),null);
+});
+test('stationary live sharing in the reading phase waits for the next card instead of stalling', {timeout:2000},async()=>{
+  let finish!:()=>void;const done=new Promise<void>(resolve=>{finish=resolve;});
+  const states:ScannerState[]=[];let cancelled=0;
+  const run=guardScan({signal:new AbortController().signal,update:s=>states.push(s),sharing:()=>true,
+    cancelResources:()=>{cancelled++;},intervalMs:2,limits:{...scanLimits,stall:20},
+    run:async(_signal,publish,ready)=>{ready();publish(snapshot({workPhase:'reading',queued:0,activeReadings:0,sampled:1,stable:1}));await done;}});
+  await delay(70);finish();await run;
+  assert.equal(cancelled,0,'a user pausing between card batches is not a stalled processor');
+  assert.equal(states.at(-1)?.interrupted,undefined);
+});
+
+test('slow recovery warns even with continuing work, then clears when recovery ends',()=>{
+  const clock=new ScanProgressClock(0);clock.ready(0);
+  clock.observe(snapshot(),100);
+  for(let i=1;i<=6;i++)clock.observe(snapshot({recoveryFrames:i}),100+i*5_000);
+  assert.match(clock.warning(30_100)??'',/시간이 걸리고/);
+  assert.equal(clock.check(30_100,true,false),null,'slow progress is not a stall');
+  clock.observe(snapshot({workPhase:'reading',recoveryFrames:6}),30_200);
+  assert.equal(clock.warning(30_200),undefined);
+});
+test('slow-recovery warning does not stop the scanner or discard later progress', {timeout:2000},async()=>{
+  const states:ScannerState[]=[];let cancelled=0;
+  await guardScan({signal:new AbortController().signal,update:s=>states.push(s),sharing:()=>false,cancelResources:()=>{cancelled++;},
+    intervalMs:2,limits:{...scanLimits,stall:1000,warning:500,recoveryWarning:10},
+    run:async(_signal,publish,ready)=>{ready();publish(snapshot());await delay(25);
+      publish(snapshot({recoveryFrames:1}));publish(snapshot({workPhase:'reading',recoveryFrames:1}));},
+  });
+  assert.ok(states.some(s=>s.processingWarning?.includes('시간이 걸리고')));
+  assert.equal(states.at(-1)?.processingWarning,undefined);
+  assert.equal(states.at(-1)?.recoveryFrames,1);assert.equal(cancelled,0);
 });
 test('ready resets the processing clock; cleanup has an absolute deadline despite progress',()=>{
   const clock=new ScanProgressClock(0);clock.ready(170_000);

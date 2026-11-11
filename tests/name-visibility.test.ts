@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { blankNameLine } from '../src/features/card-scanner/name-visibility';
-import { inspectCapture, CaptureObservations } from '../src/features/card-scanner/capture-quality';
-import { alignCardBorders } from '../src/features/card-scanner/card-borders';
-import { observationPixels } from '../src/features/card-scanner/observation-pixels';
+import { blankNameLine } from '../src/features/card-scanner/recognition/name-visibility';
+import { inspectCapture, CaptureObservations, preBorderEvidence } from '../src/features/card-scanner/acquisition/capture-quality';
+import { alignCardBorders } from '../src/features/card-scanner/acquisition/card-borders';
+import { observationPixels } from '../src/features/card-scanner/acquisition/observation-pixels';
 
 type Sample = { name: string; intact: boolean; width: number; height: number; rgba: string;
   box: { x: number; y: number; width: number; height: number } };
@@ -29,6 +29,8 @@ test('real names survive while a flat inner cover is rejected before observation
     const good = crop(original), bad = crop(covered);
     assert.equal(blankNameLine(good, b.width, b.height), false, sample.name);
     assert.equal(blankNameLine(bad, b.width, b.height), true, sample.name);
+    assert.equal(preBorderEvidence(inspectCapture(bad,b.width,b.height,true,true,true,true)).kind,'name-hidden');
+    assert.equal(preBorderEvidence(inspectCapture(good,b.width,b.height,true,true,true,true)).kind,'usable');
     const observations = new CaptureObservations();
     const accepted = [bad, bad, good].filter(pixels => inspectCapture(pixels, b.width, b.height, true, true, true, true).usable);
     assert.equal(accepted.length, 1, sample.name);

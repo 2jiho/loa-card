@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCanonicalCapture} from '../src/features/card-scanner/canonical-capture';
-import {MAX_FRAME_BYTES} from '../src/features/card-scanner/recording-frame-integrity';
+import {createCanonicalCapture} from '../src/features/card-scanner/reproduction/canonical-capture';
+import {MAX_FRAME_BYTES} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
 
 const turn=()=>new Promise<void>(resolve=>setImmediate(resolve));
 const source=(width=1,height=1)=>({width,height}) as HTMLCanvasElement;

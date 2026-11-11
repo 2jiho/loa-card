@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ObservedInventoryLayout} from '../src/features/card-scanner/observed-inventory-layout';
-import {ScanGrid} from '../src/features/card-scanner/scan-grid';
+import {ObservedInventoryLayout} from '../src/features/card-scanner/session/observed-inventory-layout';
+import {ScanGrid} from '../src/features/card-scanner/session/scan-grid';
 const ids=(n:number)=>Array.from({length:n},(_,i)=>'card-'+i);
 
 test('live map fills overlapping partial inventory before total coverage without shifting it to the top',()=>{
@@ -86,6 +86,49 @@ test('colliding anchored components are rejected as a whole',()=>{
  const layout=new ObservedInventoryLayout();frame(layout,0,1,100);frame(layout,6,2,100);
  const anchors=[...ids(6).map((id,slot)=>({id,slot})),...ids(6).map((_,i)=>({id:'card-'+(60+i),slot:30+i}))];
  assert.deepEqual(layout.resolve(ids(100),anchors),[]);
+});
+
+test('a group associated with different IDs cannot rewrite previous or later positions',()=>{
+ const layout=new ObservedInventoryLayout(),groups=Array.from({length:40},(_,i)=>i);
+ const anchors=ids(6).map((_,i)=>({id:'card-'+(i+1),slot:i+1}));
+ layout.capture(groups);
+ groups.forEach(g=>layout.identify(g,'card-'+g));
+ const confirmed=[...ids(40),'replacement'];
+ assert.ok(layout.resolve(confirmed,anchors,false).some(p=>p.id==='card-0'&&p.slot===0));
+ const revision=layout.revision;
+ layout.identify(0,'card-0');
+ assert.equal(layout.revision,revision,'repeat of the same identity is harmless');
+ layout.identify(0,'replacement');
+ const ambiguous=()=>layout.resolve(confirmed,anchors,false);
+ assert.ok(ambiguous().some(p=>p.id==='card-1'&&p.slot===1));
+ assert.ok(!ambiguous().some(p=>p.id==='card-0'||p.id==='replacement'));
+ const reversed=[...groups].reverse();layout.capture(reversed);
+ layout.identify(0,'card-0');layout.identify(0,'replacement');
+ assert.ok(!ambiguous().some(p=>p.id==='card-0'||p.id==='replacement'),
+  'later observations cannot restore a conflicting group by majority or arrival order');
+});
+
+test('sort reset preserves identity conflicts while fresh unambiguous groups still work',()=>{
+ const layout=new ObservedInventoryLayout(),groups=Array.from({length:40},(_,i)=>i);
+ const anchors=ids(6).map((_,i)=>({id:'card-'+(i+1),slot:i+1}));
+ layout.capture(groups);groups.forEach(g=>layout.identify(g,'card-'+g));
+ layout.identify(0,'replacement');layout.resetPositions();
+ layout.capture(groups);layout.identify(0,'card-0');
+ const positions=layout.resolve([...ids(40),'replacement'],anchors,false);
+ assert.ok(positions.some(p=>p.id==='card-1'&&p.slot===1));
+ assert.ok(!positions.some(p=>p.id==='card-0'||p.id==='replacement'));
+ // An independent new group is a distinct source of position evidence.
+ const fresh=[1000,...groups.slice(1)];layout.capture(fresh);layout.identify(1000,'card-0');
+ assert.ok(layout.resolve([...ids(40),'replacement'],anchors,false).some(p=>p.id==='card-0'&&p.slot===0));
+});
+
+test('identity evidence overflow fails closed instead of forgetting a conflict',()=>{
+ const layout=new ObservedInventoryLayout(),groups=Array.from({length:40},(_,i)=>i);
+ layout.capture(groups);groups.forEach(g=>layout.identify(g,'card-'+g));layout.identify(0,'replacement');
+ for(let i=40;i<=40960;i++)layout.identify(i,'other-'+i);
+ layout.resetPositions();layout.capture(groups);layout.identify(0,'card-0');
+ const anchors=ids(6).map((_,i)=>({id:'card-'+(i+1),slot:i+1}));
+ assert.deepEqual(layout.resolve(ids(40),anchors,false),[]);
 });
 
 test('restoring actual identities moves old markers and rejects conflicting or unconfirmed receipts',()=>{

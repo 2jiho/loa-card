@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { alignCardBorders } from "../src/features/card-scanner/card-borders.ts";
+import { alignCardBorders } from "../src/features/card-scanner/acquisition/card-borders.ts";
 
 function sample(scale: number, dx: number, dy: number) {
   const width = 200 * scale, height = 270 * scale;

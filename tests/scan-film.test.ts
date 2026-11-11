@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {ScanFilm} from '../src/features/card-scanner/scan-film';
-import type {ScanActivityItem} from '../src/features/card-scanner/scan-activity';
+import {ScanFilm} from '../src/features/card-scanner/ui/scan-film';
+import type {ScanActivityItem} from '../src/features/card-scanner/ui/scan-activity';
 const items=(start:number,count:number):ScanActivityItem[]=>Array.from({length:count},(_,i)=>({id:start+i,image:`crop-${start+i}`,status:'reading'}));
 test('bursts and status updates do not replace the active incoming card',()=>{
  const film=new ScanFilm();film.ingest(items(0,4));film.prepare(4);

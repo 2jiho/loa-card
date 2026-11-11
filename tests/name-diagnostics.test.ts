@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nameAttempt } from "../src/features/card-scanner/name-diagnostics.ts";
+import { nameAttempt } from "../src/features/card-scanner/recognition/name-diagnostics.ts";
 const cards = [{ id: "1", name: "혹한의 헬가이아", rarity: 3 }, { id: "2", name: "헬가이아", rarity: 3 }];
 test("failed name diagnostics preserve OCR text and distinguish weak readings from missing suffixes", () => {
   const reading = nameAttempt("흑한의 헬기이만", 67, "paddle", "원본", cards, false);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergeFrames } from "../src/features/card-scanner/merge-frames";
+import { mergeFrames } from "../src/features/card-scanner/session/merge-frames";
 test("replay retains video and sharp PNG observations in order including equal timestamps", async () => {
   async function* input(times: number[], kind: string) { for (const time of times) yield { time, kind }; }
   const result = [];

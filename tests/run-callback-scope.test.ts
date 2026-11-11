@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRunCallbackScope} from '../dev/run-callback-scope';
-import {guardScan,scanLimits} from '../src/features/card-scanner/scan-watchdog';
-import type {ScannerState} from '../src/features/card-scanner/scanner';
+import {guardScan,scanLimits} from '../src/features/card-scanner/ui/scan-watchdog';
+import type {ScannerState} from '../src/features/card-scanner/orchestration/scanner';
 
 test('watchdog return cannot let late traces corrupt the next run or its input consumer',async()=>{
  let current=1,values:string[]=[],lateTrace!:(value:string)=>void,oldOwnerCleanup=0;

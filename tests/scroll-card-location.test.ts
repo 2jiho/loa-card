@@ -1,12 +1,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {scrollCardLocation,scrollLocationLabel,estimateScrollRows} from '../src/features/card-scanner/scroll-card-location';
+import {scrollCardLocation,scrollLocationLabel,estimateScrollRows} from '../src/features/card-scanner/session/scroll-card-location';
 test('top, bottom, column and row follow current thumb geometry without assuming inventory count',()=>{
   assert.deepEqual(scrollCardLocation({position:0,pageSpan:4/35},0,true),{percent:0,column:1,row:1});
   assert.deepEqual(scrollCardLocation({position:1,pageSpan:4/35},39,true),{percent:100,column:10,row:39});
   assert.equal(scrollCardLocation({position:1,pageSpan:4/10},20,true)?.row,13);
 });
-test('55 total rows have 51 steps and 52 distinct viewport positions',()=>{
+// A hypothetical evenly spaced 55-row model, not evidence that locked-slot
+// blocks in the game occupy one scroll row each.
+test('a 55-row model maps 51 steps to 52 viewport positions',()=>{
  const pageSpan=4/51;
  assert.equal(estimateScrollRows({pageSpan}),55);
  for(let step=0;step<=51;step++) {
@@ -23,4 +25,6 @@ test('moving, half-row and ambiguous geometry never claim an exact row',()=>{
   assert.equal(scrollCardLocation(null,0,true),undefined);
   assert.equal(scrollCardLocation({position:NaN,pageSpan:.1},0,true),undefined);
   assert.match(scrollLocationLabel(scrollCardLocation({position:.5,pageSpan:4/35},13,false)),/50%.*4열/);
+  assert.equal(scrollLocationLabel({percent:0,column:9}),'스크롤 약 0% · 9열');
+  assert.equal(scrollLocationLabel(undefined),'');
 });

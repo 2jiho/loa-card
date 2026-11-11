@@ -1,13 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { matchCountPattern, prepareContrastPattern, packCount } from "../src/features/card-scanner/count-pattern.ts";
-import { countReliability } from "../src/features/card-scanner/count-confidence.ts";
-import { readFullAwakening, readVisual } from "../src/features/card-scanner/visual-fields.ts";
-import type { Raster, RasterContext } from "../src/features/card-scanner/acquisition-raster.ts";
+import { matchCountPattern, prepareContrastPattern, packCount, emptyCounterProof, stablePreviewEmptyCandidate } from "../src/features/card-scanner/recognition/count-pattern.ts";
+import type { EmptyPreviewEvidence } from "../src/features/card-scanner/recognition/count-pattern.ts";
+import { countReliability } from "../src/features/card-scanner/recognition/count-confidence.ts";
+import { readFullAwakening, readVisual } from "../src/features/card-scanner/recognition/visual-fields.ts";
+import type { Raster, RasterContext } from "../src/features/card-scanner/acquisition/acquisition-raster.ts";
 
 const atlas = JSON.parse(await readFile("public/scanner/counter-patterns.json", "utf8"));
 const patterns = atlas.patterns.map(prepareContrastPattern);
+const beskalEvidence = JSON.parse(await readFile(
+  new URL("./fixtures/beskal-single-frame.json", import.meta.url), "utf8")) as EmptyPreviewEvidence;
+// These regression strips share video-1 source data with the atlas builder.
+// Every test using them is a regression check, not an independent accuracy evaluation.
 const samples = JSON.parse(await readFile("tests/fixtures/counter-samples.json", "utf8"));
 const emptyEvidence='gray-card-marker-and-visible-background';
 /** Synthetic paper UI and a continuous colored background seam. No gameplay
@@ -16,7 +21,7 @@ function grayMarkerBackground(offset=0) {
   const image=new Uint8Array(140*210*4);
   const paint=(x:number,y:number,color:number[])=>image.set([...color,255],((y+offset)*140+x)*4);
   for(let y=135;y<173;y++)for(let x=6;x<139;x++) {
-    const shade=(x+y)%2?82:114;paint(x,y,[shade,shade,shade]);
+    const shade=(x+y)%2?82:115;paint(x,y,[shade,shade,shade]);
   }
   // Two overlapping paper sheets, including full corners and lower edges.
   for(let y=140;y<=153;y++)for(let x=12;x<=28;x++)
@@ -35,6 +40,13 @@ function pixels(sample: { rgba: string }, offset = 0) {
   for (let y = 0; y < 25; y++) image.set(strip.subarray(y * 86 * 4, (y + 1) * 86 * 4), ((141 + offset + y) * 140 + 54) * 4);
   return image;
 }
+function opaqueTexturedBackground(){
+ const image=new Uint8Array(140*210*4);
+ for(let y=0;y<210;y++)for(let x=0;x<140;x++){
+  const shade=(x+y)%2?24:60;image.set([shade,shade,shade,255],(y*140+x)*4);
+ }
+ return image;
+}
 
 test('full-awakening shortcut rejects visible labelled counters but accepts an icon without digits',()=>{
   let data=new Uint8Array(140*210*4);
@@ -51,15 +63,17 @@ test('full-awakening shortcut rejects visible labelled counters but accepts an i
   assert.deepEqual(readFullAwakening({} as Raster,context,fields,patterns),{awakening:5,extraCopies:0});
 });
 
-test("runtime font atlas reads manually labelled counters with compensated vertical movement", () => {
+// This regression fixture shares video-1 source strips with the atlas builder;
+// it is not an independent accuracy or generalization benchmark.
+test("runtime font atlas reads its labelled regression strips with compensated vertical movement", () => {
   for (const sample of samples) for (const offset of [-2, 0, 3]) {
     const result = matchCountPattern(pixels(sample, offset), patterns, offset);
     assert.equal(result.value, sample.value, `${sample.name}, offset ${offset}`);
   }
 });
 
-test("closed-set confidence never confirms a wrong labelled count under contrast and brightness changes", () => {
-  let confirmed = 0;
+test("closed-set confidence avoids wrong counts on transformed regression strips", () => {
+  const confirmed = new Map<string, number>();
   for (const sample of samples) for (const factor of [.65, .8, 1]) for (const brightness of [-18, 0, 18]) {
     const image = pixels(sample);
     for (let i = 0; i < image.length; i += 4) {
@@ -70,11 +84,17 @@ test("closed-set confidence never confirms a wrong labelled count under contrast
     const reliability = countReliability({ stable: false, borderAlignment: .95,
       awakening: 0, extraCopies: pattern.value, pattern });
     if (reliability !== "unconfirmed") {
-      confirmed++;
+      const key = `${factor}/${brightness}`;
+      confirmed.set(key, (confirmed.get(key) ?? 0) + 1);
       assert.equal(pattern.value, sample.value, `${sample.name}: contrast ${factor}, brightness ${brightness}`);
     }
   }
-  assert.ok(confirmed > 0, "the policy must retain usable readings as well as rejecting uncertain ones");
+  // Observed regression baselines by contrast, separately for each brightness.
+  // This fixture shares the atlas source; these are not independent accuracy rates.
+  for (const [factor, minimum] of [[.65, 7], [.8, 32], [1, 34]] as const)
+    for (const brightness of [-18, 0, 18])
+      assert.ok((confirmed.get(`${factor}/${brightness}`) ?? 0) >= minimum,
+        `unexpected loss of confirmed regression samples at contrast ${factor}, brightness ${brightness}`);
 });
 
 test("awakening limits reject the winning count without substituting a lower candidate", () => {
@@ -98,7 +118,9 @@ test("missing icon, solid occlusion and incomplete atlases return unknown rather
 });
 
 test('counter diagnostics distinguish ambiguous evidence from an actually absent icon',()=>{
-  const empty=new Uint8Array(140*210*4);
+  const transparent=new Uint8Array(140*210*4);
+  assert.equal(packCount(transparent).hasIcon,null,'transparent pixels cannot certify an empty counter');
+  const empty=opaqueTexturedBackground();
   assert.equal(packCount(empty).hasIcon,false);
   assert.equal(matchCountPattern(empty,patterns).reason,'추가 카드 아이콘 없음');
   // One visible font-shaped digit can survive while the icon is covered.
@@ -106,7 +128,7 @@ test('counter diagnostics distinguish ambiguous evidence from an actually absent
   for(let y=145;y<159;y++)for(let x=110;x<117;x++)if(x===110||x===116||y===145||y===158)empty.set([255,255,255,255],(y*140+x)*4);
   assert.equal(packCount(empty).hasIcon,null);
   const ambiguous=matchCountPattern(empty,patterns);
-  assert.equal(ambiguous.value,null);assert.equal(ambiguous.reason,'추가 장수 영역 가림 또는 불명확');
+  assert.equal(ambiguous.value,null);assert.equal(ambiguous.reason,'장수 숫자 미검출 또는 불명확');
 });
 
 test('whole gray paper UI and visible background can distinguish an artwork seam from a counter remnant',()=>{
@@ -142,6 +164,8 @@ test('partial gray geometry, opaque coverage and visible blue remnants cannot ce
     ['flat black body',(image:Uint8Array)=>paintBox(image,64,150,19,17,[0,0,0,255],offset)],
     ['flat white body',(image:Uint8Array)=>paintBox(image,64,150,19,17,[255,255,255,255],offset)],
     ['transparent body',(image:Uint8Array)=>paintBox(image,64,150,19,17,[100,100,100,0],offset)],
+    ['opaque flat digits',(image:Uint8Array)=>paintBox(image,90,144,48,20,[0,0,0,255],offset)],
+    ['partly transparent digits',(image:Uint8Array)=>paintBox(image,90,144,48,20,[64,64,64,254],offset)],
     ['strong top remnant',(image:Uint8Array)=>paintBox(image,70,144,3,1,[40,190,200,255],offset)],
     ['strong lower remnant',(image:Uint8Array)=>paintBox(image,72,151,1,3,[40,190,200,255],offset)],
     ['disconnected seam',(image:Uint8Array)=>paintBox(image,70,141,2,2,[100,100,100,255],offset)],
@@ -193,7 +217,7 @@ test("visible digits without the plus prefix do not produce a positive count", (
 
 test('cyan artwork below the icon with an empty numeric field is zero, including aligned movement', () => {
   for (const offset of [-4, 0, 6]) {
-    const image = new Uint8Array(140 * 210 * 4);
+    const image = opaqueTexturedBackground();
     // A lower diagonal cyan streak fills the old color region without the
     // icon upper body. Synthetic pixels avoid publishing a gameplay capture.
     for (let y = 155; y < 172; y++) for (let x = 70; x < 130; x++)
@@ -206,6 +230,71 @@ test('cyan artwork below the icon with an empty numeric field is zero, including
     assert.equal(reading.extraCopies, 0);
     assert.equal(countReliability({ ...reading, borderAlignment: .95, stable: false, iconPresent: false }), 'empty-counter');
   }
+});
+
+test('cyan artwork cannot certify zero when the counter apertures are transparent', () => {
+  for (const offset of [-4, 0, 6]) {
+    const image = new Uint8Array(140 * 210 * 4);
+    for (let y = 155; y < 172; y++) for (let x = 70; x < 130; x++)
+      if (x + y >= 245) image.set([55, 170, 180, 255], ((y + offset) * 140 + x) * 4);
+    const packed = packCount(image, 140, offset);
+    assert.equal(packed.hasIcon, null);
+    assert.equal(matchCountPattern(image, patterns, offset).reason, '장수 숫자 미검출 또는 불명확');
+    const context = { drawImage() {}, getImageData() { return { data: image }; } } as unknown as RasterContext;
+    const reading = readVisual({} as Raster, context,
+      { awakening: 0, hasIcon: packed.hasIcon, offsetY: offset, labelPixels: 100, blankName: false, hasNameBand: false }, patterns);
+    assert.equal(reading.extraCopies, null);
+    assert.equal(countReliability({ ...reading, borderAlignment: .95, stable: false }), 'unconfirmed');
+  }
+});
+
+test('partially transparent icon or digit apertures cannot establish an empty counter', () => {
+  for (const [x, y] of [[64, 143], [81, 152], [90, 144], [137, 163]]) {
+    const image = opaqueTexturedBackground();
+    // Preserve the lower cyan artwork that previously bypassed the aperture guard.
+    for (let yy = 155; yy < 172; yy++) for (let xx = 70; xx < 130; xx++)
+      if (xx + yy >= 245) image.set([55, 170, 180, 255], (yy * 140 + xx) * 4);
+    image[(y * 140 + x) * 4 + 3] = 0;
+    assert.equal(packCount(image).hasIcon, null, `${x}/${y}`);
+  }
+});
+
+test('low-contrast opaque icon and counter coverings cannot be accepted as zero',()=>{
+  const sample=samples.find((entry:{value:number})=>entry.value===2);
+  assert.ok(sample,'requires a positive source strip for the occlusion counterexample');
+  for(const offset of [-4,0,6])for(const factor of [.8,1,1.1])for(const brightness of [-10,0,10])
+    for(const region of ['icon','both'] as const)for(const base of [[50,50,50],[180,180,180],[30,65,83]]) {
+      const image=pixels(sample,offset);
+      // A positive source strip is deliberately covered; background pixels are
+      // synthetic. This is an occlusion regression, not an independent +2 label.
+      for(let y=141;y<172;y++)for(let x=56;x<(region==='icon'?90:139);x++) {
+        const add=(x+y)%2?25:0;
+        const color=base.map(c=>Math.max(0,Math.min(255,Math.round((c+add-128)*factor+128+brightness))));
+        image.set([...color,255],((y+offset)*140+x)*4);
+      }
+      const packed=packCount(image,140,offset);
+      assert.equal(packed.hasIcon,null,`${region}/${base}/${offset}/${factor}/${brightness}`);
+      const context={drawImage(){},getImageData(){return {data:image};}} as unknown as RasterContext;
+      const fields={awakening:0,hasIcon:packed.hasIcon,offsetY:offset,labelPixels:100,blankName:false,hasNameBand:false};
+      const reading=readVisual({} as Raster,context,fields,patterns);
+      assert.equal(reading.extraCopies,null);
+      assert.equal(countReliability({...reading,borderAlignment:1,stable:true}),'unconfirmed');
+    }
+});
+
+test('high-contrast textured covering must not be accepted as zero',()=>{
+  const sample=samples.find((entry:{value:number})=>entry.value===2);
+  assert.ok(sample);
+  const image=pixels(sample);
+  for(let y=141;y<172;y++)for(let x=56;x<139;x++){
+    const shade=(x+y)%2?0:40;
+    image.set([shade,shade,shade,255],(y*140+x)*4);
+  }
+  const packed=packCount(image),context={drawImage(){},getImageData(){return {data:image};}} as unknown as RasterContext;
+  const fields={awakening:0,hasIcon:packed.hasIcon,offsetY:0,labelPixels:100,blankName:false,hasNameBand:false};
+  // Known failure: synthetic covering can look like non-flat artwork. Do not
+  // promote this TODO to a passing expectation of zero.
+  assert.equal(readVisual({} as Raster,context,fields,patterns).extraCopies,null);
 });
 
 test('partially covered icon or numbers stay unresolved instead of becoming zero', () => {
@@ -223,7 +312,7 @@ test('partially covered icon or numbers stay unresolved instead of becoming zero
 
 test('small muted cyan artwork seams do not invent an icon, while connected or saturated remnants remain unknown',()=>{
   for(const offset of [-4,0,6])for(const factor of [.9,1,1.1])for(const brightness of [-10,0,10]) {
-    const image=new Uint8Array(140*210*4);
+    const image=opaqueTexturedBackground();
     const color=[96,122,118].map(c=>Math.round((c-128)*factor+128+brightness));
     // Two short, separate seams produce more than the old three-pixel gate,
     // but neither has the overlay body's area or a sustained edge.
@@ -241,7 +330,7 @@ test('small muted cyan artwork seams do not invent an icon, while connected or s
     {color:[96,122,118],points:[[69,143],[70,144],[71,145]]},
     {color:[96,122,118],points:[[69,146],[70,146],[71,146],[72,146],[73,146]]},
   ]) {
-    const image=new Uint8Array(140*210*4);
+    const image=opaqueTexturedBackground();
     for(const [x,y] of fragment.points)image.set([...fragment.color,255],(y*140+x)*4);
     const packed=packCount(image);
     assert.equal(packed.hasIcon,null,'a partially covered icon cannot become a zero');
@@ -257,7 +346,7 @@ test('a weak cyan artwork seam needs a real edge before it can block an empty co
     [[69,143],[70,143],[69,144],[70,144],[71,144],[71,145]],
   ];
   for(const points of seams)for(const offset of [-4,0,6])for(const factor of [.9,1,1.1])for(const brightness of [-10,0,10]) {
-    const image=new Uint8Array(140*210*4);
+    const image=opaqueTexturedBackground();
     const paint=(x:number,y:number,color:number[])=>image.set([...color.map(c=>Math.max(0,Math.min(255,
       Math.round((c-128)*factor+128+brightness)))),255],((y+offset)*140+x)*4);
     // The green fabric is continuous across this region. The lightest six
@@ -265,7 +354,9 @@ test('a weak cyan artwork seam needs a real edge before it can block an empty co
     // its neighbors have almost the same luminance, without an icon outline.
     for(let y=140;y<156;y++)for(let x=62;x<84;x++)paint(x,y,[94,115,111]);
     for(const [x,y] of points)paint(x,y,[96,122,118]);
-    assert.equal(packCount(image,140,offset).hasIcon,false,`${offset}/${factor}/${brightness}`);
+    // The nearly flat icon aperture may be covered; do not assert zero even
+    // when the synthetic background was deliberately painted as artwork.
+    assert.equal(packCount(image,140,offset).hasIcon,null,`${offset}/${factor}/${brightness}`);
     // The same faint-colored edge over a contrasting surround is retained:
     // missing digits may be covered, so this cannot certify zero copies.
     const edge=new Uint8Array(140*210*4);
@@ -277,7 +368,7 @@ test('a weak cyan artwork seam needs a real edge before it can block an empty co
 
 test('detached artwork highlights do not turn an absent counter into a failed numeric reading', () => {
   for (const offset of [-4, 0, 6]) for (const brightness of [160, 210, 255]) {
-    const image = new Uint8Array(140 * 210 * 4);
+    const image = opaqueTexturedBackground();
     for (let y = 155; y < 170; y++) for (let x = 72; x < 106; x++)
       image.set([40, 190, 200, 255], ((y + offset) * 140 + x) * 4);
     // Multiple highlights, each at most three pixels, scattered across the
@@ -327,10 +418,61 @@ test('numeric evidence without icon retains dim/bright labelled font while rejec
     assert.notEqual(packCount(image).hasIcon,false,`${sample.name}: ${factor}/${brightness}`);
   }
   for(const shape of [{x:2,y:2,w:5,h:12},{x:12,y:0,w:19,h:20},{x:14,y:7,w:5,h:10},{x:10,y:4,w:10,h:12}]){
-    const image=new Uint8Array(140*210*4);
+    const image=opaqueTexturedBackground();
     for(let y=0;y<shape.h;y++)for(let x=0;x<shape.w;x++)
       image.set([210,210,210,255],((144+shape.y+y)*140+90+shape.x+x)*4);
     assert.ok(packCount(image).pixels>0);
     assert.equal(packCount(image).hasIcon,false,JSON.stringify(shape));
   }
+});
+
+test('a flat icon aperture with textured empty digits is an empty-counter candidate',()=>{
+  const textured=()=>{
+    const image=new Uint8Array(140*210*4);
+    for(let y=0;y<210;y++)for(let x=0;x<140;x++){
+      const shade=((Math.floor(x/4)+Math.floor(y/4))%2)?24:80;
+      image.set([shade,shade,shade,255],(y*140+x)*4);
+    }
+    return image;
+  };
+  const image=textured();
+  for(let y=143;y<153;y++)for(let x=64;x<82;x++)image.set([80,80,80,255],(y*140+x)*4);
+  const packed=packCount(image,140,0,true);
+  assert.equal(packed.hasIcon,null,'single flat icon aperture stays unknown');
+  assert.equal(stablePreviewEmptyCandidate(packed),true);
+  const covered=textured();
+  for(let y=143;y<164;y++)for(let x=64;x<139;x++)covered.set([80,80,80,255],(y*140+x)*4);
+  assert.equal(stablePreviewEmptyCandidate(packCount(covered,140,0,true)),false,'flat digits aperture is not empty artwork');
+  const positive=textured();
+  for(let y=143;y<153;y++)for(let x=64;x<82;x++)positive.set([40,190,200,255],(y*140+x)*4);
+  assert.equal(stablePreviewEmptyCandidate(packCount(positive,140,0,true)),false,'a positive icon vetoes zero');
+});
+
+test('one observation of a clean empty counter is enough for zero; more only firm it up',()=>{
+  // Same strict evidence for every observation count (a beskal crop: flat icon
+  // aperture, textured digits aperture, no icon color or stroke).
+  assert.equal(stablePreviewEmptyCandidate(beskalEvidence),true);
+  assert.equal(emptyCounterProof(beskalEvidence,1,false),'single-observation','a single live/video observation counts');
+  assert.equal(emptyCounterProof(beskalEvidence,2,false),'single-observation');
+  assert.equal(emptyCounterProof(beskalEvidence,3,false),'repeated-observations');
+  assert.equal(emptyCounterProof(beskalEvidence,7,false),'repeated-observations');
+  assert.equal(emptyCounterProof(beskalEvidence,1,true),'still-image','a single still image keeps its own proof');
+  assert.equal(emptyCounterProof(beskalEvidence,2,true),'single-observation');
+  // Nothing observed proves nothing.
+  assert.equal(emptyCounterProof(beskalEvidence,0,false),null);
+  assert.equal(emptyCounterProof(beskalEvidence,-1,false),null);
+  assert.equal(emptyCounterProof(beskalEvidence,Number.NaN,false),null);
+  // The evidence itself never loosens: a flat digits aperture, a positive icon or
+  // an explicit empty counter (which has its own path) are not this proof.
+  const covered={...beskalEvidence,diagnostic:{...beskalEvidence.diagnostic!,digitsFlat:true}};
+  assert.equal(stablePreviewEmptyCandidate(covered),false,'flat digits aperture remains unknown');
+  assert.equal(emptyCounterProof(covered,1,false),null);
+  assert.equal(emptyCounterProof(covered,9,true),null);
+  const positive={...beskalEvidence,hasIcon:true};
+  assert.equal(stablePreviewEmptyCandidate(positive),false,'positive icon cannot become zero');
+  assert.equal(emptyCounterProof(positive,1,false),null);
+  const numeric={...beskalEvidence,diagnostic:{...beskalEvidence.diagnostic!,numericEvidence:true}};
+  assert.equal(emptyCounterProof(numeric,5,false),null,'a numeric stroke vetoes zero');
+  const explicitEmpty={...beskalEvidence,hasIcon:false};
+  assert.equal(emptyCounterProof(explicitEmpty,1,true),null,'explicit empty uses the existing path');
 });

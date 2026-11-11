@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCanonicalCapture,type CanonicalRawLease} from '../src/features/card-scanner/canonical-capture';
-import {MAX_FRAME_BYTES} from '../src/features/card-scanner/recording-frame-integrity';
-import {planNativeYuvFrame,type NativeYuvFrameMetadata} from '../src/features/card-scanner/native-yuv-recipe';
+import {createCanonicalCapture,type CanonicalRawLease} from '../src/features/card-scanner/reproduction/canonical-capture';
+import {MAX_FRAME_BYTES} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
+import {planNativeYuvFrame,type NativeYuvFrameMetadata} from '../src/features/card-scanner/acquisition/native-yuv-recipe';
 
 const turn=()=>new Promise<void>(resolve=>setImmediate(resolve));
 type Source=HTMLCanvasElement&{marker:string;close():void};

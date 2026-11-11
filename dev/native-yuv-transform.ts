@@ -1,4 +1,4 @@
-import {MAX_FRAME_BYTES} from '../src/features/card-scanner/exact-recording-codec';
+import {MAX_FRAME_BYTES} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 import {nativeYuvDescriptorJson,UnsupportedNativeYuvError} from './native-yuv-recipe';
 import type {NativeYuvPlaneLayout} from './native-yuv-recipe';
 import {describeNativeYuvTransformFrame} from './native-yuv-transform-metadata';

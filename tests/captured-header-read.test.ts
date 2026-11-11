@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createCapturedHeaderReads} from '../src/features/card-scanner/captured-header-read';
-import type {CapturedHeaderRegion} from '../src/features/card-scanner/captured-header-read';
-import type {InventoryHeaderFact} from '../src/features/card-scanner/scroll-capture-diagnostic';
+import {createCapturedHeaderReads} from '../src/features/card-scanner/capture/captured-header-read';
+import type {CapturedHeaderRegion} from '../src/features/card-scanner/capture/captured-header-read';
+import type {InventoryHeaderFact} from '../src/features/card-scanner/session/scroll-capture-diagnostic';
 
 const source=(frame:number):CapturedHeaderRegion=>({source:{sessionId:'header-test',processingFrame:frame,acquisitionFrameId:frame+100,
   canonicalSourceFrameId:frame+200,observationFrameId:`header-test:frame:${frame+300}`,inputId:frame+400,captureTime:frame/10,phase:'input',sourceWidth:1920,sourceHeight:1080},

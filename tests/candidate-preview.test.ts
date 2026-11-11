@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCandidatePreviewEncoder } from '../src/features/card-scanner/candidate-preview';
-import { encodeCandidatePreviewImage } from '../src/features/card-scanner/candidate-preview-image';
+import { createCandidatePreviewEncoder } from '../src/features/card-scanner/ui/candidate-preview';
+import { encodeCandidatePreviewImage } from '../src/features/card-scanner/ui/candidate-preview-image';
 
 function canvas() {
   const callbacks: BlobCallback[] = [];
@@ -27,6 +27,85 @@ function fileReader() {
 
 const jpeg = () => new Blob(['preview'], { type: 'image/jpeg' });
 const encoder = (options: Parameters<typeof createCandidatePreviewEncoder>[0] = {}) => createCandidatePreviewEncoder(options).encode;
+
+test('bounded credit wait does not mistake a timed out native job for a free slot',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const first=canvas(),second=canvas();
+ const previews=createCandidatePreviewEncoder({maxPending:1,timeoutMs:50,createWorker:()=>undefined});
+ const old=previews.encodeOwned(first.value);t.mock.timers.tick(50);
+ assert.equal(await old,'');assert.equal(previews.waiting,0);
+ assert.equal(previews.tryEncodeOwned(second.value),undefined);
+ assert.equal(second.value.width,140,'unsuccessful try preserves caller ownership');
+ const next=previews.encodeOwnedWhenAvailable(second.value);
+ assert.equal(previews.waitingForCredit,1);assert.equal(second.callbacks.length,0);
+ first.callbacks[0](null);
+ assert.equal(previews.waitingForCredit,0);assert.equal(second.callbacks.length,1);
+ second.callbacks[0](null);assert.equal(await next,'');assert.equal(second.value.width,0);
+ await previews.dispose();
+});
+
+test('credit waiters have bounded count, timeout and abort cleanup',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const controller=new AbortController(),first=canvas(),sources=Array.from({length:5},()=>canvas());
+ const previews=createCandidatePreviewEncoder({signal:controller.signal,maxPending:1,timeoutMs:50,createWorker:()=>undefined});
+ const active=previews.encodeOwned(first.value);
+ const waiting=sources.map(source=>previews.encodeOwnedWhenAvailable(source.value));
+ assert.equal(previews.waitingForCredit,4);assert.equal(await waiting[4],'');assert.equal(sources[4].value.width,0);
+ t.mock.timers.tick(50);
+ assert.equal(await active,'');assert.deepEqual(await Promise.all(waiting),['','','','','']);
+ assert.equal(previews.waitingForCredit,0);assert.ok(sources.every(source=>source.value.width===0));
+ first.callbacks[0](null); // Late completion cannot revive a timed-out waiter.
+ assert.equal(previews.waitingForCredit,0);
+ await previews.dispose();
+});
+
+test('aborting credit waits releases the owned canvas without waiting for native work',async()=>{
+ const controller=new AbortController(),first=canvas(),second=canvas();
+ const previews=createCandidatePreviewEncoder({signal:controller.signal,maxPending:1,createWorker:()=>undefined});
+ const active=previews.encodeOwned(first.value),wait=previews.encodeOwnedWhenAvailable(second.value);
+ assert.equal(previews.waitingForCredit,1);controller.abort();
+ assert.equal(await active,'');assert.equal(await wait,'');assert.equal(second.value.width,0);
+ first.callbacks[0](null);assert.equal(second.callbacks.length,0);
+ await previews.dispose();
+});
+
+test('four active previews overlap readers and the fifth waits for real credit without losing its image',async()=>{
+ const sources=Array.from({length:5},()=>canvas()),readers:ReturnType<typeof fileReader>[]=[];
+ const previews=createCandidatePreviewEncoder({maxPending:4,timeoutMs:1000,createWorker:()=>undefined,
+  createReader(){const reader=fileReader();readers.push(reader);return reader.value;}});
+ const tasks=sources.slice(0,4).map(source=>previews.tryEncodeOwned(source.value)!);
+ assert.equal(tasks.length,4);assert.ok(tasks.every(Boolean));
+ assert.equal(previews.tryEncodeOwned(sources[4].value),undefined);
+ const fifth=previews.encodeOwnedWhenAvailable(sources[4].value);
+ assert.equal(previews.waiting,4);assert.equal(previews.waitingForCredit,1);
+ sources[0].callbacks[0](jpeg());readers[0].value.result='data:image/jpeg;base64,MA==';readers[0].fire('onload');
+ assert.equal(sources[4].callbacks.length,1,'the fifth starts only when native credit is returned');
+ for(let i=1;i<5;i++){
+  sources[i].callbacks[0](jpeg());readers[i].value.result=`data:image/jpeg;base64,${i}A==`;readers[i].fire('onload');
+ }
+ const images=await Promise.all([...tasks,fifth]);
+ assert.equal(images.length,5);assert.ok(images.every(image=>image.startsWith('data:image/jpeg;base64,')));
+ assert.ok(sources.every(source=>source.value.width===0));
+ assert.equal(previews.waitingForCredit,0);await previews.dispose();
+});
+
+for(const mode of ['throw','callback'] as const)test(`credit notification cannot reenter a synchronously failing waiter (${mode})`,async()=>{
+ const first=canvas(),last=canvas();let starts=0;
+ const middle={width:140,height:210,toBlob(callback:BlobCallback){starts++;
+  if(mode==='throw')throw Error('tainted');callback(null);
+ }} as unknown as HTMLCanvasElement;
+ const previews=createCandidatePreviewEncoder({maxPending:1,timeoutMs:1000,createWorker:()=>undefined});
+ const active=previews.encodeOwned(first.value);
+ const rejected=previews.encodeOwnedWhenAvailable(middle),next=previews.encodeOwnedWhenAvailable(last.value);
+ assert.equal(previews.waitingForCredit,2);
+ first.callbacks[0](null);
+ assert.equal(starts,1,'the same waiter must not recursively start twice');
+ assert.equal(last.callbacks.length,1,'the next waiter can use returned credit');
+ last.callbacks[0](null);
+ assert.deepEqual(await Promise.all([active,rejected,next]),['','','']);
+ assert.equal(previews.waitingForCredit,0);assert.equal(middle.width,0);assert.equal(last.value.width,0);
+ await previews.dispose();
+});
 
 test('optional preview encodes asynchronously with the original JPEG quality and retains caller ownership', async () => {
   const source = canvas(), reader = fileReader();

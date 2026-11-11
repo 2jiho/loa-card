@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ScanGrid,gridReady,isLockedInventorySlot} from '../src/features/card-scanner/scan-grid';
-import {reduceObservationExecution,observationExecutionSnapshot,hashObservationExecution} from '../src/features/card-scanner/observation-execution';
-import type {ObservationFact,ObservationSource,ObservationExecutionState} from '../src/features/card-scanner/observation-execution';
+import {ScanGrid,gridReady,isLockedInventorySlot} from '../src/features/card-scanner/session/scan-grid';
+import {reduceObservationExecution,observationExecutionSnapshot,hashObservationExecution} from '../src/features/card-scanner/session/observation-execution';
+import type {ObservationFact,ObservationSource,ObservationExecutionState} from '../src/features/card-scanner/session/observation-execution';
 
 test('scroll permission requires every slot to be retained or explicitly empty',()=>{
  const grid=new ScanGrid();grid.begin(true);
@@ -22,6 +22,130 @@ test('moving duplicate slots follow their group while late old reads cannot conf
  grid.finish(3,'review');assert.equal(grid.snapshot().cells[10].status,'review');
  grid.reset();grid.begin(true);grid.group(0,9,4,false);
  assert.equal(grid.snapshot().cells[0].status,'unknown');
+});
+
+test('fresh group source invalidation stops an older identity and late result painting the new slot',()=>{
+ const grid=new ScanGrid();grid.begin(true);grid.group(0,9,1,true,1);
+ grid.identify(9,'old');const oldLease=grid.start(1);
+ assert.equal(grid.isCurrentObservation(9,1),true);
+ grid.begin(true);grid.invalidateGroupIdentity(9,2);grid.group(0,9,2,true,2);
+ assert.equal(grid.isCurrentObservation(9,1),false,'older work cannot place its identity on the newer source');
+ assert.equal(grid.isCurrentObservation(9,2),true);
+ grid.finish(1,'read',oldLease);
+ grid.confirm(['old']);
+ assert.equal(grid.snapshot().cells[0].status,'waiting');
+ assert.equal(grid.snapshot().inventory?.[10].status,'waiting','confirmed old identity cannot paint the new slot');
+ const currentLease=grid.start(2);grid.identify(9,'new');grid.finish(2,'read',currentLease);
+ assert.equal(grid.snapshot().cells[0].status,'read');
+ assert.equal(grid.snapshot().inventory?.[10].status,'read');
+});
+
+test('identity invalidation preserves same-source work and is bounded across resets',()=>{
+ const grid=new ScanGrid();grid.begin(true);assert.equal(grid.needsGroupInvalidation(7,1),false);
+ grid.group(0,7,1,true,1);grid.identify(7,'same');grid.finish(1,'read');
+ assert.equal(grid.needsGroupInvalidation(7,1),false);assert.equal(grid.needsGroupInvalidation(7,2),true);
+ grid.invalidateGroupIdentity(7,1);grid.confirm(['same']);
+ assert.equal(grid.snapshot().inventory?.[0].status,'read','same trace is not invalidated');
+ grid.reset();assert.equal(grid.isCurrentObservation(7,1),false);
+ grid.begin(true);grid.group(0,7,2,true,1);grid.finish(2,'review');grid.confirm(['same']);
+ assert.equal(grid.snapshot().inventory?.[0].status,'review');
+});
+
+test('an unbound new source stays waiting or reading when stale live placements are reintroduced',()=>{
+ const grid=new ScanGrid();grid.begin(true);grid.group(0,7,1,true,1);grid.identify(7,'old');grid.finish(1,'read');
+ const placements=[{id:'old',slot:0},{id:'other',slot:1}],statuses=new Map([['old','read' as const],['other','read' as const]]);
+ grid.placeLive(placements,statuses);assert.equal(grid.snapshot().inventory?.[0].status,'read');
+ grid.invalidateGroupIdentity(7,2);grid.group(0,7,2,true,1);
+ // Simulate refreshFeedback placing its previous cached spatial graph again.
+ grid.placeLive(placements,statuses);
+ assert.equal(grid.snapshot().inventory?.[0].status,'waiting');
+ assert.equal(grid.snapshot().inventory?.[1].status,'read','unrelated placement is unchanged');
+ const lease=grid.start(2);grid.placeLive(placements,statuses);
+ assert.equal(grid.snapshot().inventory?.[0].status,'reading');
+ grid.finish(2,'review',lease);grid.placeLive(placements,statuses);
+ assert.equal(grid.snapshot().inventory?.[0].status,'review');
+});
+
+test('a known new identity takes precedence over a different stale live identity at the same slot',()=>{
+ const grid=new ScanGrid();grid.begin(true);grid.group(0,7,1,true,1);grid.identify(7,'old');grid.finish(1,'read');
+ const oldPlacement=[{id:'old',slot:0}],oldRead=new Map([['old','read' as const]]);
+ grid.placeLive(oldPlacement,oldRead);
+ grid.invalidateGroupIdentity(7,2);grid.group(0,7,2,true,1);
+ grid.identify(7,'new');grid.placeLive(oldPlacement,oldRead);
+ assert.equal(grid.snapshot().inventory?.[0].status,'waiting','new name alone does not confirm its fields');
+ const lease=grid.start(2);grid.placeLive(oldPlacement,oldRead);
+ assert.equal(grid.snapshot().inventory?.[0].status,'reading');
+ grid.finish(2,'read',lease);grid.placeLive(oldPlacement,oldRead);
+ assert.equal(grid.snapshot().inventory?.[0].status,'read','only the new work completion paints this cell');
+});
+
+test('source-work projection protects every fresh source, including new groups and the same ID',()=>{
+ for(const newId of ['old','new']){
+  const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.begin(true);
+  grid.group(0,7,1,true,1);grid.identify(7,'old');grid.finish(1,'read');
+  const placement=[{id:'old',slot:0}],oldRead=new Map([['old','read' as const]]);
+  grid.placeLive(placement,oldRead);assert.equal(grid.snapshot().inventory?.[0].status,'read');
+  // Different fuzzy group, same physical slot; no name has been read yet.
+  grid.group(0,8,2,true,1);grid.placeLive(placement,oldRead);
+  assert.equal(grid.snapshot().inventory?.[0].status,'waiting');
+  grid.identify(8,newId);grid.confirm(['old']);grid.placeLive(placement,oldRead);
+  assert.equal(grid.snapshot().inventory?.[0].status,'waiting',`${newId}: a name or previous confirmation cannot finish this work`);
+  let lease=grid.start(2);grid.placeLive(placement,oldRead);
+  assert.equal(grid.snapshot().inventory?.[0].status,'reading');
+  grid.finish(2,'review',lease);grid.placeLive(placement,oldRead);
+  assert.equal(grid.snapshot().inventory?.[0].status,'review');
+  lease=grid.start(2);grid.finish(2,'read',lease);grid.placeLive(placement,oldRead);
+  assert.equal(grid.snapshot().inventory?.[0].status,'read');
+ }
+});
+
+test('source-work projection persists through a session reset but default grids remain legacy',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.reset();grid.begin(true);
+ grid.group(0,1,1,true,1);grid.placeLive([{id:'old',slot:0}],new Map([['old','read']]));
+ assert.equal(grid.snapshot().inventory?.[0].status,'waiting');
+ const old=new ScanGrid();old.begin(true);old.group(0,1,1,true,1);
+ old.placeLive([{id:'old',slot:0}],new Map([['old','read']]));
+ assert.equal(old.snapshot().inventory?.[0].status,'read');
+});
+
+test('a fuzzy duplicate without its own scheduled work remains unknown, even when its old group is read',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.begin(true);
+ grid.group(0,7,1,true,1);grid.identify(7,'old');grid.finish(1,'read');
+ const placement=[{id:'old',slot:0}],oldRead=new Map([['old','read' as const]]);
+ grid.placeLive(placement,oldRead);assert.equal(grid.snapshot().inventory?.[0].status,'read');
+ grid.begin(true);grid.group(0,7,2,false);grid.record(2);grid.register(2,1);
+ grid.confirm(['old']);grid.placeLive(placement,oldRead);
+ const snapshot=grid.snapshot();
+ assert.equal(snapshot.cells[0].status,'unknown');
+ assert.equal(snapshot.inventory?.[0].status,'unknown');
+ assert.equal(snapshot.recentFrame?.cells[0].status,'unknown');
+ assert.match(snapshot.cells[0].reason!,/이번 입력은 판독하지 않음/);
+ assert.equal(grid.isCurrentObservation(7,2),false,'the duplicate was not scheduled');
+ grid.finish(1,'read');assert.equal(grid.snapshot().cells[0].status,'unknown','a prior completion cannot paint this source');
+});
+
+test('invalidated-group bookkeeping is pruned with display groups and cleared by identification or reset',()=>{
+ const grid=new ScanGrid();
+ for(let id=1;id<=6000;id++){
+  grid.begin(true);grid.group(0,id,id*2-1,true);grid.invalidateGroupIdentity(id,id*2);grid.group(0,id,id*2,true);
+ }
+ // This is a memory-bound contract on the internal display cache, not a claim
+ // about whole-browser heap or whether these synthetic groups are real cards.
+ const caches=grid as unknown as {groups:Map<number,unknown>;unboundGroups:Set<number>;sourceGuardedGroups:Set<number>};
+ assert.ok(caches.groups.size<=2304);assert.equal(caches.unboundGroups.size,caches.groups.size);
+ assert.equal(caches.sourceGuardedGroups.size,caches.groups.size);
+ grid.identify(6000,'current');assert.equal(caches.unboundGroups.has(6000),false);
+ grid.reset();assert.equal(caches.unboundGroups.size,0);assert.equal(caches.sourceGuardedGroups.size,0);
+});
+
+test('source-work session bookkeeping is pruned as fresh groups age out',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();
+ for(let id=1;id<=6000;id++){grid.begin(true);grid.group(0,id,id,true);}
+ const caches=grid as unknown as {groups:Map<number,unknown>;unboundGroups:Set<number>;sourceGuardedGroups:Set<number>};
+ assert.ok(caches.groups.size<=2304);
+ assert.equal(caches.unboundGroups.size,caches.groups.size);
+ assert.equal(caches.sourceGuardedGroups.size,caches.groups.size);
+ grid.reset();assert.equal(caches.unboundGroups.size,0);assert.equal(caches.sourceGuardedGroups.size,0);
 });
 test('rejected overlay does not borrow a previous slot result and snapshots are detached',()=>{
  const grid=new ScanGrid();grid.begin(true);grid.group(0,1,1,true);grid.finish(1,'read');
@@ -435,11 +559,12 @@ test('recent frame keeps all forty captured slots and receives late reads withou
 });
 
 test('middle start, large jumps and reverse scrolling never relocate a recent capture from liveTop',()=>{
- const grid=new ScanGrid();grid.geometry(55);grid.begin(true);grid.viewport(35);
+ const grid=new ScanGrid();grid.geometry(55);grid.begin(true);grid.viewport(35);grid.liveViewport(35);
  grid.group(0,1,1,true);grid.record(1);const first=grid.snapshot();
  for(const top of [43,52,35]){
   grid.liveViewport(top);const moved=grid.viewportSnapshot(first);
-  assert.equal(moved.liveTop,top);assert.equal(moved.recentFrame,first.recentFrame);
+  assert.equal(moved.liveTop,top);assert.equal(moved.recentFrame!.cells,first.recentFrame!.cells);
+  assert.equal(moved.recentFrame!.capturedTop,undefined,'an old hint cannot reappear after a jump or return');
   assert.equal(moved.recentFrame!.frame,1);assert.equal(moved.inventory!.length,0);
  }
  grid.begin(true);assert.equal(grid.snapshot().recentFrame,undefined);
@@ -483,4 +608,114 @@ test('sort and session reset discard recent placement while duplicate read evide
  grid.reset();assert.equal(grid.snapshot().recentFrame,undefined);
  grid.begin(true);grid.group(30,1,3,false);grid.record(3);
  assert.equal(grid.snapshot().recentFrame!.cells[30].status,'unknown','reset cannot reuse a previous session read');
+});
+
+test('source work history survives skipped repeated frames without claiming their read',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.geometry(55);grid.begin(true);
+ grid.group(0,1,1,true,20);grid.identify(1,'a');const lease=grid.start(1);grid.finish(1,'read',lease);
+ for(let trace=2;trace<=4;trace++){
+  grid.begin(true);grid.group(0,1,trace,false,20);grid.record(trace);
+  const snapshot=grid.snapshot();
+  assert.equal(snapshot.recentFrame!.cells[0].status,'unknown');
+  assert.equal(snapshot.inventory![190].status,'unknown');assert.equal(snapshot.inventory![190].historical,true);
+ }
+ grid.placeLive([{id:'a',slot:190}],new Map([['a','read']]));
+ assert.equal(grid.snapshot().inventory![190].status,'unknown');assert.equal(grid.snapshot().inventory![190].historical,true);
+ grid.resetPositions();assert.equal(grid.snapshot().inventory!.length,0);
+});
+
+test('only the original completed lease may create historical placement after an untracked input',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.begin(true);
+ grid.group(0,1,1,true,3);grid.identify(1,'a');const lease=grid.start(1);
+ grid.begin(true);grid.group(0,1,2,false,3);
+ assert.equal(grid.snapshot().inventory![20].historical,undefined);
+ grid.finish(1,'read',lease);assert.equal(grid.snapshot().inventory![20].historical,true);
+ grid.begin(true);grid.group(0,2,3,true,3);assert.equal(grid.snapshot().inventory![20].status,'waiting');
+ assert.equal(grid.snapshot().inventory![20].historical,true);
+ grid.identify(2,'b');assert.equal(grid.snapshot().inventory![20].historical,undefined);
+ const b=grid.start(3);grid.finish(3,'review',b);assert.equal(grid.snapshot().inventory![20].historical,undefined);
+});
+
+test('replacement and empty prevent late work from painting a stale position',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.begin(true);
+ grid.group(0,1,1,true,1);const a=grid.start(1);
+ grid.begin(true);grid.group(0,2,2,true,1);grid.identify(2,'b');grid.finish(1,'read',a);
+ assert.equal(grid.snapshot().inventory![0].status,'waiting');assert.equal(grid.snapshot().inventory![0].historical,undefined);
+ const b=grid.start(2);grid.cell(0,'empty',undefined,1);grid.finish(2,'read',b);
+ assert.equal(grid.snapshot().inventory![0].status,'empty');assert.equal(grid.snapshot().inventory![0].historical,undefined);
+});
+
+test('reverse scroll keeps independent position history, geometry change clears it',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.geometry(55);grid.begin(true);
+ grid.group(0,1,1,true,40);const a=grid.start(1);grid.finish(1,'read',a);
+ grid.begin(true);grid.group(0,2,2,true,10);const b=grid.start(2);grid.finish(2,'read',b);
+ grid.begin(true);grid.group(0,1,3,false,40);
+ assert.equal(grid.snapshot().inventory![390].historical,true);
+ grid.begin(true);grid.group(0,2,4,false,10);
+ assert.equal(grid.snapshot().inventory![90].historical,true);assert.equal(grid.snapshot().inventory![390].historical,true);
+ grid.geometry(54);assert.equal(grid.snapshot().inventory!.length,0);
+});
+
+test('same ID does not let an earlier processed position replace current work status',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.begin(true);
+ grid.group(0,1,1,true,1);grid.identify(1,'same');const a=grid.start(1);grid.finish(1,'read',a);
+ grid.begin(true);grid.group(0,2,2,true,1);grid.identify(2,'same');
+ grid.placeLive([{id:'same',slot:0}],new Map([['same','read']]));
+ assert.equal(grid.snapshot().inventory![0].status,'waiting');assert.equal(grid.snapshot().inventory![0].historical,true);
+ const b=grid.start(2);assert.equal(grid.snapshot().inventory![0].status,'reading');
+ grid.finish(2,'review',b);assert.equal(grid.snapshot().inventory![0].status,'review');
+ assert.equal(grid.snapshot().inventory![0].historical,true);
+});
+
+test('delayed source completion cannot restore history after sort or a newer placement',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.begin(true);
+ grid.group(0,1,1,true,5);const old=grid.start(1);grid.resetPositions();
+ grid.begin(true);grid.group(0,2,2,true,5);grid.identify(2,'new');grid.finish(1,'read',old);
+ assert.equal(grid.snapshot().inventory![40].status,'waiting');assert.equal(grid.snapshot().inventory![40].historical,undefined);
+});
+
+test('history is created only by completed work with a registered captured position',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.begin(true);
+ grid.group(0,1,1,true);grid.record(1);const a=grid.start(1);grid.finish(1,'read',a);
+ assert.equal(grid.snapshot().inventory!.length,0);
+ grid.register(1,15);assert.equal(grid.snapshot().inventory![140].status,'read');
+ grid.begin(true);grid.group(0,1,2,false,15);
+ assert.equal(grid.snapshot().inventory![140].historical,true);
+});
+
+test('late same-source identity lets a later conflicting identity clear history',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.begin(true);
+ grid.group(0,1,1,true,1);const a=grid.start(1);grid.finish(1,'read',a);
+ grid.begin(true);grid.group(0,1,2,false,1);assert.equal(grid.snapshot().inventory![0].historical,true);
+ grid.identify(1,'a');grid.begin(true);grid.group(0,2,3,true,1);grid.identify(2,'b');
+ assert.equal(grid.snapshot().inventory![0].historical,undefined);
+});
+
+test('unpositioned same-group replacement invalidates an old receipt after duplicate input',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.begin(true);
+ grid.group(0,1,1,true,1);const a=grid.start(1);
+ grid.begin(true);grid.group(0,1,2,false,1);
+ grid.begin(true);grid.group(0,1,3,true);
+ grid.finish(1,'read',a);
+ assert.equal(grid.snapshot().inventory![0].status,'unknown');
+ assert.equal(grid.snapshot().inventory![0].historical,undefined);
+});
+
+test('a newer placement for the same ID removes the old position history',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.begin(true);
+ grid.group(0,1,1,true,1);grid.identify(1,'a');const a=grid.start(1);grid.finish(1,'read',a);
+ grid.begin(true);grid.group(0,1,2,false,1);assert.equal(grid.snapshot().inventory![0].historical,true);
+ grid.begin(true);grid.group(0,2,3,true,2);grid.identify(2,'a');
+ assert.equal(grid.snapshot().inventory![0].historical,undefined);
+ const b=grid.start(3);grid.finish(3,'read',b);grid.begin(true);grid.group(0,2,4,false,2);
+ assert.equal(grid.snapshot().inventory![10].historical,true);
+});
+
+test('older completion cannot relocate newer same-ID historical position',()=>{
+ const grid=new ScanGrid();grid.enableSourceWorkProjection();grid.begin(true);
+ grid.group(0,1,1,true,1);grid.identify(1,'a');const a=grid.start(1);
+ grid.begin(true);grid.group(0,2,2,true,2);grid.identify(2,'a');const b=grid.start(2);grid.finish(2,'read',b);
+ grid.begin(true);grid.group(0,2,3,false,2);assert.equal(grid.snapshot().inventory![10].historical,true);
+ grid.finish(1,'read',a);grid.begin(true);grid.group(0,1,4,false,1);
+ assert.equal(grid.snapshot().inventory![0].historical,undefined);assert.equal(grid.snapshot().inventory![10].historical,true);
 });

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createMediaSequenceStart,createMediaDecodedFrame,createMediaSequenceEnd,parseMediaInputLink} from '../src/features/card-scanner/media-lineage';
-import {normalizeScannerInputFrame} from '../src/features/card-scanner/scanner-input-frame';
+import {createMediaSequenceStart,createMediaDecodedFrame,createMediaSequenceEnd,parseMediaInputLink} from '../src/features/card-scanner/capture/media-lineage';
+import {normalizeScannerInputFrame} from '../src/features/card-scanner/capture/scanner-input-frame';
 import {RunStateTrace,parseRunStateTrace,replayRunStateTrace} from '../dev/run-state-trace';
 
 const playbackId='12345678-1234-4234-8234-123456789abc';

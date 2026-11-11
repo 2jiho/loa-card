@@ -1,4 +1,4 @@
-import {InputDecisionReplay} from '../src/features/card-scanner/live-input-decision-replay.ts';
+import {InputDecisionReplay} from '../src/features/card-scanner/reproduction/live-input-decision-replay.ts';
 
 const distribution=values=>{
   const sorted=[...values].sort((a,b)=>a-b);

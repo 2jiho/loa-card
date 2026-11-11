@@ -1,6 +1,6 @@
-import{test}from'node:test';import assert from'node:assert/strict';import{readFileSync}from'node:fs';import{createPortraitMatcher,confirmPortrait,confirmPortraitWithText,MAX_PORTRAIT_DIAGNOSTIC_STAGES,MAX_PORTRAIT_DIAGNOSTIC_CANDIDATES,MAX_PORTRAIT_DIAGNOSTIC_ID_CHARS}from'../src/features/card-scanner/portrait-matcher.ts';
-import type{PortraitMatchDiagnostic,PortraitTextEvidence,PortraitEvidence}from'../src/features/card-scanner/portrait-matcher.ts';
-import {parsePortraitDiagnostics} from '../src/features/card-scanner/portrait-diagnostics';
+import{test}from'node:test';import assert from'node:assert/strict';import{readFileSync}from'node:fs';import{createPortraitMatcher,confirmPortrait,confirmPortraitWithText,MAX_PORTRAIT_DIAGNOSTIC_STAGES,MAX_PORTRAIT_DIAGNOSTIC_CANDIDATES,MAX_PORTRAIT_DIAGNOSTIC_ID_CHARS}from'../src/features/card-scanner/recognition/portrait-matcher.ts';
+import type{PortraitMatchDiagnostic,PortraitTextEvidence,PortraitEvidence}from'../src/features/card-scanner/recognition/portrait-matcher.ts';
+import {parsePortraitDiagnostics} from '../src/features/card-scanner/recognition/portrait-diagnostics';
 const json=(path:string)=>JSON.parse(readFileSync(new URL(path,import.meta.url),'utf8'));
 const{cards}=json('../public/scanner/cards.json'),atlas=json('../public/scanner/artwork-details.json'),samples=json('./fixtures/artwork-detail-samples.json');
 test('missing text identity reference is explicit and cannot borrow another card portrait',()=>{
@@ -15,10 +15,12 @@ test('missing text identity reference is explicit and cannot borrow another card
   assert.equal(match(sample.gray)?.card.id,sample.id,'independent visual matching is unchanged');
  }
 });
-test('two independent portrait regions agree with the OCR-validated screenshot inventory and never identify card backs',()=>{
- const match=createPortraitMatcher(cards,atlas);let accepted=0;
- for(const sample of samples){const result=match(Uint8Array.from(Buffer.from(sample.gray,'base64')));if(result){accepted++;assert.equal(result.card.name,sample.expected,`${sample.page}/${sample.row}/${sample.column}`);}}
- assert.equal(samples.length,400);assert.ok(accepted>=150);assert.ok(accepted<384);
+test('portrait regions match the labelled screenshot regression set and reject card backs',()=>{
+ const match=createPortraitMatcher(cards,atlas);let accepted=0,backs=0;
+ for(const sample of samples){const result=match(Uint8Array.from(Buffer.from(sample.gray,'base64')));
+  if(sample.expected===null){backs++;assert.equal(result,null,`card back ${sample.page}/${sample.row}/${sample.column}`);}
+  else if(result){accepted++;assert.equal(result.card.name,sample.expected,`${sample.page}/${sample.row}/${sample.column}`);}}
+ assert.equal(samples.length,400);assert.equal(backs,16);assert.ok(accepted>=150);
 });
 test('a real compressed Orelda crop is independently confirmed above the banner area',()=>{
  const sample=json('./fixtures/portrait-corroboration.json'),match=createPortraitMatcher(cards,atlas);
@@ -49,6 +51,24 @@ test('equipped Shandi needs both complete corrected text and independently match
   assert.equal(confirmPortraitWithText({...p,...change},text),false);
  const wonpo=samples.find((s:{name:string})=>s.name==='원포');
  const picture=match(wonpo.gray);assert.equal(picture?.card.name,'원포');assert.ok(picture&&confirmPortrait(picture.portrait));
+});
+test('masked portrait diagnostics retain both finalists and their independent left/right checks',()=>{
+ const sample=json('./fixtures/masked-portrait-corroboration.json').find((s:{name:string})=>s.name==='샨디');
+ const text={id:sample.id,rawText:'산디',canonicalName:'샨디',complete:true,ocrConfidence:58,score:5/6,gap:.5};
+ for(const fractionalRegistration of [false,true]){
+  let diagnostic:PortraitMatchDiagnostic|undefined;
+  const match=createPortraitMatcher(cards,atlas,{}, {fractionalRegistration});
+  const result=match(sample.gray,text,value=>{diagnostic=value;});
+  const masked=diagnostic?.stages.find(stage=>stage.stage==='above-badge');
+  assert.equal(result?.card.id,'3200004');assert.ok(masked);
+  assert.deepEqual(masked.candidates.map(value=>value.id),['3200004','3200203']);
+  // Diagnostic score snapshots detect implementation changes, not independently verified accuracy.
+  // Re-evaluate these values when changing scoring while keeping identity and safety checks.
+  for(const [index,expected] of [[0,[0.8507104172265522,0.8548641493505352]],[1,[0.7078199595193071,0.5605069650279457]]] as const){
+   assert.ok(Math.abs(masked.candidates[index].left!-expected[0])<1e-12);
+   assert.ok(Math.abs(masked.candidates[index].right!-expected[1])<1e-12);
+  }
+ }
 });
 test('a single strong region, tied artworks, flat crops and corrupted regions cannot confirm a portrait',()=>{
  assert.equal(confirmPortrait({upper:.99,lower:.90,correlation:.945,margin:.4}),false);
@@ -115,8 +135,8 @@ test('fractional option preserves accepted screenshot identities and does not id
    if(after)assert.equal(after.card.name,sample.expected,`${sample.page}/${sample.row}/${sample.column}`);
   }
  }
- const holdout=json('./fixtures/screen-portrait-holdout.json'),refined=createPortraitMatcher(cards,atlas,screen,{fractionalRegistration:true});
- for(const row of holdout.rows){
+ const regression=json('./fixtures/screen-portrait-regression.json'),refined=createPortraitMatcher(cards,atlas,screen,{fractionalRegistration:true});
+ for(const row of regression.rows){
   const after=refined(Uint8Array.from(Buffer.from(row.gray,'base64')));
   if(row.expected===null)assert.equal(after,null,`empty ${row.page}/${row.slot}`);
   else if(after)assert.equal(after.card.id,row.expected,`identity ${row.page}/${row.slot}`);
@@ -207,6 +227,9 @@ test('portrait diagnostics preserve tied rejections and retain only top2 for the
  assert.deepEqual(packet.stages.map(stage=>stage.stage),['normal','above-badge','refined-normal','refined-above-badge']);
  assert.deepEqual(packet.stages.map(stage=>stage.queryCount),[9,9,81,81]);
  for(const stage of packet.stages){assert.equal(stage.candidates.length,2);assert.equal(stage.candidates[0].margin,0);assert.equal(stage.decision.accepted,false);assert.equal(stage.decision.independent.checks?.margin,false);}
+ for(const stage of packet.stages.filter(stage=>stage.stage==='above-badge'||stage.stage==='refined-above-badge')){
+  assert.equal(stage.candidates[0].left,stage.candidates[1].left);assert.equal(stage.candidates[0].right,stage.candidates[1].right);
+ }
  assert.ok(JSON.stringify(packet).length<16_384,'fixed stage/candidate bounds do not retain the full catalog rank');
 });
 

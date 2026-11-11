@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import {IDBObjectStore} from 'fake-indexeddb';
-import {createReproductionSessionStore,SessionStorageLimitError,SESSION_LEASE_MS} from '../src/features/card-scanner/reproduction-session-store';
-import type {ExactFinalizationInput,SessionStoreOptions} from '../src/features/card-scanner/reproduction-session-store';
+import {createReproductionSessionStore,SessionStorageLimitError,SESSION_LEASE_MS} from '../src/features/card-scanner/reproduction/reproduction-session-store';
+import type {ExactFinalizationInput,SessionStoreOptions} from '../src/features/card-scanner/reproduction/reproduction-session-store';
 
 const env={browser:'test',catalog:'test',build:'test'};
 const request=<T>(value:IDBRequest<T>)=>new Promise<T>((resolve,reject)=>{value.onsuccess=()=>resolve(value.result);value.onerror=()=>reject(value.error);});

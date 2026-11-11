@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { matchCardName } from "../src/features/card-scanner/card-dictionary.ts";
+import { matchCardName } from "../src/features/card-scanner/recognition/card-dictionary.ts";
 
 test("the complete card dictionary resolves line breaks and small Korean OCR errors without filling missing names", async () => {
   const cards = JSON.parse(

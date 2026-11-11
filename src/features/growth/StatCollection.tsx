@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { GrowthMaster, OwnedCard } from './optimizer';
 import { statCollectionPlans } from './stat-collection';
-import { cardRarityClass } from '../../card-rarity';
+import { cardRarityClass } from '../../shared/card-rarity';
 import { primaryStatLabel, primaryStatsAreGrouped } from './stat-display';
 
 export function StatCollection({ master, cards, stat }: { master: GrowthMaster; cards: OwnedCard[]; stat: string }) {

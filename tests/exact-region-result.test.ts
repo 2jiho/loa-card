@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {ExactRegionResult} from '../src/features/card-scanner/exact-region-result';
+import {ExactRegionResult} from '../src/features/card-scanner/acquisition/exact-region-result';
 const region=()=>({width:2,height:1,data:new Uint8ClampedArray([12,34,56,255,78,90,12,255])});
 test('all OCR regions and their geometry must match, including one-bit counter or arrow changes',()=>{
  const cache=new ExactRegionResult<{value:number}>(2),regions=[region(),region()];

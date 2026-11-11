@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseObservationFact, reduceObservationExecution, observationExecutionSnapshot, hashObservationExecution,
-} from '../src/features/card-scanner/observation-execution';
+} from '../src/features/card-scanner/session/observation-execution';
 import type {
   ObservationSource, ObservationFact, ObservationExecutionState, ObservationResult,
-} from '../src/features/card-scanner/observation-execution';
+} from '../src/features/card-scanner/session/observation-execution';
 
 const source: ObservationSource = {
   sessionId: 'session-1', frameId: 17, observationId: '201', captureOrder: 68_000_001,

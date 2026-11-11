@@ -1,10 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createNameReader} from '../src/features/card-scanner/name-reader';
-import {confirmName,confirmCatalogName} from '../src/features/card-scanner/name-confidence';
-import {CardReadBudget} from '../src/features/card-scanner/card-read-budget';
-import type {NameAttempt} from '../src/features/card-scanner/name-diagnostics';
-import type {RecognitionPixels,NameLabelRecipe} from '../src/features/card-scanner/recognition-input-observer';
+import {createNameReader} from '../src/features/card-scanner/recognition/name-reader';
+import {confirmName,confirmCatalogName} from '../src/features/card-scanner/recognition/name-confidence';
+import {CardReadBudget} from '../src/features/card-scanner/recognition/card-read-budget';
+import type {NameAttempt} from '../src/features/card-scanner/recognition/name-diagnostics';
+import type {RecognitionPixels,NameLabelRecipe} from '../src/features/card-scanner/recognition/recognition-input-observer';
 
 test('rejected dictionary corrections cannot trap full OCR behind a name cache; exact names remain reusable',async()=>{
   const previousWorker=globalThis.Worker,previousDocument=globalThis.document;

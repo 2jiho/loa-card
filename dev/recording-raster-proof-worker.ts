@@ -1,5 +1,5 @@
-import {createRecordingInputRaster} from '../src/features/card-scanner/recording-input-raster';
-import {packPixels,fastCompress} from '../src/features/card-scanner/exact-recording-codec';
+import {createRecordingInputRaster} from '../src/features/card-scanner/reproduction/recording-input-raster';
+import {packPixels,fastCompress} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 const raster=createRecordingInputRaster();
 const digest=async(pixels:Uint8Array<ArrayBuffer>)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',pixels)),value=>value.toString(16).padStart(2,'0')).join('');
 self.onmessage=async(event:MessageEvent<{port?:MessagePort;kind?:'png-benchmark';id?:number;bitmap?:ImageBitmap}>)=>{

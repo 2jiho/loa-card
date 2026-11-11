@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCanonicalCapture} from '../src/features/card-scanner/canonical-capture';
-import {createPreparedLiveSource} from '../src/features/card-scanner/prepared-live-source';
-import {preparedRecoveryPrefetch} from '../src/features/card-scanner/prepared-recovery-prefetch';
-import {pixelHash} from '../src/features/card-scanner/recording-frame-integrity';
-import type {PreparedSource,SourceBinding} from '../src/features/card-scanner/source-preparation';
+import {createCanonicalCapture} from '../src/features/card-scanner/reproduction/canonical-capture';
+import {createPreparedLiveSource} from '../src/features/card-scanner/acquisition/prepared-live-source';
+import {preparedRecoveryPrefetch} from '../src/features/card-scanner/acquisition/prepared-recovery-prefetch';
+import {pixelHash} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
+import type {PreparedSource,SourceBinding} from '../src/features/card-scanner/acquisition/source-preparation';
 
 const tick=()=>new Promise<void>(resolve=>setImmediate(resolve));
 async function until(predicate:()=>boolean){const end=Date.now()+2000;while(!predicate()){if(Date.now()>end)throw Error('Combined recovery fixture timeout');await tick();}}

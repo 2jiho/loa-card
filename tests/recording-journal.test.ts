@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createBoundedJournal,splitJournalBlob,JOURNAL_CHUNK_BYTES,MAX_JOURNAL_CHUNK_BYTES} from '../src/features/card-scanner/recording-journal';
+import {createBoundedJournal,splitJournalBlob,JOURNAL_CHUNK_BYTES,MAX_JOURNAL_CHUNK_BYTES} from '../src/features/card-scanner/persistence/recording-journal';
 const chunk=(sequence:number,text:string,kind:'exact'|'video'='exact')=>({kind,sequence,blob:new Blob([text])});
 const turn=()=>new Promise<void>(resolve=>setImmediate(resolve));
 

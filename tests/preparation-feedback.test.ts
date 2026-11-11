@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createPreparationFeedback } from '../src/features/card-scanner/preparation-feedback';
+import { createPreparationFeedback } from '../src/features/card-scanner/ui/preparation-feedback';
 
 test('short stages stay hidden and completion cancels pending feedback', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });

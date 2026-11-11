@@ -1,4 +1,4 @@
-import { CardName } from '../../CardName';
+import { CardName } from '../../shared/ui/CardName';
 import { ELEMENTS, effectText } from './raid-progress';
 import type { RaidMaster, RaidProgress, RaidSet } from './raid-progress';
 

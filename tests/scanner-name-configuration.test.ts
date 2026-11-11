@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {NORMAL_SCANNER_NAME_CONFIGURATION,parseScannerNameConfiguration,sameScannerNameConfiguration,
-  resolveScannerNameConfiguration,assertScannerNameInputConfiguration} from '../src/features/card-scanner/scanner-name-configuration';
+  resolveScannerNameConfiguration,assertScannerNameInputConfiguration} from '../src/features/card-scanner/session/scanner-name-configuration';
 
 const continued={version:1,rawResultPolicy:'continue'} as const;
 

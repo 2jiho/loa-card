@@ -1,5 +1,5 @@
-import {createRecordingRasterPipeline} from '../src/features/card-scanner/recording-raster-pipeline';
-import {copyScannerInput} from '../src/features/card-scanner/scanner-input-frame';
+import {createRecordingRasterPipeline} from '../src/features/card-scanner/reproduction/recording-raster-pipeline';
+import {copyScannerInput} from '../src/features/card-scanner/capture/scanner-input-frame';
 
 type CorpusCase={id:string;name:string;kind:string;inputs:{url:string}[]};
 type NativeSource=ImageBitmap|VideoFrame;

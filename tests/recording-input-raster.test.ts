@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createRecordingInputRaster,recordingInputBytes} from '../src/features/card-scanner/recording-input-raster';
+import {createRecordingInputRaster,recordingInputBytes} from '../src/features/card-scanner/reproduction/recording-input-raster';
 
 test('recording conversion uses the same 2D source/coordinates and preserves expected RGBA bytes for bitmap and VideoFrame shapes',()=>{
  const expected=Uint8ClampedArray.from([1,2,3,255,45,67,89,255,4,5,6,255,200,190,180,255]);

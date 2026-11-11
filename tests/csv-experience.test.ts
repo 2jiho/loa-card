@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {IDBFactory} from 'fake-indexeddb';
 import {csvInventoryState,parseCsvExperience,parseInventoryCsv,inventoryCsv} from '../src/inventory-csv';
-import {createScanBackup} from '../src/features/card-scanner/scan-backup';
+import {createScanBackup} from '../src/features/card-scanner/persistence/scan-backup';
 
 const cards=()=>parseInventoryCsv('이름,각수,카드수\n세리아,0,15',[{id:'seria',name:'세리아',rarity:1}]);
 

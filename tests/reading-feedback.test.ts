@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ReadingFeedback,createFeedbackPublisher} from '../src/features/card-scanner/reading-feedback';
-import {createCoalescedPublisher} from '../src/features/card-scanner/coalesced-publisher';
-import {createScanMonitorStore} from '../src/features/card-scanner/scan-monitor-store';
-import {ScanGrid} from '../src/features/card-scanner/scan-grid';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+import {ReadingFeedback,createFeedbackPublisher} from '../src/features/card-scanner/session/reading-feedback';
+import {createCoalescedPublisher} from '../src/features/card-scanner/capture/coalesced-publisher';
+import {createScanMonitorStore} from '../src/features/card-scanner/ui/scan-monitor-store';
+import {ScanGrid} from '../src/features/card-scanner/session/scan-grid';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 
 const card:ScannedCard={id:'a',name:'카드',awakening:0,extraCopies:1,countReliable:true,
   confidence:1,review:[],image:'',time:1,observations:1,captureOrder:20};

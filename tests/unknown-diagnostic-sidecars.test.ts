@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {UnknownLifecycle,hashUnknownLifecycle} from '../src/features/card-scanner/unknown-lifecycle';
-import {UNKNOWN_LIFECYCLE_LIMITS} from '../src/features/card-scanner/unknown-lifecycle-types';
-import type {UnknownUpsert,UnknownEntry} from '../src/features/card-scanner/unknown-lifecycle-types';
-import {UnknownDiagnosticSidecars} from '../src/features/card-scanner/unknown-diagnostic-sidecars';
-import type {PortraitDiagnostics} from '../src/features/card-scanner/portrait-diagnostics';
+import {UnknownLifecycle,UnknownSourceLifecycle,hashUnknownLifecycle,hashUnknownSourceLifecycle} from '../src/features/card-scanner/session/unknown-lifecycle';
+import {UNKNOWN_LIFECYCLE_LIMITS} from '../src/features/card-scanner/session/unknown-lifecycle-types';
+import type {UnknownUpsert,UnknownEntry} from '../src/features/card-scanner/session/unknown-lifecycle-types';
+import {UnknownDiagnosticSidecars} from '../src/features/card-scanner/session/unknown-diagnostic-sidecars';
+import {previewOrCapture} from '../src/features/card-scanner/acquisition/field-diagnostic-images';
+import type {PortraitDiagnostics} from '../src/features/card-scanner/recognition/portrait-diagnostics';
 
 const seed={version:1 as const,sessionId:'scan',origin:'scan' as const,limits:UNKNOWN_LIFECYCLE_LIMITS};
 const failure=(group:number,order:number,pending=false):UnknownUpsert=>({version:1,kind:'upsert',
@@ -15,6 +16,44 @@ const effectEntry=(core:UnknownLifecycle,fact:UnknownUpsert):UnknownEntry=>{
   const entry=core.apply(fact).upserted;assert.ok(entry);return entry;
 };
 const images=(key:string)=>({pixelKey:key,preview:()=>`preview-${key}`,recognition:()=>`crop-${key}`});
+
+test('source-scoped diagnostics preserve separate pictures in one fuzzy group',async()=>{
+  const core=new UnknownSourceLifecycle({...seed,version:2}),sidecars=new UnknownDiagnosticSidecars(undefined,'source');
+  const a=failure(1,10),b={...failure(1,10),source:{...failure(1,10).source!,observationId:'different',frameId:11}};
+  const first=core.apply(a).upserted!,second=core.apply(b).upserted!;
+  assert.ok(first&&second);const hash=await hashUnknownSourceLifecycle(core.snapshot());
+  sidecars.remember(first,images('a'));sidecars.remember(second,images('b'));
+  assert.deepEqual(sidecars.project(core.active()).map(item=>[item.source?.observationId,item.image,item.recognitionImage]),
+    [['10','preview-a','crop-a'],['different','preview-b','crop-b']]);
+  const retired=core.confirmName(a.key as Extract<typeof a.key,{kind:'group'}>,'card-a',a.source!,[])!.retiredVersions;
+  sidecars.retire(retired);
+  assert.equal(sidecars.project(core.active())[0].image,'preview-b');
+  // Optional diagnostics have no influence on the authoritative lifecycle.
+  const after=await hashUnknownSourceLifecycle(core.snapshot());sidecars.retire([first]);
+  assert.equal(await hashUnknownSourceLifecycle(core.snapshot()),after);assert.notEqual(after,hash);
+});
+
+test('source-scoped sidecars do not guess missing sources or resurrect old versions',()=>{
+  const core=new UnknownSourceLifecycle({...seed,version:2}),sidecars=new UnknownDiagnosticSidecars(undefined,'source');
+  const a=failure(1,10,true),first=core.apply(a).upserted!;
+  sidecars.remember(first,images('pending'));
+  const final=core.apply({...a,pending:false}).upserted!;sidecars.remember(final,images('final'));
+  sidecars.retire([first]);assert.equal(sidecars.project(core.active())[0].image,'preview-final');
+  const missing={...final,source:null};sidecars.remember(missing,images('invalid'));
+  assert.equal(sidecars.project([missing])[0].image,'');
+  assert.equal(sidecars.project(core.active())[0].image,'preview-final');
+});
+
+test('eviction affects only optional images, never same-group unresolved observations',()=>{
+  const core=new UnknownSourceLifecycle({...seed,version:2}),sidecars=new UnknownDiagnosticSidecars({entries:1,
+    previewBytes:64,recognitionEntries:1,recognitionBytes:64,metadataBytes:64},'source');
+  const a=failure(1,10),b={...failure(1,10),source:{...failure(1,10).source!,observationId:'different',frameId:11}};
+  const first=core.apply(a).upserted!,second=core.apply(b).upserted!;
+  sidecars.remember(first,images('a'));sidecars.remember(second,images('b'));
+  const rows=sidecars.project(core.active());
+  assert.equal(core.unresolved(),2);assert.deepEqual(rows.map(row=>row.image),['','preview-b']);
+  sidecars.retire([first]);assert.equal(sidecars.project(core.active())[1].image,'preview-b');
+});
 
 test('image failure and eviction leave lifecycle metadata and hash unchanged',async()=>{
   const core=new UnknownLifecycle(seed),sidecars=new UnknownDiagnosticSidecars({entries:1,previewBytes:20,
@@ -51,6 +90,33 @@ test('old retirement and encoding errors cannot replace a newer diagnostic versi
   const effect=core.confirmName({kind:'group',sessionId:'scan',group:1},'card',failure(1,30).source!,[]);
   assert.ok(effect);sidecars.retire(effect.retiredVersions);
   assert.equal(core.active().length,1);assert.equal(sidecars.project(core.active())[0].group,2);
+});
+
+test('a timed-out preview uses the owned crop and a retired unknown stays retired',()=>{
+  const core=new UnknownLifecycle(seed),sidecars=new UnknownDiagnosticSidecars();
+  const entry=effectEntry(core,failure(1,10));let captured=0;
+  sidecars.remember(entry,{pixelKey:'pixels',preview:()=>previewOrCapture('',()=>{
+    captured++;return 'data:image/webp;base64,YQ==';
+  }),recognition:()=> 'data:image/png;base64,Yg=='});
+  assert.equal(captured,1);
+  assert.equal(sidecars.project(core.active())[0].image,'data:image/webp;base64,YQ==');
+  const accepted=core.confirmName({kind:'group',sessionId:'scan',group:1},'card',failure(1,11).source!,[]);
+  assert.ok(accepted);sidecars.retire(accepted.retiredVersions);
+  const late=core.apply(failure(1,10));
+  assert.equal(late.upserted,null);
+  assert.equal(core.active().length,0);
+  assert.deepEqual(sidecars.project(core.active()),[]);
+});
+
+test('a later unknown diagnostic uses its own preview even when its crop key repeats',()=>{
+  const core=new UnknownLifecycle(seed),sidecars=new UnknownDiagnosticSidecars();
+  const pending=effectEntry(core,failure(1,10,true));
+  sidecars.remember(pending,{pixelKey:'same-crop',preview:()=> 'first preview',recognition:()=> 'first crop'});
+  assert.equal(sidecars.project([pending])[0].image,'first preview');
+  const final=effectEntry(core,failure(1,10));
+  sidecars.remember(final,{pixelKey:'same-crop',preview:()=> 'current preview',recognition:()=> 'current crop'});
+  assert.equal(sidecars.project([final])[0].image,'current preview');
+  assert.equal(sidecars.project([final])[0].recognitionImage,'current crop');
 });
 
 test('OCR sidecars are bounded detached diagnostics and never an identity proof',()=>{

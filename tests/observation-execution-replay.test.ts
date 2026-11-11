@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ScanGrid} from '../src/features/card-scanner/scan-grid';
-import {entryParts,executionSummary} from '../src/features/card-scanner/exact-recording-codec';
-import {hashObservationExecution} from '../src/features/card-scanner/observation-execution';
-import type {ObservationFact,ObservationSource} from '../src/features/card-scanner/observation-execution';
-import {MAX_REPLAY_OBSERVATIONS,ObservationExecutionReplay} from '../src/features/card-scanner/observation-execution-replay';
+import {ScanGrid} from '../src/features/card-scanner/session/scan-grid';
+import {entryParts,executionSummary} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {hashObservationExecution} from '../src/features/card-scanner/session/observation-execution';
+import type {ObservationFact,ObservationSource} from '../src/features/card-scanner/session/observation-execution';
+import {MAX_REPLAY_OBSERVATIONS,ObservationExecutionReplay} from '../src/features/card-scanner/reproduction/observation-execution-replay';
 
 const signal=()=>new AbortController().signal;
 const source:ObservationSource={sessionId:'scan-1',frameId:1,observationId:'1',captureOrder:100,

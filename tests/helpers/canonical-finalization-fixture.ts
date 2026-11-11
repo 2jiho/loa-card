@@ -1,25 +1,27 @@
-import {entryParts,fastCompress,packPixels,pixelHash} from '../../src/features/card-scanner/exact-recording-codec';
-import type {ExactEntry,ExactEvent} from '../../src/features/card-scanner/exact-recording-codec';
-import type {ExactRecording,ExactRecordingStats} from '../../src/features/card-scanner/exact-recording';
-import {createLiveInputAdmission} from '../../src/features/card-scanner/live-input-admission';
-import {createLiveCapturePipeline} from '../../src/features/card-scanner/live-capture-pipeline';
-import {InputDecisionReplay} from '../../src/features/card-scanner/live-input-decision-replay';
-import {InventoryEvidence,hashInventoryEvidence,inventoryEventData} from '../../src/features/card-scanner/inventory-evidence';
-import type {InventorySource} from '../../src/features/card-scanner/inventory-evidence';
-import {ScanGrid} from '../../src/features/card-scanner/scan-grid';
-import {recordScanGrid,hashScanGridReplay,scanGridReplaySnapshot} from '../../src/features/card-scanner/scan-grid-command';
-import {UnknownLifecycle,hashUnknownLifecycle} from '../../src/features/card-scanner/unknown-lifecycle';
-import {UNKNOWN_LIFECYCLE_LIMITS} from '../../src/features/card-scanner/unknown-lifecycle-types';
-import {FreshnessEvidence,hashFreshnessEvidence} from '../../src/features/card-scanner/freshness-evidence';
-import {FRESHNESS_EVIDENCE_LIMITS} from '../../src/features/card-scanner/freshness-evidence-types';
-import {RGBA_WINDOW_CODEC,RGBA_WINDOW_POLICY} from '../../src/features/card-scanner/rgba-window-policy';
-import type {ScannedCard} from '../../src/features/card-scanner/recognizer';
+import {entryParts,fastCompress,packPixels,pixelHash} from '../../src/features/card-scanner/reproduction/exact-recording-codec';
+import type {ExactEntry,ExactEvent} from '../../src/features/card-scanner/reproduction/exact-recording-codec';
+import type {ExactRecording,ExactRecordingStats} from '../../src/features/card-scanner/reproduction/exact-recording';
+import {createLiveInputAdmission} from '../../src/features/card-scanner/capture/live-input-admission';
+import {createLiveCapturePipeline} from '../../src/features/card-scanner/capture/live-capture-pipeline';
+import {InputDecisionReplay} from '../../src/features/card-scanner/reproduction/live-input-decision-replay';
+import {InventoryEvidence,hashInventoryEvidence,inventoryEventData} from '../../src/features/card-scanner/session/inventory-evidence';
+import type {InventorySource} from '../../src/features/card-scanner/session/inventory-evidence';
+import {ScanGrid} from '../../src/features/card-scanner/session/scan-grid';
+import {recordScanGrid,hashScanGridReplay,scanGridReplaySnapshot} from '../../src/features/card-scanner/session/scan-grid-command';
+import {UnknownLifecycle,hashUnknownLifecycle} from '../../src/features/card-scanner/session/unknown-lifecycle';
+import {UNKNOWN_LIFECYCLE_LIMITS} from '../../src/features/card-scanner/session/unknown-lifecycle-types';
+import {FreshnessEvidence,hashFreshnessEvidence} from '../../src/features/card-scanner/session/freshness-evidence';
+import {FRESHNESS_EVIDENCE_LIMITS} from '../../src/features/card-scanner/session/freshness-evidence-types';
+import {RGBA_WINDOW_CODEC,RGBA_WINDOW_POLICY} from '../../src/features/card-scanner/reproduction/rgba-window-policy';
+import {hashObstructionEvidence} from '../../src/features/card-scanner/reproduction/obstruction-evidence-replay';
+import type {ScannedCard} from '../../src/features/card-scanner/recognition/recognizer';
 
 export interface CanonicalFixtureEntry {readonly header:ExactEntry;readonly payload?:Uint8Array<ArrayBuffer>}
 /** Real production event reducers/pipeline/checkpoints; no serialized summary is
  * injected. The helper simulates finished producer/ACK stats, not Worker/OS live
  * ownership. Tests which exercise live ownership must supply that boundary. */
-export async function createCanonicalFinalizationFixture(options:{extraFrameBytes?:number;codecPolicy?:typeof RGBA_WINDOW_POLICY}={}){
+export async function createCanonicalFinalizationFixture(options:{extraFrameBytes?:number;codecPolicy?:typeof RGBA_WINDOW_POLICY;
+  historicalUnknownLoss?:'active-limit'|'name-conflict'}={}){
   const signal=AbortSignal.timeout(30_000),entries:CanonicalFixtureEntry[]=[],events:ExactEvent[]=[];
   const emit=(type:string,value:unknown)=>{
     const event:ExactEvent={kind:'event',seq:events.length+1,time:events.length/100,type,value:structuredClone(value)};
@@ -43,6 +45,7 @@ export async function createCanonicalFinalizationFixture(options:{extraFrameByte
   const observationSource={sessionId,frameId:1,observationId:source.observationId,captureOrder:1,captureTime:time,phase:'input' as const,slot:0};
   const inventory=new InventoryEvidence([],{onEvent:event=>emit('inventory-event',inventoryEventData(event))});
   emit('inventory-seed',{version:1,cards:[]});
+  emit('obstruction-seed',{version:2,sessionId,seedOrder:0});
   const freshnessSeed={version:1 as const,sessionId,limits:FRESHNESS_EVIDENCE_LIMITS};emit('freshness-seed',freshnessSeed);
   const freshness=new FreshnessEvidence(freshnessSeed,{confirmedFields:()=>inventory.confirmedFieldOrder,onEvent:fact=>emit('freshness-event',fact)});
   const binding={key:'fixture-known',order:1,frame:source.frame,stable:true};
@@ -54,10 +57,19 @@ export async function createCanonicalFinalizationFixture(options:{extraFrameByte
   const rawGrid=new ScanGrid(fact=>emit('observation-fact',fact)),grid=recordScanGrid(rawGrid,command=>emit('grid-command',command));
   grid.geometry(55);grid.begin(true);grid.viewport(1);grid.liveViewport(1);grid.group(0,1,1,true,undefined,observationSource);
   grid.record(1);const attempt=grid.start(1);grid.identify(1,'known');grid.finish(1,'read',attempt);
-  const unknownSeed={version:1 as const,sessionId,origin:'scan' as const,limits:UNKNOWN_LIFECYCLE_LIMITS};emit('unknown-seed',unknownSeed);
+  const unknownSeed={version:1 as const,sessionId,origin:'scan' as const,
+    limits:options.historicalUnknownLoss==='active-limit'?{...UNKNOWN_LIFECYCLE_LIMITS,active:1}:UNKNOWN_LIFECYCLE_LIMITS};emit('unknown-seed',unknownSeed);
   const unknown=new UnknownLifecycle(unknownSeed,{onEvent:fact=>emit('unknown-event',fact)});
   unknown.apply({version:1,kind:'upsert',key:{kind:'group',sessionId,group:2},source:{...observationSource,observationId:'review',captureOrder:2,slot:1},
     captureOrder:2,captureTime:time,pending:false,reason:'확인 필요',location:null});
+  if(options.historicalUnknownLoss==='active-limit')unknown.apply({version:1,kind:'upsert',key:{kind:'group',sessionId,group:3},
+    source:{...observationSource,observationId:'overflow',captureOrder:3,slot:2},captureOrder:3,captureTime:time,
+    pending:false,reason:'확인 필요',location:null});
+  if(options.historicalUnknownLoss==='name-conflict'){
+    const key={kind:'group' as const,sessionId,group:2};
+    unknown.confirmName(key,'first',{...observationSource,observationId:'first',captureOrder:3},[]);
+    unknown.confirmName(key,'second',{...observationSource,observationId:'second',captureOrder:4},[]);
+  }
   const admission=createLiveInputAdmission(),inputReplay=new InputDecisionReplay(signal);
   const stamp=admission.stamp(time,0),gates={capturing:true,checkingCompletion:false};
   const decision=admission.consider(stamp,gates);
@@ -78,8 +90,13 @@ export async function createCanonicalFinalizationFixture(options:{extraFrameByte
   emit('input-checkpoint',{complete:true,hash:(await inputReplay.summary()).hash});
   emit('inventory-checkpoint',{complete:true,hash:await hashInventoryEvidence(inventory.snapshot())});
   emit('grid-checkpoint',{complete:true,hash:await hashScanGridReplay(scanGridReplaySnapshot(rawGrid))});
+  // Legacy v1 producers could write a complete snapshot hash without the
+  // separately maintained live-evidence-loss bit.
   const unknownSnapshot=unknown.snapshot();emit('unknown-checkpoint',{version:1,complete:true,events:unknownSnapshot.facts,hash:await hashUnknownLifecycle(unknownSnapshot)});
   const freshnessSnapshot=freshness.snapshot();emit('freshness-checkpoint',{version:1,complete:true,events:freshnessSnapshot.facts,hash:await hashFreshnessEvidence(freshnessSnapshot)});
+  const obstructionSnapshot={order:null,invalid:false};
+  emit('obstruction-checkpoint',{version:1,complete:true,events:0,order:null,invalid:false,expected:1,pending:0,
+    hash:await hashObstructionEvidence(obstructionSnapshot,1,inventory.latestIdentityOrder,inventory.confirmedNameOrder,inventory.confirmedFieldOrder)});
   const recordingFrom=(parts:readonly CanonicalFixtureEntry[]=entries,changes:Partial<ExactRecordingStats>={}):ExactRecording=>{
     const blob=new Blob(parts.flatMap(part=>entryParts(part.header,part.payload))),count=parts.filter(part=>part.header.kind==='event').length;
     const queueBytes=parts.filter(part=>part.header.kind==='event').reduce((sum,part)=>sum+JSON.stringify(part.header).length*2+64,0);

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {exactEntries,exactPixels,pixelHash,executionSummary,entryParts} from '../src/features/card-scanner/exact-recording-codec';
-import {prepareNativeStorage} from '../src/features/card-scanner/native-frame-storage';
-import type {NativeYuvFrameMetadata} from '../src/features/card-scanner/native-yuv-recipe';
+import {exactEntries,exactPixels,pixelHash,executionSummary,entryParts} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {prepareNativeStorage} from '../src/features/card-scanner/reproduction/native-frame-storage';
+import type {NativeYuvFrameMetadata} from '../src/features/card-scanner/acquisition/native-yuv-recipe';
 import {MessageChannel} from 'node:worker_threads';
-import type {PreparedNativeAttestation} from '../src/features/card-scanner/prepared-native-attestation';
+import type {PreparedNativeAttestation} from '../src/features/card-scanner/acquisition/prepared-native-attestation';
 
 async function runWorker(storageVersion:unknown,run:(h:any)=>Promise<void>,attestation?:unknown){
  const previous=['self','navigator','OffscreenCanvas'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)] as const);
@@ -33,7 +33,7 @@ async function runWorker(storageVersion:unknown,run:(h:any)=>Promise<void>,attes
  Object.defineProperty(globalThis,'OffscreenCanvas',{configurable:true,value:Canvas});
  const until=async(predicate:()=>boolean)=>{const deadline=Date.now()+5000;while(!predicate()){if(Date.now()>deadline)throw Error('compact Worker deadline');await new Promise<void>(resolve=>setImmediate(resolve));}};
  try{
-  const address=new URL('../src/features/card-scanner/exact-recording-worker.ts',import.meta.url);address.searchParams.set('compact-native-test',crypto.randomUUID());await import(address.href);
+  const address=new URL('../src/features/card-scanner/reproduction/exact-recording-worker.ts',import.meta.url);address.searchParams.set('compact-native-test',crypto.randomUUID());await import(address.href);
   const send=(data:any)=>scope.onmessage({data});await send({kind:'init',port,...(storageVersion===undefined?{}:{storageVersion}),
    ...(attestation?{attestation}:{})});
   await run({send,source:(data:any)=>port.onmessage({data}),messages,sourceMessages,journal,until,

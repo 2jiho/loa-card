@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { difference, sameObservation } from "../src/features/card-scanner/recognizer.ts";
+import { difference, sameObservation } from "../src/features/card-scanner/recognition/recognizer.ts";
 
 test("compression noise deduplicates without hiding changing counters or jewels", () => {
   const original = new Uint8Array(3240).fill(100), noise = new Uint8Array(3240).fill(101);

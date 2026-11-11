@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createNativeYuvTransform,describeNativeYuvTransformFrame,NativeYuvTransformError} from '../dev/native-yuv-transform';
 import type {NativeYuvTransformWorker,NativeYuvTransformMetadata} from '../dev/native-yuv-transform';
 import {convertNativeYuvToRgba,nativeYuvDescriptorJson} from '../dev/native-yuv-recipe';
-import {pixelHash} from '../src/features/card-scanner/exact-recording-codec';
+import {pixelHash} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 
 class Frame {
  format='I420';codedWidth=2;codedHeight=2;displayWidth=2;displayHeight=2;rotation:number|undefined=0;flip:boolean|undefined=false;

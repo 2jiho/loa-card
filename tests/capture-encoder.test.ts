@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createCaptureEncoder } from "../src/features/card-scanner/capture-encoder.ts";
-import type { SavedAcquisition } from '../src/features/card-scanner/saved-acquisition';
-import { coveredSavedAcquisition } from '../src/features/card-scanner/saved-acquisition';
-import {canFinishEndedCapture,canSkipCoveredOriginals,type CaptureCompletion} from '../src/features/card-scanner/auto-completion';
-import {runRecoveryPipeline} from '../src/features/card-scanner/recovery-pipeline';
+import { createCaptureEncoder } from "../src/features/card-scanner/capture/capture-encoder.ts";
+import type { SavedAcquisition } from '../src/features/card-scanner/acquisition/saved-acquisition';
+import { coveredSavedAcquisition } from '../src/features/card-scanner/acquisition/saved-acquisition';
+import {canFinishEndedCapture,canSkipCoveredOriginals,type CaptureCompletion} from '../src/features/card-scanner/session/auto-completion';
+import {runRecoveryPipeline} from '../src/features/card-scanner/session/recovery-pipeline';
 
 test('discard cancels unfinished copies and waits for raw-frame cleanup without PNG encoding',async()=>{
  const requests:unknown[]=[],copies:((bitmap:ImageBitmap)=>void)[]=[];
@@ -226,7 +226,7 @@ test('parallel coverage skips an old exact original but still reads a later unkn
   const state:CaptureCompletion&{inputClosed:boolean;headerVerified:boolean;metadataSettled:boolean;tailFresh:boolean;dropped:number;pending:number;unresolved:number}={
    expected:1,finalExpected:1,cards:[{id:'known',name:'known',awakening:0,extraCopies:2,countReliable:true,review:[],confidence:1,image:'',time:0,observations:1}],
    latest:new Map([['known',10]]),confirmedNames:new Map([['known',10]]),confirmed:new Map([['known',10]]),
-   inputSettled:false,inputClosed:true,headerAvailable:true,headerVerified:true,metadataSettled:true,tailFresh:true,dropped:0,pending:80,unresolved:1,
+   inputSettled:false,inputClosed:true,headerAvailable:true,headerVerified:true,metadataSettled:true,tailFresh:true,dropped:0,pending:80,unresolved:1,fieldChangesSettled:true,
   };
   const skipped:number[]=[],seen:number[]=[];
   for await(const frame of encoder.frames(new AbortController().signal,{
@@ -248,7 +248,7 @@ test('exhausting covered originals still joins a running reader before checking 
   const state:CaptureCompletion&{inputClosed:boolean;headerVerified:boolean;metadataSettled:boolean;tailFresh:boolean;dropped:number;pending:number;unresolved:number}={
    expected:1,finalExpected:1,cards:[{id:'known',name:'known',awakening:0,extraCopies:2,countReliable:true,review:[],confidence:1,image:'',time:0,observations:1}],
    latest:new Map([['known',10]]),confirmedNames:new Map([['known',10]]),confirmed:new Map([['known',10]]),
-   inputSettled:false,inputClosed:true,headerAvailable:true,headerVerified:true,metadataSettled:true,tailFresh:true,dropped:0,pending:1,unresolved:0,
+   inputSettled:false,inputClosed:true,headerAvailable:true,headerVerified:true,metadataSettled:true,tailFresh:true,dropped:0,pending:1,unresolved:0,fieldChangesSettled:true,
   };
   let release!:()=>void,started!:()=>void,settled=false;
   const active=new Promise<void>(resolve=>{release=resolve;}),begun=new Promise<void>(resolve=>{started=resolve;});

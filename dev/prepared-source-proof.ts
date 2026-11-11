@@ -1,17 +1,17 @@
 import {ALL_FORMATS,BlobSource,Input,VideoSampleSink} from 'mediabunny';
-import {createExactRecording,type ExactRecorder} from '../src/features/card-scanner/exact-recording';
-import {createCanonicalCapture} from '../src/features/card-scanner/canonical-capture';
-import {createAcquisitionClient} from '../src/features/card-scanner/acquisition-client';
-import {createSourcePreparation} from '../src/features/card-scanner/source-preparation';
-import {createReproductionBundle,openReproduction,beginReproduction} from '../src/features/card-scanner/scan-reproduction';
-import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction-session-store';
-import {exactEntries,exactPixels,executionSummary} from '../src/features/card-scanner/exact-recording-codec';
-import {pixelHash} from '../src/features/card-scanner/recording-frame-integrity';
-import {CanonicalRasterReplay} from '../src/features/card-scanner/canonical-raster-replay';
-import {nativeYuvDescriptorJson,planNativeYuvFrame,type NativeYuvFrameMetadata} from '../src/features/card-scanner/native-yuv-recipe';
+import {createExactRecording,type ExactRecorder} from '../src/features/card-scanner/reproduction/exact-recording';
+import {createCanonicalCapture} from '../src/features/card-scanner/reproduction/canonical-capture';
+import {createAcquisitionClient} from '../src/features/card-scanner/acquisition/acquisition-client';
+import {createSourcePreparation} from '../src/features/card-scanner/acquisition/source-preparation';
+import {createReproductionBundle,openReproduction,beginReproduction} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction/reproduction-session-store';
+import {exactEntries,exactPixels,executionSummary} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {pixelHash} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
+import {CanonicalRasterReplay} from '../src/features/card-scanner/reproduction/canonical-raster-replay';
+import {nativeYuvDescriptorJson,planNativeYuvFrame,type NativeYuvFrameMetadata} from '../src/features/card-scanner/acquisition/native-yuv-recipe';
 import {loadComparisonOriginal} from './comparison-original';
 import {acquisitionShape} from './prepared-pipeline-proof-core';
-import {parseSourcePreparationMode} from '../src/features/card-scanner/source-preparation-protocol';
+import {parseSourcePreparationMode} from '../src/features/card-scanner/acquisition/source-preparation-protocol';
 
 const preparationParameter=new URLSearchParams(location.search).get('preparation');
 const preparationMode=preparationParameter===null?'auto':parseSourcePreparationMode(preparationParameter);

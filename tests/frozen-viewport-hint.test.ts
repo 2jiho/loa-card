@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {inflateSync} from 'node:zlib';
-import {FrozenViewportHints} from '../src/features/card-scanner/frozen-viewport-hint';
-import {LiveScrollPreview} from '../src/features/card-scanner/live-scroll-preview';
-import {readScrollGeometry} from '../src/features/card-scanner/scroll-position';
-import type {Layout} from '../src/features/card-scanner/detector';
+import {FrozenViewportHints} from '../src/features/card-scanner/ui/frozen-viewport-hint';
+import {LiveScrollPreview} from '../src/features/card-scanner/ui/live-scroll-preview';
+import {readScrollGeometry} from '../src/features/card-scanner/session/scroll-position';
+import type {Layout} from '../src/features/card-scanner/acquisition/detector';
 
 const fixture=JSON.parse(readFileSync('tests/fixtures/scrollbar-samples.json','utf8'))[0];
 const pixels=inflateSync(Buffer.from(fixture.rgbaZlib,'base64'));

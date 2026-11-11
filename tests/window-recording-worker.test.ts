@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {exactEntries,exactPixels,pixelHash,executionSummary} from '../src/features/card-scanner/exact-recording-codec';
-import {createReproductionBundle,openReproduction} from '../src/features/card-scanner/scan-reproduction';
-import {RGBA_WINDOW_CODEC,RGBA_WINDOW_POLICY} from '../src/features/card-scanner/rgba-window-policy';
+import {exactEntries,exactPixels,pixelHash,executionSummary} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {createReproductionBundle,openReproduction} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import {RGBA_WINDOW_CODEC,RGBA_WINDOW_POLICY} from '../src/features/card-scanner/reproduction/rgba-window-policy';
 
 async function harness(run:(h:any)=>Promise<void>){
   const keys=['self','navigator','OffscreenCanvas','Worker'],old=keys.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)] as const);
@@ -34,7 +34,7 @@ async function harness(run:(h:any)=>Promise<void>){
   Object.defineProperty(globalThis,'Worker',{configurable:true,value:class{constructor(){throw Error('inline raster fixture');}}});
   const until=async(predicate:()=>boolean)=>{const deadline=Date.now()+10000;while(!predicate()){if(Date.now()>deadline)throw Error('window worker fixture deadline');await new Promise<void>(resolve=>setImmediate(resolve));}};
   try{
-    const module=new URL('../src/features/card-scanner/exact-recording-worker.ts',import.meta.url);module.searchParams.set('window-test',crypto.randomUUID());await import(module.href);
+    const module=new URL('../src/features/card-scanner/reproduction/exact-recording-worker.ts',import.meta.url);module.searchParams.set('window-test',crypto.randomUUID());await import(module.href);
     await scope.onmessage({data:{kind:'init',port,codecPolicy:RGBA_WINDOW_POLICY}});
     assert.equal(messages[0].kind,'ready');assert.equal(messages[0].codecPolicy,RGBA_WINDOW_POLICY);assert.equal(messages[0].codec,RGBA_WINDOW_CODEC);
     await run({source:(message:any)=>port.onmessage({data:message}),send:(message:any)=>{if(message.kind==='read-frame')sourceReading=true;return scope.onmessage({data:message});},

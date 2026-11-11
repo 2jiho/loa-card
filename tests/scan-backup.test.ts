@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
-import { createScanBackup, BackupConflict } from '../src/features/card-scanner/scan-backup';
-import type { ScannerState } from '../src/features/card-scanner/scanner';
-import {MAX_UNRESOLVED_FIELD_CHANGES,unattributedFieldReviewCount} from '../src/features/card-scanner/current-scan-fields';
+import { createScanBackup, BackupConflict } from '../src/features/card-scanner/persistence/scan-backup';
+import type { ScannerState } from '../src/features/card-scanner/orchestration/scanner';
+import {MAX_UNRESOLVED_FIELD_CHANGES,unattributedFieldReviewCount} from '../src/features/card-scanner/session/current-scan-fields';
 const state = (status = '완료') => ({ status, cards: [], growthPoints: { current: 1234, maximum: 9999 } } as unknown as ScannerState);
 async function seed(factory: IDBFactory, rows: [string, unknown][]) {
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -23,12 +23,43 @@ test('a new tab restores the same inventory and XP without sessionStorage', asyn
   assert.deepEqual(await createScanBackup(() => factory, () => null).load(), state());
 });
 
+test('header conflict survives backup alongside another warning and rejects invalid state',async()=>{
+ const factory=new IDBFactory(),backup=createScanBackup(()=>factory,()=>null);
+ await backup.load();await backup.save({...state(),headerConflict:true,captureWarning:'기록 실패'});
+ const restored=await backup.load();
+ assert.equal(restored?.headerConflict,true);assert.equal(restored?.captureWarning,'기록 실패');
+ for(const invalid of [null,'true',1])
+  await assert.rejects(backup.save({...state(),headerConflict:invalid} as unknown as ScannerState),/목록 형식/);
+ const accessor=Object.defineProperty({...state()},'headerConflict',{get(){throw Error('must not invoke getter');}});
+ await assert.rejects(backup.save(accessor),/목록 형식/);
+ assert.equal((await backup.load())?.headerConflict,true);
+});
+
 test('live thumbnail activity is not persisted with the inventory',async()=>{
   const factory=new IDBFactory(),backup=createScanBackup(()=>factory);
   const input={...state(),activity:[{id:1,image:'temporary-crop',status:'reading' as const}]};
   await backup.load();await backup.save(input);
   assert.deepEqual(await backup.load(),state());
   assert.equal(input.activity.length,1);
+});
+
+test('historical monitor grid survives backup without live frame state',async()=>{
+  const factory=new IDBFactory(),backup=createScanBackup(()=>factory,()=>null);
+  const grid={located:true,cells:Array.from({length:40},(_,i)=>({status:i===0?'read':i===1?'review':'unknown',...(i===0?{row:2}:{})})),
+    inventory:Array.from({length:550},()=>({status:'unknown' as const})),
+    recent:{captured:40,read:1,waiting:38,review:1},
+    recentFrame:{frame:7,cells:Array.from({length:40},()=>({status:'unknown' as const}))},liveTracking:true,liveTop:4};
+  const input={...state(),grid} as unknown as ScannerState;
+  await backup.load();await backup.save(input);
+  const restored=(await backup.load())!;
+  assert.equal(restored.grid?.cells.length,40);
+  assert.equal(restored.grid?.cells[0].status,'read');
+  assert.equal(restored.grid?.cells[0].historical,true);
+  assert.equal(restored.grid?.inventory?.length,550);
+  assert.equal(restored.grid?.recent,undefined);
+  assert.equal(restored.grid?.recentFrame,undefined);
+  assert.equal(restored.grid?.liveTracking,undefined);
+  assert.equal(input.grid?.recent?.captured,40,'live input state is not mutated');
 });
 
 test('unresolved changed-field counts survive backup while malformed counts cannot overwrite it',async()=>{
@@ -46,6 +77,19 @@ test('unresolved changed-field counts survive backup while malformed counts cann
  await assert.rejects(backup.save(accessor),/목록 형식/);
  await seed(factory,[['current',{version:1,revision:'corrupt-fields',state:{...input,unresolvedFieldChanges:MAX_UNRESOLVED_FIELD_CHANGES+1}}]]);
  await assert.rejects(backup.load(),/저장된 목록 형식/);
+});
+
+test('the unresolved-input lower bound survives backup and invalid values cannot replace it',async()=>{
+ const factory=new IDBFactory(),backup=createScanBackup(()=>factory,()=>null);
+ const input={...state(),sampled:1,unidentified:[],droppedFrames:0,unresolvedObservations:2};
+ await backup.load();await backup.save(input);
+ assert.equal((await backup.load())!.unresolvedObservations,2);
+ for(const invalid of [null,-1,.5,NaN,Infinity]){
+  await assert.rejects(backup.save({...input,unresolvedObservations:invalid} as unknown as ScannerState));
+  assert.equal((await backup.load())!.unresolvedObservations,2);
+ }
+ const getter=Object.defineProperty({...input},'unresolvedObservations',{get(){throw Error('must not invoke getter');}});
+ await assert.rejects(backup.save(getter),/목록 형식/);
 });
 test('stale tab cannot overwrite a newer scan; explicit reload permits later changes', async () => {
   const factory = new IDBFactory(), a = createScanBackup(() => factory), b = createScanBackup(() => factory);
@@ -128,12 +172,16 @@ test('inventory backups retain field proof, unknown values, thumbnails and growt
  const history=[{label:'성장',cardsBefore:[{...card,awakening:0,extraCopies:2}],pointsBefore:{current:2000,maximum:null},estimatedBefore:false}];
  const input={...state(),cards:[card],growthHistory:history,expected:1,currentRunNames:1,currentRunRead:0,autoStopped:false,
    unidentified:[{image:'data:image/png;base64,unknown',time:2,pending:false,captureOrder:46}],
+   recognitionNeeded:[{slot:14,captureTime:2,reason:'툴팁 패널 가림'}],
+   discardedObservations:[{image:'data:image/png;base64,hard',time:3,pending:false,captureOrder:47,reason:'판독 불가'}],
    ledger:{traces:Array.from({length:1000},()=>({detail:'raw diagnostic'}))},captureDiagnostics:{samples:[{image:'full-frame'}]},
    activity:[],grid:{slots:[]},livePerformance:{readMs:300},queued:2,droppedFrames:4} as unknown as ScannerState;
  await backup.load();await backup.save(input);
  const restored=(await backup.load())!;
  assert.deepEqual(restored.cards,[card]);assert.deepEqual(restored.growthHistory,history);
  assert.deepEqual(restored.unidentified,input.unidentified);assert.equal(restored.currentRunRead,0);
+ assert.deepEqual(restored.recognitionNeeded,input.recognitionNeeded);
+ assert.deepEqual(restored.discardedObservations,input.discardedObservations);
  for(const key of ['ledger','captureDiagnostics','activity','grid','livePerformance'])assert.equal(Object.hasOwn(restored,key),false,key);
  assert.equal(restored.queued,0);assert.equal(restored.droppedFrames,4,'capture loss remains visible after restore');
  assert.equal(input.ledger!.traces.length,1000,'original runtime state is untouched');

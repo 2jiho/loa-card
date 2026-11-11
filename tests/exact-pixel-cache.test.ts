@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {ExactPixelCache} from '../src/features/card-scanner/exact-pixel-cache';
+import {ExactPixelCache} from '../src/features/card-scanner/acquisition/exact-pixel-cache';
 test('owned subarrays compare only their exact byte range, aligned or unaligned',()=>{
  for(const offset of [1,4]) {
   const cache=new ExactPixelCache<string>();
@@ -93,4 +93,39 @@ test('region equality preserves every channel for independently offset source vi
    right[index]^=1;
   }
  }
+});
+
+test('whole-rectangle comparison checks every channel and stride without retaining the current raster',()=>{
+ const width=7,height=6,box={x:2,y:1,width:3,height:4},size=width*height*4;
+ for(const sourceOffset of [0,1,2,3,4])for(const cachedOffset of [0,1,2,3,4]){
+  const source=new Uint8ClampedArray(size+sourceOffset).subarray(sourceOffset);
+  for(let index=0;index<source.length;index++)source[index]=(index*73+19)%256;
+  const pixels=new Uint8ClampedArray(box.width*box.height*4+cachedOffset).subarray(cachedOffset);
+  for(let row=0;row<box.height;row++)pixels.set(source.subarray(((box.y+row)*width+box.x)*4,((box.y+row)*width+box.x+box.width)*4),row*box.width*4);
+  const cache=new ExactPixelCache<string>();cache.setOwned(3,'geometry',pixels,'hit');
+  const before=pixels.slice(),match=()=>cache.getRectangle(3,'geometry',source,width,height,box.x,box.y,box.width,box.height);
+  assert.deepEqual(match(),{matched:true,value:'hit'});
+  for(let index=0;index<source.length;index++){
+   source[index]^=1;
+   const pixel=Math.floor(index/4),x=pixel%width,y=Math.floor(pixel/width);
+   assert.deepEqual(match(),x>=box.x&&x<box.x+box.width&&y>=box.y&&y<box.y+box.height?{matched:false}:{matched:true,value:'hit'});
+   source[index]^=1;
+  }
+  assert.deepEqual(pixels,before,'current-frame comparisons cannot mutate the cached snapshot');
+  source[((box.y)*width+box.x)*4]^=1;assert.deepEqual(match(),{matched:false});
+  assert.deepEqual(pixels,before,'a later source change does not change the owned snapshot');
+ }
+});
+
+test('whole-rectangle lookup fails closed for invalid, detached or mismatched regions',()=>{
+ const cache=new ExactPixelCache<string>(),source=new Uint8ClampedArray(5*4*4),pixels=new Uint8ClampedArray(2*2*4);
+ cache.set(0,'geometry',pixels,'hit');
+ for(const [sw,sh,x,y,w,h] of [[5,4,-1,0,2,2],[5,4,.5,0,2,2],[5,4,4,0,2,2],
+  [5,4,0,3,2,2],[5,4,0,0,0,2],[5,4,0,0,3,2],[6,4,0,0,2,2],[Infinity,4,0,0,2,2]])
+  assert.equal(cache.getRectangle(0,'geometry',source,sw,sh,x,y,w,h),undefined);
+ assert.equal(cache.getRectangle(1,'geometry',source,5,4,0,0,2,2),undefined);
+ assert.equal(cache.getRectangle(0,'other',source,5,4,0,0,2,2),undefined);
+ assert.equal(cache.getRectangle(0,'geometry',new Uint8ClampedArray(new SharedArrayBuffer(source.length)),5,4,0,0,2,2),undefined);
+ const detached=source.slice();structuredClone(detached.buffer,{transfer:[detached.buffer]});
+ assert.equal(cache.getRectangle(0,'geometry',detached,5,4,0,0,2,2),undefined);
 });

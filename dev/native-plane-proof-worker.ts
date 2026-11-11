@@ -1,7 +1,7 @@
 import {ALL_FORMATS,BlobSource,Input,VideoSampleSink} from 'mediabunny';
-import {MAX_FRAME_BYTES} from '../src/features/card-scanner/exact-recording-codec';
-import {waitForInput,yieldForCapture} from '../src/features/card-scanner/input-source';
-import type {DecodedRgbaMetadata} from '../src/features/card-scanner/decoded-rgba-client';
+import {MAX_FRAME_BYTES} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {waitForInput,yieldForCapture} from '../src/features/card-scanner/capture/input-source';
+import type {DecodedRgbaMetadata} from '../src/features/card-scanner/acquisition/decoded-rgba-client';
 
 export const NATIVE_PLANE_VIDEO_URL='/work/encoded-reference/video5-recovery-source.webm';
 export const NATIVE_PLANE_PREPARATION_URL='/work/encoded-reference/video5-reference-preparation.json';

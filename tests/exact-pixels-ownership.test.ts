@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {deflate,entryParts,exactPixels,fastCompress,packPixels,pixelHash,type ExactFrame} from '../src/features/card-scanner/exact-recording-codec';
-import {prepareNativeStorage,rgbaFrameStorage,type FrameStorage} from '../src/features/card-scanner/native-frame-storage';
-import type {NativeYuvFrameMetadata} from '../src/features/card-scanner/native-yuv-recipe';
+import {deflate,entryParts,exactPixels,fastCompress,packPixels,pixelHash,type ExactFrame} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {prepareNativeStorage,rgbaFrameStorage,type FrameStorage} from '../src/features/card-scanner/reproduction/native-frame-storage';
+import type {NativeYuvFrameMetadata} from '../src/features/card-scanner/acquisition/native-yuv-recipe';
 
 type Domain='legacy-rgba'|'rgba8'|'native-I420'|'native-NV12';
 type Codec='deflate'|'lz4';

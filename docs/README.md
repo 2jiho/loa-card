@@ -6,7 +6,18 @@
 |---|---|
 | 처음 실행하거나 수정 | [README](../README.md), [AGENTS](../AGENTS.md), [개발·검증](development.md) |
 | 스캐너 인식·성능 | [스캐너 구조](scanner-pipeline.md) |
+| 인식 평가·정답셋 | [평가 계약](evaluation.md) |
+| 기하 정규화·다해상도 홀드아웃 | [기하 홀드아웃](geometry-holdout.md) |
+| 이름+원화 신원 융합 | [이름+원화 융합](identity-fusion.md) |
+| 장수 0장 증거·필드 평가 | [장수 필드 증거](field-evidence.md) |
+| Scanner session 분해 | [session 분해](session-decomposition.md) |
+| Scanner 물리 분할 | [물리 분할](physical-split.md) |
+| 프로그램 구조·의존 규칙 | [프로그램 구조](architecture.md), [마이그레이션](architecture-migration.md) |
+| App 분해 | [App 분해](app-decomposition.md) |
 | 입력 누적·재현 구조 전환 | [입력 기록과 재현 설계](scanner-session-design.md), [입력 코퍼스 사용](development.md#입력-코퍼스) |
+| 프레임·이름 근거 분석 | [프레임 진단 설계](frame-name-evidence-design.md) |
+| 자동 종료 입력 공백 분석 | [자동 종료 입력 분석](auto-stop-input-analysis.md) |
+| 재시도 원장 실험 | [재시도 입장 원장 재생](retry-receipt-replay.md) |
 | UI·테마 | [UI 설계](ui-design.md) |
 | 도감 계산 | [성장 계산](growth-optimizer.md) |
 | 레이드 비교 | [레이드 계산](raid-cards.md) |

@@ -1,0 +1,5 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>LoaCard 창 검출 벤치</title>
+<style>body{font:15px system-ui;max-width:70rem;margin:2rem}button{padding:.5rem;margin-right:.5rem}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style></head><body>
+<h1>창 검출 픽셀 벤치</h1><p>로컬에서 추출한 고정 PNG 프레임의 픽셀 해시와 기존 창 검출 결과·단계별 시간을 비교합니다. 화면 공유 원본 재현이나 실시간 스캔 성능 측정은 아닙니다.</p>
+<button id="run">검증 시작</button><button id="save" disabled>결과 저장</button><p id="status" role="status">준비</p><pre id="result"></pre>
+<script type="module" src="./detector-bench.ts"></script></body></html>

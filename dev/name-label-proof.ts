@@ -1,5 +1,5 @@
-import {createNeuralReader} from '../src/features/card-scanner/neural-reader';
-import {CardReadBudget} from '../src/features/card-scanner/card-read-budget';
+import {createNeuralReader} from '../src/features/card-scanner/recognition/neural-reader';
+import {CardReadBudget} from '../src/features/card-scanner/recognition/card-read-budget';
 import {NAME_LABEL_PROOF_LIMITS,assertNameLabelPngHeader,decodeNameLabelBitmap} from './name-label-proof-core';
 import type {NameLabelProofData} from './name-label-proof-core';
 import {parseNameLabelProofRoute,parseSelectedNameLabels,nameLabelProofVariant,type NameLabelProofRoute} from './name-label-proof-routing';

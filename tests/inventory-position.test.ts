@@ -1,8 +1,59 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {InventoryPosition,StationaryInventoryView} from '../src/features/card-scanner/inventory-position';
+import {InventoryPosition,StationaryInventoryView} from '../src/features/card-scanner/session/inventory-position';
+import {ObservedInventoryLayout} from '../src/features/card-scanner/session/observed-inventory-layout';
 const groups=(top:number):(number|undefined)[]=>Array.from({length:40},(_,i)=>i+top*10);
 const geometry=(step:number)=>({position:step/51,pageSpan:4/51.6});
+
+test('rebound fuzzy groups cannot inherit an old identity position or serve as graph anchors',()=>{
+ const p=new InventoryPosition(),layout=new ObservedInventoryLayout();
+ const original=groups(0);p.capture(1,original,geometry(0),true);layout.capture(original);
+ for(let i=0;i<6;i++){p.identify(i,`A${i}`);layout.identify(i,`A${i}`);}
+ assert.equal(p.verifiedPositions().length,6);
+ const revision=p.revision;
+ for(let i=0;i<6;i++){p.identify(i,`B${i}`);layout.identify(i,`B${i}`);}
+ assert.ok(p.revision>revision);assert.deepEqual(p.verifiedPositions(),[],'derived anchors are invalidated');
+ assert.deepEqual(p.verifiedOrder(),[]);
+ assert.deepEqual(p.capture(2,original,geometry(0),true),[],'a frame containing ambiguous cells cannot be registered wholesale');
+ for(let i=0;i<6;i++)p.identify(i,`B${i}`);
+ assert.deepEqual(p.verifiedPositions(),[],'repeated late identity cannot clear ambiguity');
+ const later=Array<number|undefined>(40).fill(undefined);
+ for(let i=0;i<6;i++){later[10+i]=100+i;p.identify(100+i,`B${i}`);layout.identify(100+i,`B${i}`);}
+ layout.capture(later);
+ assert.deepEqual(layout.resolve(Array.from({length:6},(_,i)=>`B${i}`),p.verifiedPositions(),false),[],
+  'other groups cannot propagate the old anchor');
+ p.resetPositions();assert.deepEqual(p.capture(3,original,geometry(0),true),[],
+  'sort change must not erase session ambiguity');
+ p.reset();assert.deepEqual(p.capture(4,original,geometry(0),true),[{frame:4,top:1}],
+  'a new session may use the group number again');
+ p.identify(0,'B0');assert.deepEqual(p.verifiedPositions(),[{id:'B0',slot:0}]);
+});
+
+test('position conflicts discard pending, ordered and calibrated descendants before future safe re-anchoring',()=>{
+ const p=new InventoryPosition();
+ p.capture(1,groups(0),geometry(0),true);p.capture(2,groups(1),geometry(1),true);
+ for(let i=0;i<50;i++)p.identify(i,`A${i}`);
+ p.order(Array.from({length:100},(_,i)=>`A${i}`));
+ assert.ok(p.verifiedPositions().length);assert.equal(p.verifiedOrder().length,100);
+ p.capture(3,groups(20),null);
+ p.identify(0,'B');assert.deepEqual(p.verifiedPositions(),[]);assert.deepEqual(p.verifiedOrder(),[]);
+ assert.equal(p.diagnostics().pending,0);
+ assert.deepEqual(p.capture(4,groups(8),geometry(8),true),[],'old thumb calibration cannot locate a jump');
+ const fresh=groups(0).map((_,i)=>1000+i);
+ assert.deepEqual(p.capture(5,fresh,geometry(0),true),[{frame:5,top:1}],
+  'a fresh nonambiguous endpoint can establish positions again');
+ p.identify(1000,'B');assert.deepEqual(p.verifiedPositions(),[{id:'B',slot:0}]);
+});
+
+test('position identity history fails closed at its bound rather than forgetting an ambiguity',()=>{
+ const p=new InventoryPosition();p.identify(0,'A');p.identify(0,'B');
+ for(let i=1;i<40_960;i++)p.identify(i,`id-${i}`);
+ p.identify(40_960,'overflow');
+ assert.deepEqual(p.capture(1,groups(0),geometry(0),true),[]);
+ assert.deepEqual(p.verifiedPositions(),[]);assert.deepEqual(p.verifiedOrder(),[]);
+ p.identify(0,'B');assert.deepEqual(p.capture(2,groups(0),geometry(0),true),[]);
+ p.reset();assert.deepEqual(p.capture(3,groups(0),geometry(0),true),[{frame:3,top:1}]);
+});
 
 test('calibration stability requires unchanged slots AND thumb, not just vertically overlapping cards',()=>{
  const view=new StationaryInventoryView();

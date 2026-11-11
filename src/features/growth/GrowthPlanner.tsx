@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ScannedCard } from '../card-scanner/recognizer';
+import type { ScannedCard } from '../card-scanner/public';
 import type { GrowthMaster, GrowthComparisonRequest, GrowthComparison, OwnedCard } from './optimizer';
-import { growthInput } from '../live-results';
+import { growthInput } from './live-results';
 import { BookOverview } from './BookOverview';
 import { CollectionCandidates } from './CollectionCandidates';
 import { StatCollection } from './StatCollection';
 import type { GrowthSequenceStep } from './growth-sequence';
 import { runGrowthWorker } from './worker-calculation';
+import {loadGrowthMaster} from '../../data/catalog';
 import './growth.css';
 
 export function GrowthPlanner({ cards: observations, growthPoints, onComplete, busy = false, complete = true }: {
@@ -37,8 +38,7 @@ export function GrowthPlanner({ cards: observations, growthPoints, onComplete, b
   useEffect(() => { latest.current = { cards, xp }; }, [cards, xp]);
   useEffect(() => {
     const abort = new AbortController();
-    void fetch(`${import.meta.env.BASE_URL}growth/master.json`, { signal: abort.signal })
-      .then(r => { if (!r.ok) throw new Error('도감 데이터를 불러오지 못했습니다.'); return r.json(); })
+    void loadGrowthMaster(abort.signal)
       .then(setMaster).catch(e => { if (!abort.signal.aborted) setLoadError(String(e.message)); });
     return () => abort.abort();
   }, [loadAttempt]);

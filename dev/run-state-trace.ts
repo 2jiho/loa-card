@@ -1,31 +1,53 @@
-import {ScanGrid} from '../src/features/card-scanner/scan-grid';
+import {InputLossEvidence,acceptInputLossEvent,parseInputLossContract,parseInputLossFact} from '../src/features/card-scanner/session/input-loss-evidence';
+import {ScanGrid} from '../src/features/card-scanner/session/scan-grid';
 import {
   applyScanGridCommand, hashScanGridReplay, parseScanGridCommand, scanGridReplaySnapshot,
-} from '../src/features/card-scanner/scan-grid-command';
-import type {ScanGridCommand} from '../src/features/card-scanner/scan-grid-command';
-import {parseObservationFact} from '../src/features/card-scanner/observation-execution';
-import type {ObservationFact} from '../src/features/card-scanner/observation-execution';
-import {ObservationExecutionReplay} from '../src/features/card-scanner/observation-execution-replay';
+} from '../src/features/card-scanner/session/scan-grid-command';
+import type {ScanGridCommand} from '../src/features/card-scanner/session/scan-grid-command';
+import {parseObservationFact} from '../src/features/card-scanner/session/observation-execution';
+import type {ObservationFact} from '../src/features/card-scanner/session/observation-execution';
+import {ObservationExecutionReplay} from '../src/features/card-scanner/reproduction/observation-execution-replay';
 import {
-  inventoryEventData, parseInventoryEvent, parseInventorySeed,
-} from '../src/features/card-scanner/inventory-evidence';
-import type {SerializedInventoryEvent} from '../src/features/card-scanner/inventory-evidence';
-import {InventoryEvidenceReplay, parseInventoryCheckpoint} from '../src/features/card-scanner/inventory-evidence-replay';
-import type {InventoryCheckpoint} from '../src/features/card-scanner/inventory-evidence-replay';
-import {parseLiveInputAdmissionFact} from '../src/features/card-scanner/live-input-admission';
-import {parseInputArrival,parseInputBackupReservation,parseBackupCapacityDeferral} from '../src/features/card-scanner/input-arrival';
-import {parseAcquisitionCapture,parseRecognitionCapture} from '../src/features/card-scanner/capture-provenance';
-import {parseScrollCaptureFact,parseInventoryHeaderFact} from '../src/features/card-scanner/scroll-capture-diagnostic';
-import {parseMediaLineageFact,parseMediaInputLink} from '../src/features/card-scanner/media-lineage';
+  inventoryEventData, parseInventoryEvent, parseInventoryPreviewConfirmation, parseInventorySeed,
+} from '../src/features/card-scanner/session/inventory-evidence';
+import type {SerializedInventoryEvent} from '../src/features/card-scanner/session/inventory-evidence';
+import {InventoryEvidenceReplay, parseInventoryCheckpoint} from '../src/features/card-scanner/reproduction/inventory-evidence-replay';
+import type {InventoryCheckpoint} from '../src/features/card-scanner/reproduction/inventory-evidence-replay';
+import {parseLiveInputAdmissionFact} from '../src/features/card-scanner/capture/live-input-admission';
+import {parseInputArrival,parseInputBackupReservation,parseBackupCapacityDeferral} from '../src/features/card-scanner/capture/input-arrival';
+import {parseAcquisitionCapture,parseRecognitionCapture} from '../src/features/card-scanner/capture/capture-provenance';
+import {parseScrollCaptureFact,parseInventoryHeaderFact} from '../src/features/card-scanner/session/scroll-capture-diagnostic';
+import {parseMediaLineageFact,parseMediaInputLink} from '../src/features/card-scanner/capture/media-lineage';
 import {parseMediaPlaybackFact} from './media-playback-observer';
-import {parseLiveCaptureDecision} from '../src/features/card-scanner/live-capture-pipeline';
-import {InputDecisionReplay,parseInputCheckpoint,parseInputFrameLink} from '../src/features/card-scanner/live-input-decision-replay';
-import {yieldForCapture} from '../src/features/card-scanner/input-source';
-import {parseUnknownCheckpoint,parseUnknownFact,parseUnknownSeed} from '../src/features/card-scanner/unknown-lifecycle';
-import {UnknownLifecycleReplay} from '../src/features/card-scanner/unknown-lifecycle-replay';
-import {parseFreshnessSeed,parseFreshnessFact,parseFreshnessCheckpoint} from '../src/features/card-scanner/freshness-evidence';
-import {FreshnessEvidenceReplay} from '../src/features/card-scanner/freshness-evidence-replay';
+import {parseLiveCaptureDecision} from '../src/features/card-scanner/capture/live-capture-pipeline';
+import {InputDecisionReplay,parseInputCheckpoint,parseInputFrameLink,parseInputRecoveryFact} from '../src/features/card-scanner/reproduction/live-input-decision-replay';
+import {InputAcquisitionEvidence,acceptInputAcquisitionEvent,parseInputAcquisitionContract,parseInputAcquisitionSkip} from '../src/features/card-scanner/acquisition/input-acquisition-evidence';
+import {yieldForCapture} from '../src/features/card-scanner/capture/input-source';
+import {parseUnknownCheckpoint,parseUnknownFact} from '../src/features/card-scanner/session/unknown-lifecycle';
+import {UnknownLifecycleReplay,parseRecordedUnknownSeed} from '../src/features/card-scanner/reproduction/unknown-lifecycle-replay';
+import {parseUnknownRecoveryClaim} from '../src/features/card-scanner/reproduction/unknown-recovery-claim-replay';
+import {parseMeasuredSourceRasterReceipt} from '../src/features/card-scanner/acquisition/source-raster-receipt';
+import {parseFreshnessSeed,parseFreshnessFact,parseFreshnessCheckpoint} from '../src/features/card-scanner/session/freshness-evidence';
+import {FreshnessEvidenceReplay} from '../src/features/card-scanner/reproduction/freshness-evidence-replay';
 import {RunStateCompression} from './run-state-compression';
+import {ObstructionEvidenceReplay,parseObstructionSeed,parseObstructionEvent,parseObstructionCheckpoint} from '../src/features/card-scanner/reproduction/obstruction-evidence-replay';
+import {boundedDrainInputLoss} from '../src/features/card-scanner/session/completion-drain-loss';
+import {parseScannerInputProvenance} from '../src/features/card-scanner/capture/scanner-input-frame';
+import {parseScrollCoverageDiagnostic} from '../src/features/card-scanner/session/scroll-coverage-diagnostic';
+
+/** Reports exactly what the optional diagnostic summary says. The state trace
+ * does not record the drain-loss debt, its clearance or the stop decision.
+ * Missing legacy data is unknown, never a claim that no input was lost. */
+export function drainReplayScope(requested:unknown,summary:unknown) {
+  const source=summary&&typeof summary==='object'&&!Array.isArray(summary)?summary:undefined;
+  const property=source?Object.getOwnPropertyDescriptor(source,'drainInputLoss'):undefined;
+  const loss=property&&'value' in property?boundedDrainInputLoss(property.value):undefined;
+  return {requested:typeof requested==='boolean'?requested:null,
+    supported:false as const,matchesCapturedState:null,
+    autoStopSupported:false as const,scope:'diagnostic-summary-only' as const,
+    lossStatus:!property?'not-recorded' as const:loss?'reported' as const:'invalid' as const,
+    reportedLoss:loss?true as const:null,reason:loss?.reason??null};
+}
 
 /** Encoded payload bounds, not a claim about the JavaScript heap's size. */
 export const MAX_RUN_STATE_TRACE_BYTES = 8 * 1024 * 1024;
@@ -52,10 +74,13 @@ export interface ScannerClockFact {
 export type RunStateTraceEvent = {readonly seq:number;readonly time:number} & (
   | {readonly type:'recording-availability';readonly value:{readonly status:'active'|'disabled'|'failed';readonly liveScreen:boolean}}
   | {readonly type:'scanner-clock';readonly value:ScannerClockFact}
+  | {readonly type:'scroll-coverage';readonly value:ReturnType<typeof parseScrollCoverageDiagnostic>}
+  | {readonly type:'replay-source-use';readonly value:ReturnType<typeof parseReplaySourceUse>}
   | {readonly type:'grid-command';readonly value:ScanGridCommand}
   | {readonly type:'observation-fact';readonly value:ObservationFact}
   | {readonly type:'inventory-seed';readonly value:ReturnType<typeof parseInventorySeed>}
   | {readonly type:'inventory-event';readonly value:SerializedInventoryEvent}
+  | {readonly type:'inventory-preview-confirmation';readonly value:ReturnType<typeof parseInventoryPreviewConfirmation>}
   | {readonly type:'inventory-checkpoint';readonly value:InventoryCheckpoint}
   | {readonly type:'input-admission';readonly value:ReturnType<typeof parseLiveInputAdmissionFact>}
   | {readonly type:'input-arrival';readonly value:ReturnType<typeof parseInputArrival>}
@@ -69,11 +94,22 @@ export type RunStateTraceEvent = {readonly seq:number;readonly time:number} & (
   | {readonly type:'media-input-link';readonly value:ReturnType<typeof parseMediaInputLink>}
   | {readonly type:'source-playback';readonly value:ReturnType<typeof parseMediaPlaybackFact>}
   | {readonly type:'input-decision';readonly value:ReturnType<typeof parseLiveCaptureDecision>}
+  | {readonly type:'input-recovery';readonly value:ReturnType<typeof parseInputRecoveryFact>}
   | {readonly type:'input-link';readonly value:ReturnType<typeof parseInputFrameLink>}
+  | {readonly type:'input-loss-contract';readonly value:ReturnType<typeof parseInputLossContract>}
+  | {readonly type:'input-loss';readonly value:ReturnType<typeof parseInputLossFact>}
+  | {readonly type:'input-acquisition-contract';readonly value:ReturnType<typeof parseInputAcquisitionContract>}
+  | {readonly type:'input-acquisition-skip';readonly value:ReturnType<typeof parseInputAcquisitionSkip>}
   | {readonly type:'input-checkpoint';readonly value:ReturnType<typeof parseInputCheckpoint>}
-  | {readonly type:'unknown-seed';readonly value:ReturnType<typeof parseUnknownSeed>}
+  | {readonly type:'unknown-seed';readonly value:ReturnType<typeof parseRecordedUnknownSeed>}
   | {readonly type:'unknown-event';readonly value:ReturnType<typeof parseUnknownFact>}
+  | {readonly type:'unknown-recovery-claim';readonly value:ReturnType<typeof parseUnknownRecoveryClaim>}
+  | {readonly type:'source-binding-metadata';readonly value:ReturnType<typeof parseSourceBindingMetadata>}
+  | {readonly type:'source-binding-metadata-summary';readonly value:ReturnType<typeof parseSourceBindingMetadataSummary>}
   | {readonly type:'unknown-checkpoint';readonly value:ReturnType<typeof parseUnknownCheckpoint>}
+  | {readonly type:'obstruction-seed';readonly value:ReturnType<typeof parseObstructionSeed>}
+  | {readonly type:'obstruction-event';readonly value:ReturnType<typeof parseObstructionEvent>}
+  | {readonly type:'obstruction-checkpoint';readonly value:ReturnType<typeof parseObstructionCheckpoint>}
   | {readonly type:'freshness-seed';readonly value:ReturnType<typeof parseFreshnessSeed>}
   | {readonly type:'freshness-event';readonly value:ReturnType<typeof parseFreshnessFact>}
   | {readonly type:'freshness-checkpoint';readonly value:ReturnType<typeof parseFreshnessCheckpoint>}
@@ -84,6 +120,74 @@ export interface RunStateTraceSnapshot {
   readonly complete:boolean;
   readonly dropped:number;
   readonly events:readonly RunStateTraceEvent[];
+}
+
+/** Join only a parsed, complete trace from one report. This compares recorded
+ * metadata, not the physical worker raster, model input, or independent reads.
+ * Missing provenance, mixed sessions, and partial traces always stay unknown. */
+export function summarizeReplaySourceUses(trace:RunStateTraceSnapshot,runId:string) {
+  const unknown=(reason:string)=>({status:'unknown' as const,reason,scope:'report-local-source-metadata' as const,
+    readerPixelsVerified:false as const,originalCaptureComplete:null,matchedFrames:0});
+  if(!trace.complete||trace.dropped!==0)return unknown('partial-trace');
+  if(!/^[a-f0-9-]{36}$/.test(runId))return unknown('invalid-run');
+  const uses=trace.events.filter(event=>event.type==='replay-source-use');
+  const captures=trace.events.filter(event=>event.type==='acquisition-capture');
+  if(!uses.length||!captures.length)return unknown('missing-events');
+  if(uses.some(event=>event.value.runId!==runId))return unknown('different-run');
+  const sessions=new Set(captures.map(event=>event.value.sessionId));
+  if(sessions.size!==1)return unknown('mixed-sessions');
+  const frames=new Map<number,(typeof uses)[number]>();
+  // Archive source IDs identify pixel sources within this recording. Do not
+  // conflate them with acquisition canonicalSourceFrameId: that ID belongs to
+  // the current producer, and is not necessarily in the archive ID domain.
+  const sourceHashes=new Map<number,string>();
+  for(const event of uses){
+    if(frames.has(event.value.processingFrame))return unknown('duplicate-frame');
+    if(event.value.sourceFrameId===null)return unknown('source-frame-unavailable');
+    const prior=sourceHashes.get(event.value.sourceFrameId);
+    if(prior!==undefined&&prior!==event.value.pixelHash)return unknown('source-pixel-hash-conflict');
+    sourceHashes.set(event.value.sourceFrameId,event.value.pixelHash);
+    frames.set(event.value.processingFrame,event);
+  }
+  const matched=new Set<number>();
+  for(const event of captures){
+    const source=frames.get(event.value.processingFrame);
+    if(!source||source.seq>=event.seq||source.value.acquisitionFrameId!==event.value.acquisitionFrameId||
+      source.value.captureTime!==event.value.captureTime||source.value.phase!==event.value.phase)
+      return unknown('capture-source-unmatched');
+    matched.add(event.value.processingFrame);
+  }
+  // An input without acquisition captures is not automatically a missing
+  // frame: the scanner may have failed to locate the growth window. Only
+  // classify it when exactly one later scroll diagnostic has matching source
+  // metadata in the same session. not-located is a detector outcome, not
+  // proof that no game cards were visible in the original frame.
+  const unmatched=[...frames.values()].filter(event=>!matched.has(event.value.processingFrame));
+  const unmatchedFrames=new Set(unmatched.map(event=>event.value.processingFrame));
+  const scrolls=new Map<number,Extract<RunStateTraceEvent,{type:'scroll-capture'}>[]>();
+  for(const event of trace.events)if(event.type==='scroll-capture'&&unmatchedFrames.has(event.value.source.processingFrame)){
+    const frame=event.value.source.processingFrame,group=scrolls.get(frame)??[];
+    group.push(event);scrolls.set(frame,group);
+  }
+  let notLocated=0,other=0,reason:string|undefined;
+  for(const use of unmatched){
+    const candidates=scrolls.get(use.value.processingFrame)??[];
+    if(candidates.length!==1){reason=candidates.length?'duplicate-scroll-capture':'missing-scroll-capture';break;}
+    const scroll=candidates[0],source=scroll.value.source;
+    if(scroll.seq<=use.seq||source.sessionId!==[...sessions][0]||
+      source.acquisitionFrameId!==use.value.acquisitionFrameId||source.captureTime!==use.value.captureTime||
+      source.phase!==use.value.phase){reason='scroll-source-unmatched';break;}
+    if(scroll.value.state==='not-located')notLocated++;else other++;
+  }
+  const unmatchedDetail=reason?{status:'unknown' as const,reason,notLocatedFrames:null,otherStateFrames:null}:
+    {status:'matched' as const,notLocatedFrames:notLocated,otherStateFrames:other};
+  return {status:'matched-metadata' as const,scope:'report-local-source-metadata' as const,
+    readerPixelsVerified:false as const,originalCaptureComplete:null,matchedFrames:matched.size,
+    inferredPhaseFrames:[...matched].filter(frame=>frames.get(frame)!.value.phaseInferred).length,
+    unmatchedSourceFrames:frames.size-matched.size,unmatchedSourceDetail:unmatchedDetail,
+    notLocatedProvesNoCards:false as const,
+    canonicalSourceLink:'unverified-separate-id-domain' as const,
+    sessionId:[...sessions][0],runId};
 }
 interface CompressedChunk {readonly bytes:number;readonly events:number;readonly data:string;}
 interface CompressedTrace {
@@ -117,12 +221,82 @@ function object(value:unknown,keys:readonly string[],ownData=false):Record<strin
 function positive(value:unknown,maximum:number):value is number {
   return Number.isSafeInteger(value)&&(value as number)>0&&(value as number)<=maximum;
 }
+// Serialized diagnostic claims only. Parsing does not authenticate the two
+// sources, the pixels, the reader, or any completion/recognition decision.
+export function parseSourceBindingMetadata(value:unknown) {
+  const fact=object(value,['scope','pixelsAuthenticated','originalSource','originalGroup','recoverySource','physical','content','preview',
+    'path','originalJoinedAtMatch','recoveryJoinedAtMatch'],true);
+  if(fact.scope!=='prepared-source-metadata-only'||fact.pixelsAuthenticated!==false||
+    (fact.path!=='cached'&&fact.path!=='reacquired')||typeof fact.originalJoinedAtMatch!=='boolean'||
+    typeof fact.recoveryJoinedAtMatch!=='boolean'||!positive(fact.originalGroup,Number.MAX_SAFE_INTEGER))throw Error('잘못된 출처 연결 진단');
+  const keys=['sessionId','frameId','observationId','captureOrder','captureTime','phase','slot'];
+  const original=parseObservationFact({version:1,kind:'queued',attemptId:0,source:object(fact.originalSource,keys,true)}).source;
+  const recovery=parseObservationFact({version:1,kind:'queued',attemptId:0,source:object(fact.recoverySource,keys,true)}).source;
+  const physical=object(fact.physical,['sourceFrameId','captureTime','width','height','hash'],true);
+  const receipt=parseMeasuredSourceRasterReceipt({version:1,kind:'measured',...physical,acquisitionFrameId:original.frameId});
+  if(original.phase!=='input'||recovery.phase!=='recovery'||original.sessionId!==recovery.sessionId||
+    original.frameId===recovery.frameId||original.observationId===recovery.observationId||original.slot!==recovery.slot||
+    original.captureTime!==recovery.captureTime||original.captureOrder!==recovery.captureOrder||original.captureTime!==receipt.captureTime)
+    throw Error('출처 연결 진단 값 불일치');
+  const box=(value:unknown)=>{
+    const b=object(value,['x','y','width','height'],true);
+    if(!['x','y','width','height'].every(k=>typeof b[k]==='number'&&Number.isFinite(b[k]))||
+      (b.x as number)<0||(b.y as number)<0||(b.width as number)<=0||(b.height as number)<=0||
+      (b.x as number)+(b.width as number)>receipt.width||(b.y as number)+(b.height as number)>receipt.height)
+      throw Error('잘못된 출처 연결 크롭');
+    return Object.freeze({x:b.x as number,y:b.y as number,width:b.width as number,height:b.height as number});
+  };
+  return Object.freeze({scope:'prepared-source-metadata-only' as const,pixelsAuthenticated:false as const,
+    originalSource:original,originalGroup:fact.originalGroup,recoverySource:recovery,
+    physical:Object.freeze({sourceFrameId:receipt.sourceFrameId,captureTime:receipt.captureTime,width:receipt.width,height:receipt.height,hash:receipt.hash}),
+    content:box(fact.content),preview:box(fact.preview),path:fact.path,
+    originalJoinedAtMatch:fact.originalJoinedAtMatch,recoveryJoinedAtMatch:fact.recoveryJoinedAtMatch});
+}
+const SOURCE_BINDING_COUNT_KEYS=['inputAttempts','inputBound','inputUnavailable','inputUnavailableAtLimit','inputJoinedAtAttempt',
+  'recoveryAttempts','recoveryMatched','recoveryUnavailable','recoveryUnavailableAtLimit','cachedAttempts','reacquiredAttempts',
+  'cachedMatched','reacquiredMatched','originalJoinedAtMatch','recoveryJoinedAtMatch',
+  'bindingsIssuedNotForgotten','observedSources','remainingBindings','capabilities'] as const;
+export function parseSourceBindingMetadataSummary(value:unknown) {
+  const item=object(value,['scope','pixelsAuthenticated',...SOURCE_BINDING_COUNT_KEYS],true);
+  if(item.scope!=='prepared-source-metadata-only'||item.pixelsAuthenticated!==false||
+    SOURCE_BINDING_COUNT_KEYS.some(key=>!Number.isSafeInteger(item[key])||(item[key] as number)<0))throw Error('잘못된 출처 연결 요약');
+  return Object.freeze({scope:'prepared-source-metadata-only' as const,pixelsAuthenticated:false as const,
+    ...Object.fromEntries(SOURCE_BINDING_COUNT_KEYS.map(key=>[key,item[key] as number]))});
+}
 function scannerClock(value:unknown):ScannerClockFact {
   const clock=object(value,['version','clock','phase','originMs'],true);
   if(clock.version!==1||clock.clock!=='page-performance-now'||clock.phase!=='input-and-recognition'||
     typeof clock.originMs!=='number'||!Number.isFinite(clock.originMs)||clock.originMs<0)
     throw Error('잘못된 스캐너 시계 진단');
   return Object.freeze({version:1,clock:'page-performance-now',phase:'input-and-recognition',originMs:clock.originMs});
+}
+
+/** Metadata emitted by the current stored-input replay only. The run ID
+ * belongs to the dev report, not to the original capture or OCR session.
+ * A digest describes decoded source pixels; it does not attest reader crop
+ * pixels, OCR input, correctness, or the completeness of the recording. */
+export function parseReplaySourceUse(value:unknown) {
+  const row=object(value,['version','runId','processingFrame','acquisitionFrameId','sourceFrameId','captureTime','phase','phaseInferred','pixelHash'],true);
+  if(row.version!==1||typeof row.runId!=='string'||!/^[a-f0-9-]{36}$/.test(row.runId)||
+    !positive(row.processingFrame,Number.MAX_SAFE_INTEGER)||!positive(row.acquisitionFrameId,Number.MAX_SAFE_INTEGER)||
+    !(row.sourceFrameId===null||positive(row.sourceFrameId,Number.MAX_SAFE_INTEGER)))throw Error('잘못된 재현 원본 연결');
+  const provenance=parseScannerInputProvenance({frameId:row.acquisitionFrameId,
+    ...(row.sourceFrameId===null?{}:{sourceFrameId:row.sourceFrameId}),captureTime:row.captureTime,
+    phase:row.phase,phaseInferred:row.phaseInferred,pixelHash:row.pixelHash});
+  return Object.freeze({version:1 as const,runId:row.runId,processingFrame:row.processingFrame,
+    acquisitionFrameId:provenance.frameId,sourceFrameId:provenance.sourceFrameId??null,
+    captureTime:provenance.captureTime,phase:provenance.phase,phaseInferred:provenance.phaseInferred,pixelHash:provenance.pixelHash});
+}
+
+/** Extract only the replay provenance from the scanner frame callback. */
+export function replaySourceUseFromFrame(value:unknown,runId:string) {
+  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('재현 프레임 누락');
+  const frame=value as Record<string,unknown>,provenance=parseScannerInputProvenance(frame.provenance);
+  if(frame.sourceFrameId!==provenance.frameId||frame.time!==provenance.captureTime||frame.phase!==provenance.phase)
+    throw Error('재현 프레임과 원본 연결 불일치');
+  return parseReplaySourceUse({version:1,runId,processingFrame:frame.frame,acquisitionFrameId:provenance.frameId,
+    sourceFrameId:provenance.sourceFrameId??null,captureTime:provenance.captureTime,phase:provenance.phase,
+    phaseInferred:provenance.phaseInferred,pixelHash:provenance.pixelHash});
 }
 function parseEvent(value:unknown):RunStateTraceEvent {
   const event=object(value,['seq','time','type','value']);
@@ -136,10 +310,13 @@ function parseEvent(value:unknown):RunStateTraceEvent {
     return Object.freeze({...base,type:'recording-availability',value:Object.freeze({status:value.status,liveScreen:value.liveScreen})});
   }
   if(event.type==='scanner-clock')return Object.freeze({...base,type:'scanner-clock',value:scannerClock(event.value)});
+  if(event.type==='scroll-coverage')return Object.freeze({...base,type:'scroll-coverage',value:parseScrollCoverageDiagnostic(event.value)});
+  if(event.type==='replay-source-use')return Object.freeze({...base,type:'replay-source-use',value:parseReplaySourceUse(event.value)});
   if(event.type==='grid-command')return Object.freeze({...base,type:'grid-command',value:parseScanGridCommand(event.value)});
   if(event.type==='observation-fact')return Object.freeze({...base,type:'observation-fact',value:parseObservationFact(event.value)});
   if(event.type==='inventory-seed')return Object.freeze({...base,type:'inventory-seed',value:parseInventorySeed(event.value)});
   if(event.type==='inventory-event')return Object.freeze({...base,type:'inventory-event',value:inventoryEventData(parseInventoryEvent(event.value))});
+  if(event.type==='inventory-preview-confirmation')return Object.freeze({...base,type:'inventory-preview-confirmation',value:parseInventoryPreviewConfirmation(event.value)});
   if(event.type==='inventory-checkpoint')return Object.freeze({...base,type:'inventory-checkpoint',value:parseInventoryCheckpoint(event.value)});
   if(event.type==='input-admission')return Object.freeze({...base,type:'input-admission',value:parseLiveInputAdmissionFact(event.value)});
   if(event.type==='input-arrival')return Object.freeze({...base,type:'input-arrival',value:parseInputArrival(event.value)});
@@ -153,11 +330,22 @@ function parseEvent(value:unknown):RunStateTraceEvent {
   if(event.type==='media-input-link')return Object.freeze({...base,type:'media-input-link',value:parseMediaInputLink(event.value)});
   if(event.type==='source-playback')return Object.freeze({...base,type:'source-playback',value:parseMediaPlaybackFact(event.value)});
   if(event.type==='input-decision')return Object.freeze({...base,type:'input-decision',value:parseLiveCaptureDecision(event.value)});
+  if(event.type==='input-recovery')return Object.freeze({...base,type:'input-recovery',value:parseInputRecoveryFact(event.value)});
   if(event.type==='input-link')return Object.freeze({...base,type:'input-link',value:parseInputFrameLink(event.value)});
+  if(event.type==='input-loss-contract')return Object.freeze({...base,type:'input-loss-contract',value:parseInputLossContract(event.value)});
+  if(event.type==='input-loss')return Object.freeze({...base,type:'input-loss',value:parseInputLossFact(event.value)});
+  if(event.type==='input-acquisition-contract')return Object.freeze({...base,type:'input-acquisition-contract',value:parseInputAcquisitionContract(event.value)});
+  if(event.type==='input-acquisition-skip')return Object.freeze({...base,type:'input-acquisition-skip',value:parseInputAcquisitionSkip(event.value)});
   if(event.type==='input-checkpoint')return Object.freeze({...base,type:'input-checkpoint',value:parseInputCheckpoint(event.value)});
-  if(event.type==='unknown-seed')return Object.freeze({...base,type:'unknown-seed',value:parseUnknownSeed(event.value)});
+  if(event.type==='unknown-seed')return Object.freeze({...base,type:'unknown-seed',value:parseRecordedUnknownSeed(event.value)});
   if(event.type==='unknown-event')return Object.freeze({...base,type:'unknown-event',value:parseUnknownFact(event.value)});
+  if(event.type==='unknown-recovery-claim')return Object.freeze({...base,type:'unknown-recovery-claim',value:parseUnknownRecoveryClaim(event.value)});
+  if(event.type==='source-binding-metadata')return Object.freeze({...base,type:'source-binding-metadata',value:parseSourceBindingMetadata(event.value)});
+  if(event.type==='source-binding-metadata-summary')return Object.freeze({...base,type:'source-binding-metadata-summary',value:parseSourceBindingMetadataSummary(event.value)});
   if(event.type==='unknown-checkpoint')return Object.freeze({...base,type:'unknown-checkpoint',value:parseUnknownCheckpoint(event.value)});
+  if(event.type==='obstruction-seed')return Object.freeze({...base,type:'obstruction-seed',value:parseObstructionSeed(event.value)});
+  if(event.type==='obstruction-event')return Object.freeze({...base,type:'obstruction-event',value:parseObstructionEvent(event.value)});
+  if(event.type==='obstruction-checkpoint')return Object.freeze({...base,type:'obstruction-checkpoint',value:parseObstructionCheckpoint(event.value)});
   if(event.type==='freshness-seed')return Object.freeze({...base,type:'freshness-seed',value:parseFreshnessSeed(event.value)});
   if(event.type==='freshness-event')return Object.freeze({...base,type:'freshness-event',value:parseFreshnessFact(event.value)});
   if(event.type==='freshness-checkpoint')return Object.freeze({...base,type:'freshness-checkpoint',value:parseFreshnessCheckpoint(event.value)});
@@ -240,18 +428,20 @@ export class RunStateTrace {
   }
 
   record(type:string,value:unknown,time:number):boolean {
-    if(!['grid-command','observation-fact','inventory-seed','inventory-event','inventory-checkpoint',
-      'input-admission','input-arrival','input-backup-reservation','backup-capacity-deferral','input-decision','input-link','input-checkpoint','input-recording-error',
+    if(!['grid-command','observation-fact','inventory-seed','inventory-event','inventory-preview-confirmation','inventory-checkpoint',
+      'input-loss-contract','input-loss','input-admission','input-arrival','input-backup-reservation','backup-capacity-deferral','input-decision','input-recovery','input-link','input-acquisition-contract','input-acquisition-skip','input-checkpoint','input-recording-error',
       'acquisition-capture','recognition-capture','scroll-capture','inventory-header-read','capture-recording-error',
       'media-lineage','media-input-link','media-recording-error',
-      'source-playback','scanner-clock','recording-availability',
-      'unknown-seed','unknown-event','unknown-checkpoint','unknown-recording-error',
-      'freshness-seed','freshness-event','freshness-checkpoint','freshness-recording-error'].includes(type))return false;
+      'source-playback','scanner-clock','recording-availability','replay-source-use','scroll-coverage',
+      'unknown-seed','unknown-event','unknown-recovery-claim','unknown-checkpoint','unknown-recording-error',
+      'source-binding-metadata','source-binding-metadata-summary',
+      'freshness-seed','freshness-event','freshness-checkpoint','freshness-recording-error',
+      'obstruction-seed','obstruction-event','obstruction-checkpoint','obstruction-recording-error'].includes(type))return false;
     this.sequence=Math.min(Number.MAX_SAFE_INTEGER,this.sequence+1);
     const drop=()=>{this.dropped=Math.min(Number.MAX_SAFE_INTEGER,this.dropped+1);return false;};
     // A failed optional decision recorder may already have omitted facts before
     // this callback. Never call the remaining selected state a complete run.
-    if(type==='input-recording-error'||type==='unknown-recording-error'||type==='capture-recording-error'||type==='media-recording-error'||type==='freshness-recording-error')return drop();
+    if(type==='input-recording-error'||type==='unknown-recording-error'||type==='capture-recording-error'||type==='media-recording-error'||type==='freshness-recording-error'||type==='obstruction-recording-error')return drop();
     if(this.full||this.accepted>=this.maxEvents||this.jobs.length>=MAX_CHUNKS){this.full=true;return drop();}
     let json:string;
     try{json=JSON.stringify(parseEvent({seq:this.sequence,time,type,value}));}
@@ -379,6 +569,25 @@ export async function parseRunStateTrace(blob:Blob,signal:AbortSignal):Promise<R
   return Object.freeze({version:trace.version,complete:trace.complete,dropped:trace.dropped,events:Object.freeze(events)});
 }
 
+/** Explicit historical hypothesis only. Seed v1 did not record which name
+ * consensus policy ran. A matching checkpoint is not policy authentication,
+ * OCR accuracy or complete scanner replay, and this result must never feed
+ * live state, obstruction/freshness decisions, or archive certification. */
+export async function compareLegacyInventoryCandidate(blob:Blob,signal:AbortSignal) {
+  const trace=await readTrace(blob,signal);
+  if(!trace.complete||trace.dropped)throw Error('불완전한 상태 기록은 과거 정책 비교에 사용할 수 없습니다.');
+  const inventory=new InventoryEvidenceReplay(signal,{legacyRepeatCandidate:true});
+  for await(const event of iterateEvents(trace,signal)){
+    if(event.type==='inventory-seed')inventory.seed(event.value);
+    else if(event.type==='inventory-event')inventory.accept(event.value);
+    else if(event.type==='inventory-preview-confirmation')inventory.previewConfirmation(event.value);
+    else if(event.type==='inventory-checkpoint')inventory.checkpoint(event.value);
+  }
+  const {matchesCapturedState:matchesCandidateCheckpoint,...result}=await inventory.summary();
+  return {policy:'legacy-repeat-candidate' as const,policyAuthenticated:false as const,
+    scope:'inventory-state-hypothesis-only' as const,...result,matchesCandidateCheckpoint};
+}
+
 /** Reapply command order and common lifecycle reducers without OCR or the live
  * scheduler. Only compressed chunks and bounded reducer state are retained. */
 export async function replayRunStateTrace(blob:Blob,signal:AbortSignal) {
@@ -387,20 +596,32 @@ export async function replayRunStateTrace(blob:Blob,signal:AbortSignal) {
   const grid=new ScanGrid(),observations=new ObservationExecutionReplay(signal);let commands=0,events=0;
   const inventory=new InventoryEvidenceReplay(signal);
   const input=new InputDecisionReplay(signal);
+  const acquisitionEvidence=new InputAcquisitionEvidence();
+  const inputLoss=new InputLossEvidence();
   const unknownLifecycle=new UnknownLifecycleReplay(signal);
   const freshness=new FreshnessEvidenceReplay(signal,()=>inventory.confirmedFieldOrder);
+  const obstruction=new ObstructionEvidenceReplay(signal,()=>({latest:inventory.latestIdentityOrder,names:inventory.confirmedNameOrder,fields:inventory.confirmedFieldOrder}));
   for await(const event of iterateEvents(trace,signal)){
+    acceptInputAcquisitionEvent(acquisitionEvidence,event.type,event.value);
+    acceptInputLossEvent(inputLoss,event.type,event.value);
     if(event.type==='grid-command'){applyScanGridCommand(grid,event.value);commands++;}
     else if(event.type==='observation-fact')observations.accept(event.value);
-    else if(event.type==='inventory-seed'){inventory.seed(event.value);freshness.proofsChanged();}
-    else if(event.type==='inventory-event'){inventory.accept(event.value);freshness.proofsChanged();}
+    else if(event.type==='inventory-seed'){inventory.seed(event.value);freshness.proofsChanged();obstruction.proofsChanged();}
+    else if(event.type==='inventory-event'){inventory.accept(event.value);freshness.proofsChanged();obstruction.proofsChanged();}
+    else if(event.type==='inventory-preview-confirmation'){inventory.previewConfirmation(event.value);freshness.proofsChanged();obstruction.proofsChanged();}
     else if(event.type==='inventory-checkpoint')inventory.checkpoint(event.value);
+    else if(event.type==='acquisition-capture')obstruction.acquisition(event.value);
+    else if(event.type==='obstruction-seed')obstruction.seed(event.value);
+    else if(event.type==='obstruction-event')obstruction.accept(event.value);
+    else if(event.type==='obstruction-checkpoint')obstruction.checkpoint(event.value);
     else if(event.type==='input-admission')input.admission(event.value);
     else if(event.type==='input-decision')input.pipeline(event.value);
+    else if(event.type==='input-recovery')input.recovery(event.value);
     else if(event.type==='input-link')input.link(event.value);
     else if(event.type==='input-checkpoint')input.checkpoint(event.value);
     else if(event.type==='unknown-seed')unknownLifecycle.seed(event.value);
     else if(event.type==='unknown-event')unknownLifecycle.accept(event.value);
+    else if(event.type==='unknown-recovery-claim')unknownLifecycle.acceptRecoveryClaim(event.value);
     else if(event.type==='unknown-checkpoint')unknownLifecycle.checkpoint(event.value);
     else if(event.type==='freshness-seed')freshness.seed(event.value);
     else if(event.type==='freshness-event')freshness.accept(event.value);
@@ -416,8 +637,9 @@ export async function replayRunStateTrace(blob:Blob,signal:AbortSignal) {
   const inputSummary=await input.summary();
   const unknownSummary=await unknownLifecycle.summary();
   const freshnessSummary=await freshness.summary();
+  const obstructionSummary=await obstruction.summary();
   signal.throwIfAborted();
   return {version:trace.version,complete:true as const,events,
     grid:{supported:commands>0,commands,hash},observations:observationSummary,
-    inventory:inventorySummary,input:inputSummary,unknownLifecycle:unknownSummary,freshness:freshnessSummary};
+    inventory:inventorySummary,inventoryPolicy:inventory.policy(),input:inputSummary,inputLoss:inputLoss.summary(),...(acquisitionEvidence.summary().supported?{acquisitionEvidence:acquisitionEvidence.summary()}:{}),unknownLifecycle:unknownSummary,freshness:freshnessSummary,obstruction:obstructionSummary};
 }

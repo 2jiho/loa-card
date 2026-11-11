@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ScanGrid } from '../src/features/card-scanner/scan-grid';
-import type { GridStatus } from '../src/features/card-scanner/scan-grid';
-import type { ObservationSource } from '../src/features/card-scanner/observation-execution';
+import { ScanGrid } from '../src/features/card-scanner/session/scan-grid';
+import type { GridStatus } from '../src/features/card-scanner/session/scan-grid';
+import type { ObservationSource } from '../src/features/card-scanner/session/observation-execution';
 import { applyScanGridCommand, hashScanGridReplay, MAX_SCAN_GRID_COMMAND_BYTES, parseScanGridCommand,
-  recordScanGrid, scanGridReplaySnapshot } from '../src/features/card-scanner/scan-grid-command';
-import type { ScanGridCommand } from '../src/features/card-scanner/scan-grid-command';
+  recordScanGrid, scanGridReplaySnapshot } from '../src/features/card-scanner/session/scan-grid-command';
+import type { ScanGridCommand } from '../src/features/card-scanner/session/scan-grid-command';
 
 const origin = (trace: number, slot: number, frameId = trace): ObservationSource => ({
   sessionId: 'test-session', frameId, observationId: String(trace), captureOrder: trace * 40,
@@ -25,6 +25,80 @@ function harness() {
   };
   return { grid, target, replay, commands, step };
 }
+
+test('source identity invalidation replays without reinterpreting older command streams', async()=>{
+ const {target,replay,commands,step}=harness();
+ step(g=>g.begin(true));step(g=>g.group(0,7,1,true,1,origin(1,0)));
+ step(g=>g.identify(7,'old'));const lease=step(g=>g.start(1));
+ step(g=>g.placeLive([{id:'old',slot:10}],new Map([['old','read']])));
+ step(g=>g.begin(true));step(g=>g.invalidateGroupIdentity(7,2));
+ step(g=>g.group(0,7,2,true,2,origin(2,0)));
+ assert.equal(target.isCurrentObservation(7,1),false);
+ assert.equal(target.isCurrentObservation(7,2),true);
+ step(g=>g.placeLive([{id:'old',slot:10}],new Map([['old','read']])));
+ assert.equal(target.snapshot().inventory?.[10].status,'waiting','replayed cached overlay cannot confirm new source');
+ step(g=>g.finish(1,'read',lease));step(g=>g.confirm(['old']));
+ assert.equal(target.snapshot().inventory?.[10].status,'waiting');
+ step(g=>g.identify(7,'new'));
+ step(g=>g.placeLive([{id:'old',slot:10}],new Map([['old','read']])));
+ assert.equal(target.snapshot().inventory?.[10].status,'waiting','a different stale ID cannot confirm new fields');
+ const current=step(g=>g.start(2));assert.equal(target.snapshot().inventory?.[10].status,'reading');
+ step(g=>g.finish(2,'read',current));assert.equal(target.snapshot().inventory?.[10].status,'read');
+ assert.equal(await hashScanGridReplay(scanGridReplaySnapshot(target)),await hashScanGridReplay(scanGridReplaySnapshot(replay)));
+ assert.equal(commands.filter(command=>command.method==='invalidateGroupIdentity').length,1);
+ const legacy=new ScanGrid();
+ // Historical v1 recordings contain no invalidation command; the parser and
+ // original legacy projection remain unchanged for those command streams.
+ for(const command of commands.filter(command=>command.method!=='invalidateGroupIdentity')){
+  if(command.method==='identify'&&command.args[1]==='new')break;
+  applyScanGridCommand(legacy,wire(command));
+ }
+ assert.equal(legacy.snapshot().inventory?.[10].status,'read');
+});
+
+test('legacy commands without invalidation preserve their existing live-overlay projection',()=>{
+ const grid=new ScanGrid();
+ const legacy:ScanGridCommand[]=[
+  {version:1,method:'begin',args:[true]},
+  {version:1,method:'group',args:[0,7,1,true,1,null]},
+  {version:1,method:'identify',args:[7,'old']},
+  {version:1,method:'placeLive',args:[[{id:'old',slot:0}],[['old','read']]]},
+  {version:1,method:'group',args:[0,7,2,true,1,null]},
+  {version:1,method:'identify',args:[7,'new']},
+ ];
+ for(const command of legacy)applyScanGridCommand(grid,wire(command));
+ assert.equal(grid.snapshot().cells[0].status,'waiting');
+ assert.equal(grid.snapshot().inventory?.[0].status,'read','old stream keeps its historical live overlay');
+});
+
+test('explicit source-work projection replays new-group identity collisions and same-ID retries',async()=>{
+ const {target,replay,commands,step}=harness();
+ step(g=>g.enableSourceWorkProjection());step(g=>g.begin(true));
+ step(g=>g.group(0,1,1,true,1));step(g=>g.identify(1,'old'));step(g=>g.finish(1,'read'));
+ const placement=[{id:'old',slot:0}],oldRead=new Map([['old','read' as const]]);
+ step(g=>g.placeLive(placement,oldRead));step(g=>g.group(0,2,2,true,1));
+ step(g=>g.placeLive(placement,oldRead));assert.equal(target.snapshot().inventory?.[0].status,'waiting');
+ step(g=>g.identify(2,'old'));step(g=>g.confirm(['old']));step(g=>g.placeLive(placement,oldRead));
+ assert.equal(target.snapshot().inventory?.[0].status,'waiting');
+ let lease=step(g=>g.start(2));assert.equal(target.snapshot().inventory?.[0].status,'reading');
+ step(g=>g.finish(2,'review',lease));assert.equal(target.snapshot().inventory?.[0].status,'review');
+ lease=step(g=>g.start(2));step(g=>g.finish(2,'read',lease));
+ assert.equal(target.snapshot().inventory?.[0].status,'read');
+ assert.equal(await hashScanGridReplay(scanGridReplaySnapshot(target)),await hashScanGridReplay(scanGridReplaySnapshot(replay)));
+ assert.equal(commands[0].method,'enableSourceWorkProjection');
+});
+
+test('source-work projection replays an unprocessed fuzzy duplicate without borrowing a read',async()=>{
+ const {target,replay,step}=harness();
+ step(g=>g.enableSourceWorkProjection());step(g=>g.begin(true));
+ step(g=>g.group(0,7,1,true,1));step(g=>g.identify(7,'old'));step(g=>g.finish(1,'read'));
+ step(g=>g.placeLive([{id:'old',slot:0}],new Map([['old','read']])));
+ step(g=>g.begin(true));step(g=>g.group(0,7,2,false));step(g=>g.record(2));step(g=>g.register(2,1));
+ step(g=>g.confirm(['old']));step(g=>g.placeLive([{id:'old',slot:0}],new Map([['old','read']])));
+ assert.equal(target.snapshot().recentFrame?.cells[0].status,'unknown');
+ assert.equal(target.snapshot().inventory?.[0].status,'unknown');
+ assert.equal(await hashScanGridReplay(scanGridReplaySnapshot(target)),await hashScanGridReplay(scanGridReplaySnapshot(replay)));
+});
 
 test('commands replay middle-start, fast/reverse viewports, delayed frame registration and stale reads without OCR', async () => {
   const { grid, target, replay, commands, step } = harness();
@@ -201,4 +275,28 @@ test('recent capture projection is replayed and validated without inventing abso
   await assert.rejects(hashScanGridReplay(short),/40 slots/);
   const invalid=wire(snapshot);invalid.grid.recentFrame!.frame=-1;
   await assert.rejects(hashScanGridReplay(invalid),/bounds/);
+});
+
+test('source history is replayed and authenticated without changing legacy snapshot hashes',async()=>{
+ const {target,replay,step}=harness();
+ step(g=>g.enableSourceWorkProjection());step(g=>g.geometry(55));step(g=>g.begin(true));
+ step(g=>g.group(0,1,1,true,3,origin(1,0)));step(g=>g.identify(1,'a'));
+ const lease=step(g=>g.start(1));step(g=>g.finish(1,'read',lease));
+ step(g=>g.begin(true));step(g=>g.group(0,1,2,false,3,origin(2,0)));
+ const result=scanGridReplaySnapshot(target);assert.equal(result.grid.inventory![20].historical,true);
+ assert.deepEqual(result,scanGridReplaySnapshot(replay));
+ const without=structuredClone(result);delete without.grid.inventory![20].historical;
+ assert.notEqual(await hashScanGridReplay(result),await hashScanGridReplay(without));
+});
+
+test('historical placement conflicts and out-of-order completions replay identically',async()=>{
+ const {target,replay,step}=harness();step(g=>g.enableSourceWorkProjection());step(g=>g.begin(true));
+ step(g=>g.group(0,1,1,true,1,origin(1,0)));step(g=>g.identify(1,'a'));const old=step(g=>g.start(1));
+ step(g=>g.begin(true));step(g=>g.group(0,2,2,true,2,origin(2,0)));step(g=>g.identify(2,'a'));
+ const next=step(g=>g.start(2));step(g=>g.finish(2,'read',next));step(g=>g.begin(true));
+ step(g=>g.group(0,2,3,false,2,origin(3,0)));step(g=>g.finish(1,'read',old));
+ step(g=>g.begin(true));step(g=>g.group(0,1,4,false,1,origin(4,0)));
+ const result=scanGridReplaySnapshot(target);
+ assert.equal(result.grid.inventory![0].historical,undefined);assert.equal(result.grid.inventory![10].historical,true);
+ assert.equal(await hashScanGridReplay(result),await hashScanGridReplay(scanGridReplaySnapshot(replay)));
 });

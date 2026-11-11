@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {createPreparedLiveSource} from '../src/features/card-scanner/prepared-live-source';
-import type {PreparedSource,SourceBinding} from '../src/features/card-scanner/source-preparation';
+import {createPreparedLiveSource} from '../src/features/card-scanner/acquisition/prepared-live-source';
+import type {PreparedSource,SourceBinding} from '../src/features/card-scanner/acquisition/source-preparation';
 const tick=()=>new Promise<void>(resolve=>setImmediate(resolve));
 
 test('attested live source forwards requested tickets only while a physical writer can consume them',async()=>{

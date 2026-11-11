@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {STREAM_PATCH_SOURCE_LIMITS} from '../src/features/card-scanner/streaming-delta-source';
+import {STREAM_PATCH_SOURCE_LIMITS} from '../src/features/card-scanner/capture/streaming-delta-source';
 import {RGBA_WINDOW_CODEC as CODEC,RGBA_WINDOW_POLICY as POLICY,RGBA_WINDOW_LIMITS as LIMITS,
-  parseReplayPolicy,parseWindowFrame,windowWorkingSet,admitWindowFrame,admitLegacyRgbaFrame} from '../src/features/card-scanner/rgba-window-policy';
-import type {DependencyState,WindowPolicy} from '../src/features/card-scanner/rgba-window-policy';
+  parseReplayPolicy,parseWindowFrame,windowWorkingSet,admitWindowFrame,admitLegacyRgbaFrame} from '../src/features/card-scanner/reproduction/rgba-window-policy';
+import type {DependencyState,WindowPolicy} from '../src/features/card-scanner/reproduction/rgba-window-policy';
 
 const outer=()=>({version:6,exact:{canonical:true,codec:CODEC,policy:POLICY}});
 const selected=()=>parseReplayPolicy(outer()) as WindowPolicy;

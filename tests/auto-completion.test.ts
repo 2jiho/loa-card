@@ -1,11 +1,57 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {AutoCompletionHold,canFinishEndedCapture,canSkipCoveredOriginals,canStopSharing,confirmedCaptureCount,hasCompleteCaptureEvidence,stopCompletedShare} from '../src/features/card-scanner/auto-completion';
-import type {CaptureCompletion} from '../src/features/card-scanner/auto-completion';
-import {canSkipRecovery} from '../src/features/card-scanner/recovery-completion';
-const input=():CaptureCompletion=>({expected:1,finalExpected:1,
+import {AutoCompletionHold,canFinishEndedCapture,canSkipCoveredOriginals,canStopSharing,captureInputSettled,confirmedCaptureCount,currentHeaderAvailable,hasCompleteCaptureEvidence,stopCompletedShare} from '../src/features/card-scanner/session/auto-completion';
+import type {CaptureCompletion} from '../src/features/card-scanner/session/auto-completion';
+import {createPreviewPresentation} from '../src/features/card-scanner/ui/preview-presentation';
+import {InventoryEvidence} from '../src/features/card-scanner/session/inventory-evidence';
+import {canSkipRecovery} from '../src/features/card-scanner/session/recovery-completion';
+import {canFinishVerifiedCapture} from '../src/features/card-scanner/session/recovery-completion';
+import {UnknownLifecycle} from '../src/features/card-scanner/session/unknown-lifecycle';
+import {UNKNOWN_LIFECYCLE_LIMITS} from '../src/features/card-scanner/session/unknown-lifecycle-types';
+import {ScanLedger} from '../src/features/card-scanner/session/scan-ledger';
+const input=():CaptureCompletion=>({expected:1,finalExpected:1,unresolved:0,dropped:0,
  cards:[{id:'a',name:'카드',awakening:0,extraCopies:1,countReliable:true,review:[],confidence:1,image:'',time:0,observations:1}],
- latest:new Map([['a',1]]),confirmedNames:new Map([['a',1]]),confirmed:new Map([['a',1]]),inputSettled:true,headerAvailable:true});
+ latest:new Map([['a',1]]),confirmedNames:new Map([['a',1]]),confirmed:new Map([['a',1]]),inputSettled:true,headerAvailable:true,fieldChangesSettled:true});
+
+test('automatic share stop does not wait for optional presentation, but final save does',async()=>{
+ const controller=new AbortController(),presentation=createPreviewPresentation(controller.signal);
+ let resolve!:(value:string)=>void;
+ const thumbnail=new Promise<string>(done=>{resolve=done;});
+ const inventory=new InventoryEvidence([],{seedPolicy:'prior-run-v3',trackPresentation:true});
+ const source={sessionId:'scan',frameId:1,observationId:'1',captureOrder:1,captureTime:1,phase:'input' as const,slot:0,frame:'frame-1'};
+ inventory.acceptIdentity(source,'a');inventory.confirmName(source,'a','카드');
+ const change=inventory.recordObservation(source,{...input().cards[0],captureOrder:1,time:1,
+  capturePosition:{frame:'frame-1',slot:0,stable:true,sort:null}},.9);
+ let activity='',saved=false,trackStops=0,shareEnded=false;
+ assert.equal(presentation.track(thumbnail,image=>{inventory.settlePresentationImage('a',change.presentationObservation,image);}),true);
+ void thumbnail.then(image=>{if(presentation.active)activity=image;});
+ const work={collectionBusy:false,readingJobs:0,acquisitionSettled:true,queueSettled:true};
+ const state={...input(),inputSettled:captureInputSettled(work)},hold=new AutoCompletionHold();
+ assert.equal(presentation.waiting,1);
+ assert.equal(hold.observe(state,0),false);
+ assert.equal(hold.observe(state,1000),true);
+ assert.equal(canStopSharing(state),true);
+ stopCompletedShare({getTracks:()=>[{stop:()=>{trackStops++;}}] as MediaStreamTrack[]},()=>{shareEnded=true;});
+ assert.equal(trackStops,1);assert.equal(shareEnded,true);
+ assert.equal(controller.signal.aborted,false,'normal share stop must not cancel presentation');
+ const final=presentation.flush().then(()=>{saved=true;});
+ await Promise.resolve();assert.equal(saved,false,'final projection and persistence wait for the attachment');
+ resolve('data:image/jpeg;base64,cA==');await final;
+ assert.equal(inventory.cards.get('a')?.image,'data:image/jpeg;base64,cA==');assert.equal(activity,inventory.cards.get('a')?.image);
+ assert.equal(presentation.waiting,0);assert.equal(saved,true);presentation.close();
+});
+
+test('removing preview from completion does not bypass capture, reader, source queue or evidence gates',()=>{
+ const idle={collectionBusy:false,readingJobs:0,acquisitionSettled:true,queueSettled:true};
+ assert.equal(captureInputSettled(idle),true);
+ for(const blocked of [{collectionBusy:true},{readingJobs:1},{readingJobs:NaN},{acquisitionSettled:false},{queueSettled:false}]) {
+  const state={...input(),inputSettled:captureInputSettled({...idle,...blocked})};
+  assert.equal(canStopSharing(state),false);
+ }
+ for(const blocked of [{unresolved:1},{dropped:1},{fieldChangesSettled:false},{headerAvailable:false},
+  {latest:new Map([['a',2]])},{cards:[{...input().cards[0],review:['이름 확인']}]}])
+  assert.equal(canStopSharing({...input(),...blocked}),false);
+});
 
 test('auto completion finishes on a static frame after one second without new video callbacks',()=>{
  const hold=new AutoCompletionHold(),state=input();
@@ -13,6 +59,59 @@ test('auto completion finishes on a static frame after one second without new vi
  assert.equal(hold.observe(state,1099),false);
 
  assert.equal(hold.observe(state,1100),true);
+});
+
+test('a dropped acquisition blocks auto-stop even when all card and header evidence matches',()=>{
+ const state=input(),hold=new AutoCompletionHold();
+ assert.equal(hasCompleteCaptureEvidence(state),true);
+ assert.equal(hold.observe(state,0),false);
+ for(const dropped of [1,2,-1,NaN,Infinity,undefined,null]){
+  const missing={...state,dropped} as CaptureCompletion;
+  assert.equal(hasCompleteCaptureEvidence(missing),false,`dropped ${String(dropped)}`);
+  assert.equal(canStopSharing(missing),false,`dropped ${String(dropped)}`);
+  assert.equal(hold.observe(missing,1000),false,`dropped ${String(dropped)}`);
+ }
+ // Later confirmed cards or repeated frames cannot remove the session's
+ // dropped-frame counter. A new scanner invocation starts a new hold and 0.
+ const dropped={...state,dropped:1};
+ assert.equal(hold.observe(dropped,5000),false);
+ const nextScan=new AutoCompletionHold(),fresh=input();
+ assert.equal(nextScan.observe(fresh,6000),false);
+ assert.equal(nextScan.observe(fresh,7000),true);
+});
+
+test('completion and original reuse require an explicit settled field-evidence guard',()=>{
+ const state=input(),ended={...state,inputClosed:true,headerVerified:true,metadataSettled:true,tailFresh:true,pending:0};
+ assert.equal(canStopSharing(state),true);
+ assert.equal(canFinishEndedCapture(ended),true);
+ assert.equal(canSkipCoveredOriginals(ended),true);
+ for(const fieldChangesSettled of [undefined,null,false,0,'true']){
+  const current={...state,fieldChangesSettled} as CaptureCompletion;
+  const currentEnded={...ended,fieldChangesSettled} as typeof ended;
+  assert.equal(hasCompleteCaptureEvidence(current),false,String(fieldChangesSettled));
+  assert.equal(canStopSharing(current),false,String(fieldChangesSettled));
+  assert.equal(canFinishEndedCapture(currentEnded),false,String(fieldChangesSettled));
+  assert.equal(canSkipCoveredOriginals(currentEnded),false,String(fieldChangesSettled));
+ }
+});
+
+test('a previous header is unavailable after the latest view is not located',()=>{
+ assert.equal(currentHeaderAvailable(true,200,34,1),true);
+ assert.equal(currentHeaderAvailable(false,200,34,1),false);
+ for(const [width,height,time] of [[0,34,1],[200,0,1],[200,34,NaN],[Infinity,34,1]])
+  assert.equal(currentHeaderAvailable(true,width,height,time),false);
+});
+
+test('hold restarts for a confirmed field change, but not a new proof of identical values',()=>{
+ const hold=new AutoCompletionHold(),state=input();hold.observe(state,0);
+ const latest=new Map([['a',2]]);
+ const repeated={...state,latest,confirmedNames:latest,confirmed:latest};
+ assert.equal(hold.observe(repeated,500),false);
+ assert.equal(hold.observe(repeated,1000),true);
+ const changed={...repeated,cards:[{...state.cards[0],awakening:1,extraCopies:0}]};
+ assert.equal(hold.observe(changed,1001),false);
+ assert.equal(hold.observe(changed,2000),false);
+ assert.equal(hold.observe(changed,2001),true);
 });
 
 test('unknown identities, stale proof, invalid totals and missing headers reset the hold',()=>{
@@ -105,11 +204,11 @@ test('programmatic sharing completion stops all tracks and explicitly notifies w
 });
 
 
-test('leftover observations are retained for recovery rather than preventing capture stop',()=>{
+test('leftover observations prevent capture stop and remain eligible for recovery',()=>{
  const state={...input(),pending:12,unresolved:3,dropped:1,tailFresh:false};
  const hold=new AutoCompletionHold();
  assert.equal(hold.observe(state,0),false);
- assert.equal(hold.observe(state,1000),true);
+ assert.equal(hold.observe(state,1000),false);
  assert.equal(canSkipRecovery({...state,confirmed:new Map([['a',1]])}),false);
  assert.equal(confirmedCaptureCount(state),1);
  assert.equal(confirmedCaptureCount({...state,latest:new Map()}),0,'restored list must not appear as current-run coverage');
@@ -117,15 +216,53 @@ test('leftover observations are retained for recovery rather than preventing cap
 
 type EndedCaptureInput=Parameters<typeof canFinishEndedCapture>[0];
 const endedInput=():EndedCaptureInput=>({...input(),inputClosed:true,headerVerified:true,
- pending:0,unresolved:5,dropped:0,tailFresh:true});
+ pending:0,unresolved:0,dropped:0,tailFresh:true});
 
-test('ended capture can skip archive replay after final verification without deleting unmatched observations',()=>{
+test('ended capture retains unmatched observations for recovery even when inventory is confirmed',()=>{
  const state=endedInput(),before=structuredClone(state);
- assert.equal(canSkipRecovery(state),false,'unmatched observations still exist');
- assert.equal(canStopSharing(state),true,'names and latest fields have the same proof as automatic completion');
+ assert.equal(canSkipRecovery(state),true);
+ assert.equal(canStopSharing(state),true);
  assert.equal(canFinishEndedCapture(state),true);
- assert.deepEqual(state,before,'the exception must not rewrite diagnostics or evidence maps');
+ assert.equal(canSkipRecovery({...state,unresolved:1}),false);
+ assert.equal(canStopSharing({...state,unresolved:1}),false);
+ assert.equal(canFinishEndedCapture({...state,unresolved:1}),false);
+ for(const unresolved of [NaN,Infinity,-1,undefined]){
+  assert.equal(canStopSharing({...state,unresolved} as CaptureCompletion),false);
+  assert.equal(canFinishEndedCapture({...state,unresolved} as EndedCaptureInput),false);
+ }
+ assert.deepEqual(state,before,'evaluation must not rewrite diagnostics or evidence maps');
  assert.equal(canFinishEndedCapture({...state,cards:[{...state.cards[0],extraCopies:0}]}),true,'an explicitly observed zero is valid');
+});
+
+test('live unmatched group blocks stop and both recovery shortcuts until name evidence retires it',()=>{
+ const ledger=new ScanLedger(),unknown=new UnknownLifecycle({version:1,sessionId:'session',origin:'scan',limits:UNKNOWN_LIFECYCLE_LIMITS});
+ const source=(order:number)=>({sessionId:'session',frameId:order,observationId:`obs-${order}`,
+  captureOrder:order,captureTime:order,phase:'input' as const,slot:0});
+ const trace=ledger.acquire({frame:2,time:2,slot:0,box:{x:0,y:0,width:140,height:210},phase:'input'});
+ ledger.finish(trace,'unidentified',{group:7,reason:'이름 판독 실패'});
+ const key={kind:'group' as const,sessionId:'session',group:7};
+ unknown.apply({version:1,kind:'upsert',key,source:source(2),captureOrder:2,captureTime:2,
+  pending:false,reason:'이름 확인 필요',location:null});
+ const latest=new Map([['a',1]]),names=new Map([['a',1]]),fields=new Map([['a',1]]);
+ const state=()=>({...endedInput(),latest,confirmedNames:names,confirmed:fields,
+  unresolved:Math.max(unknown.active().length,ledger.unresolvedGroups)});
+ const hold=new AutoCompletionHold();
+ assert.equal(state().unresolved,1);
+ assert.equal(canStopSharing(state()),false);
+ assert.equal(hold.observe(state(),0),false);assert.equal(hold.observe(state(),10_000),false);
+ assert.equal(canFinishEndedCapture(state()),false);
+ assert.equal(canFinishVerifiedCapture(state(),true),false);
+ // A valid later name event and its corresponding ledger transition are
+ // required; a matching count or a later timestamp alone did not retire it.
+ assert.equal(unknown.confirmName(key,'a',source(3),[])?.retiredVersions.length,1);
+ ledger.finish(trace,'identified',{group:7,cardId:'a'});
+ assert.equal(state().unresolved,0);
+ latest.set('a',3);names.set('a',3);
+ assert.equal(canStopSharing(state()),false,'a new name alone does not prove its current fields');
+ fields.set('a',3);
+ assert.equal(canFinishEndedCapture(state()),true);
+ assert.equal(canFinishVerifiedCapture(state(),true),true);
+ assert.equal(hold.observe(state(),10_001),false);assert.equal(hold.observe(state(),11_001),true);
 });
 
 test('ended capture requires closed settled input, a fresh final header, no pending work and no dropped input',()=>{
@@ -191,7 +328,7 @@ test('covered-original gate permits parallel work but cannot declare ended captu
 test('covered-original gate retains current names, fields, final header and source guards',()=>{
  const state={...endedInput(),metadataSettled:true};
  for(const change of [{inputClosed:false},{metadataSettled:false},{headerVerified:false},{headerAvailable:false},
-   {tailFresh:false},{dropped:1},{finalExpected:null},{finalExpected:2},{confirmedNames:new Map<string,number>()},
+   {tailFresh:false},{dropped:1},{fieldChangesSettled:false},{finalExpected:null},{finalExpected:2},{confirmedNames:new Map<string,number>()},
    {confirmed:new Map<string,number>()},{latest:new Map([['a',2]])},
    {cards:[{...state.cards[0],extraCopies:null}]},{cards:[{...state.cards[0],awakening:4,extraCopies:10}]}])
    assert.equal(canSkipCoveredOriginals({...state,...change}),false,JSON.stringify(change));

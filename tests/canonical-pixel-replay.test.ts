@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {entryParts,exactReplayFrames,executionSummary,fastCompress,packPixels,pixelHash} from '../src/features/card-scanner/exact-recording-codec';
-import type {ExactFrame} from '../src/features/card-scanner/exact-recording-codec';
+import {entryParts,exactReplayFrames,executionSummary,fastCompress,packPixels,pixelHash} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import type {ExactFrame} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 
 type PixelSpec={kind:'pixels';id:number;time:number;value:number;canonical?:boolean;key?:boolean;hash?:string;width?:number};
 type UseSpec={kind:'use';value:unknown};
@@ -62,6 +62,26 @@ test('one physical frame replays each recorded use while an unused backup is ver
     assert.deepEqual(verified,[{count:1,hash:input.hashes.get(1)},{count:2,hash:input.hashes.get(2)}]);
     assert.equal(canvas.width,0);assert.equal(canvas.height,0);
   });
+});
+
+test('an explicit source gap rejects a complete replay before yielding; partial replay retains available uses',async()=>{
+  const original=await archive([pixels(1,1,1),use(1,1,'input',1)]);
+  const gap={kind:'event' as const,seq:2,time:2,type:'canonical-source-gap',
+    value:{kind:'ephemeral-unrecorded',sourceFrameId:2,acquisitionFrameId:2,phase:'input',captureTime:2}};
+  const blob=new Blob([original.blob,...entryParts(gap)]);
+  await canvasScope(async(_canvas,draws)=>{
+    await assert.rejects(consume(blob,1,false),/기록되지 않은 공통 원본/);
+    assert.equal(draws.length,0,'complete replay fails before yielding any frame');
+    assert.deepEqual((await consume(blob,1,true)).map(item=>item.frameId),[1]);
+    assert.equal(draws.length,1,'explicit partial replay retains the available input');
+  });
+});
+
+test('legacy replay without raster contract does not interpret newer input-link schema',async()=>{
+  const original=await archive([pixels(1,1,1),use(1,1,'input',1)]);
+  const legacy={kind:'event' as const,seq:2,time:2,type:'input-link',value:{legacyField:'unknown'}};
+  const blob=new Blob([original.blob,...entryParts(legacy)]);
+  await canvasScope(async()=>{assert.deepEqual((await consume(blob,1)).map(item=>item.frameId),[1]);});
 });
 
 test('processing-use order preserves older capture times and acquisition identities independently of storage order',async()=>{

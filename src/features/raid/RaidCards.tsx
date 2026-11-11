@@ -11,6 +11,7 @@ import Button from '@mui/material/Button';
 import Popover from '@mui/material/Popover';
 import TextField from '@mui/material/TextField';
 import TuneOutlined from '@mui/icons-material/TuneOutlined';
+import {loadRaidMaster} from '../../data/catalog';
 
 export function RaidCards({ cards, complete, xp }: { cards: RaidOwned[]; complete: boolean; xp?: number }) {
   const [master, setMaster] = useState<RaidMaster | null>(null);
@@ -25,8 +26,7 @@ export function RaidCards({ cards, complete, xp }: { cards: RaidOwned[]; complet
   const [settingsAnchor, setSettingsAnchor] = useState<HTMLButtonElement | null>(null);
   useEffect(() => {
     const abort = new AbortController();
-    void fetch(`${import.meta.env.BASE_URL}raid/master.json`, { signal: abort.signal })
-      .then(r => { if (!r.ok) throw new Error('레이드 카드 데이터를 불러오지 못했습니다.'); return r.json(); })
+    void loadRaidMaster(abort.signal)
       .then(setMaster).catch(e => { if (!abort.signal.aborted) setError(e.message); });
     return () => abort.abort();
   }, [attempt]);

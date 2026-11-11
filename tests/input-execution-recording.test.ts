@@ -1,17 +1,68 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {entryParts,executionSummary} from '../src/features/card-scanner/exact-recording-codec';
-import type {ExactEvent} from '../src/features/card-scanner/exact-recording-codec';
-import {createLiveInputAdmission} from '../src/features/card-scanner/live-input-admission';
-import type {InputStamp,LiveInputAdmissionFact} from '../src/features/card-scanner/live-input-admission';
-import {createLiveCapturePipeline} from '../src/features/card-scanner/live-capture-pipeline';
-import {InputDecisionReplay} from '../src/features/card-scanner/live-input-decision-replay';
+import {entryParts,executionSummary} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import type {ExactEvent} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {createLiveInputAdmission} from '../src/features/card-scanner/capture/live-input-admission';
+import type {InputStamp,LiveInputAdmissionFact} from '../src/features/card-scanner/capture/live-input-admission';
+import {createLiveCapturePipeline} from '../src/features/card-scanner/capture/live-capture-pipeline';
+import {InputDecisionReplay} from '../src/features/card-scanner/reproduction/live-input-decision-replay';
 import {RunStateTrace,replayRunStateTrace} from '../dev/run-state-trace';
 
 const signal=()=>new AbortController().signal;
 const archive=(events:readonly ExactEvent[])=>new Blob(events.flatMap(event=>entryParts(event)));
 const turn=()=>new Promise<void>(resolve=>setImmediate(resolve));
 function deferred(){let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};}
+
+test('retained verification input replays through both exact and state trace without becoming ordinary admission',async()=>{
+  const events:ExactEvent[]=[],trace=new RunStateTrace(),input=new InputDecisionReplay(signal());
+  const emit=(type:string,value:unknown)=>{
+    events.push({kind:'event',seq:events.length+1,time:0,type,value});
+    assert.equal(trace.record(type,value,0),true);
+  };
+  const stamp={inputId:1,captureTime:0.1,observedAtMs:1};
+  const admission={kind:'consider',stamp,gates:{capturing:true,checkingCompletion:true},expected:'verification'};
+  input.admission(admission);emit('input-admission',admission);
+  const recovery=(value:unknown)=>{input.recovery(value);emit('input-recovery',value);};
+  recovery({version:1,seq:1,kind:'retained',stamp});
+  // A comparison that subsequently proceeds to actual processing is not a
+  // discarded snapshot; it must not be mistaken for one below.
+  recovery({version:1,seq:2,kind:'verified',inputId:1});
+  recovery({version:1,seq:3,kind:'started',inputId:1});
+  const link={inputId:1,frameId:12,captureTime:0.1,phase:'input'};
+  input.link(link);emit('input-link',link);
+  recovery({version:1,seq:4,kind:'finished',inputId:1,outcome:'completed'});
+  recovery({version:1,seq:5,kind:'released',inputId:1,failed:false,reason:'processed'});
+  const captured=await input.summary();
+  emit('input-checkpoint',{complete:true,hash:captured.hash});
+  const raw=await executionSummary(archive(events),signal(),{complete:true,dropped:0,events:events.length,frames:0});
+  const state=await replayRunStateTrace(await trace.snapshotBlob(),signal());
+  assert.equal(raw.input.hash,captured.hash);assert.equal(raw.input.matchesCapturedState,true);
+  assert.equal(state.input.hash,captured.hash);assert.equal(state.input.matchesCapturedState,true);
+  assert.equal(raw.input.admission.skipped,1);assert.equal(raw.input.admission.frozen,0);
+  assert.equal(raw.cards.length,0,'replaying an input decision does not establish a card result');
+  const changed=events.map(event=>event.type==='input-link'?{...event,value:{...link,captureTime:0.2}}:event);
+  await assert.rejects(executionSummary(archive(changed),signal()));
+});
+
+test('a complete event checkpoint cannot certify discarded or lost comparison pixels',async()=>{
+  for(const discarded of ['compared','lost'] as const){
+    const events:ExactEvent[]=[],input=new InputDecisionReplay(signal());
+    const emit=(type:string,value:unknown)=>events.push({kind:'event',seq:events.length+1,time:0,type,value});
+    const stamp={inputId:1,captureTime:0.1,observedAtMs:1};
+    const admission={kind:'consider',stamp,gates:{capturing:true,checkingCompletion:true},expected:'verification'};
+    input.admission(admission);emit('input-admission',admission);
+    const recovery=(value:unknown)=>{input.recovery(value);emit('input-recovery',value);};
+    recovery({version:1,seq:1,kind:'retained',stamp});
+    if(discarded==='compared')recovery({version:1,seq:2,kind:'verified',inputId:1});
+    else recovery({version:1,seq:2,kind:'lost',inputId:1,reason:'cancelled'});
+    recovery({version:1,seq:3,kind:'released',inputId:1,failed:false,reason:discarded});
+    const captured=await input.summary();emit('input-checkpoint',{complete:true,hash:captured.hash});
+    // Simulate an older or inconsistent complete declaration. With no
+    // linked physical source, the summary must expose the partial record.
+    const result=await executionSummary(archive(events),signal(),{complete:true,dropped:0,events:events.length,frames:0});
+    assert.equal(result.recordingComplete,false);assert.equal(result.input.matchesCapturedState,null);
+  }
+});
 
 async function capturedRun(){
   const events:ExactEvent[]=[],policy=createLiveInputAdmission(),replay=new InputDecisionReplay(signal());
@@ -63,7 +114,30 @@ test('real admission and latest-pending pipeline choices replay from the exact a
     'selection identity does not replace native capture time or imply card freshness');
   assert.equal(result.observations.supported,false);assert.equal(result.cards.length,0,
     'policy replay does not pretend to reconstruct pixels or recognition results');
-  assert.deepEqual((await executionSummary(blob,signal())).input,result.input);
+  const unknown=await executionSummary(blob,signal());
+  assert.equal(unknown.input.hash,result.input.hash);assert.equal(unknown.input.matchesCapturedState,null);
+});
+
+test('exact recording and state replay classify linked and skipped acquisition attempts consistently',async()=>{
+ const {events}=await capturedRun();
+ for(const skipped of [false,true]){
+  let changed=false;
+  const enriched:ExactEvent[]=[{kind:'event',seq:1,time:0,type:'input-acquisition-contract',value:{version:1}},
+   ...events.map(event=>{
+    if(skipped&&!changed&&event.type==='input-link'){
+     changed=true;const link=event.value as {inputId:number;captureTime:number};
+     return {...event,type:'input-acquisition-skip',value:{version:1,inputId:link.inputId,captureTime:link.captureTime,reason:'zero-dimensions'}};
+    }
+    return event;
+   })].map((event,index)=>({...event,seq:index+1}));
+  const trace=new RunStateTrace();for(const event of enriched)assert.equal(trace.record(event.type,event.value,event.time),true);
+  const raw=await executionSummary(archive(enriched),signal(),{complete:true,dropped:0,events:enriched.length,frames:0});
+  const state=await replayRunStateTrace(await trace.snapshotBlob(),signal());
+  assert.deepEqual(raw.acquisitionEvidence,state.acquisitionEvidence);
+  assert.equal(raw.acquisitionEvidence?.skipped,Number(skipped));
+  assert.equal(raw.acquisitionEvidence?.pixelCoverage,skipped?'partial':'unknown');
+  assert.equal(raw.recordingComplete,!skipped);
+ }
 });
 
 test('recording failure and incomplete container explicitly invalidate equality while legacy remains unsupported',async()=>{
@@ -88,7 +162,7 @@ test('missing and failed checkpoints are unknown while an incorrect settled chec
   const interrupted=await executionSummary(archive(events),signal());
   assert.equal(interrupted.input.expectedHash,null);assert.equal(interrupted.input.matchesCapturedState,null);
   emit('input-checkpoint',{complete:true,hash:'a'.repeat(64)});
-  assert.equal((await executionSummary(archive(events),signal())).input.matchesCapturedState,false);
+  assert.equal((await executionSummary(archive(events),signal(),{complete:true,dropped:0,events:events.length,frames:0})).input.matchesCapturedState,false);
 });
 
 test('decision recording errors leave scanning operational but cannot claim settled matching input state',async()=>{

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CancellableOperation} from '../src/features/card-scanner/cancellable-operation';
+import {CancellableOperation} from '../src/features/card-scanner/capture/cancellable-operation';
 
 test('diagnostic deadline aborts the work and returns even if browser IO ignores cancellation',async()=>{
  const task=new CancellableOperation(10,'진단 시간 초과');

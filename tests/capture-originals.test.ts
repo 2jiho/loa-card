@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createCaptureOriginals } from "../src/features/card-scanner/capture-originals.ts";
-import type { DebugCapture } from "../src/features/card-scanner/debug-capture.ts";
+import { createCaptureOriginals } from "../src/features/card-scanner/capture/capture-originals.ts";
+import type { DebugCapture } from "../src/features/card-scanner/reproduction/debug-capture.ts";
 
 test("normal capture originals span archive boundaries and remove only their own temporary parts", async () => {
   const saved = new Map<string, DebugCapture>();

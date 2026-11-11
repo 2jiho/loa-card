@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {CanonicalRasterReplay} from '../src/features/card-scanner/canonical-raster-replay';
-import type {ExactEntry} from '../src/features/card-scanner/exact-recording-codec';
-import {entryParts,executionSummary,fastCompress,packPixels} from '../src/features/card-scanner/exact-recording-codec';
+import {CanonicalRasterReplay} from '../src/features/card-scanner/reproduction/canonical-raster-replay';
+import type {ExactEntry} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {entryParts,executionSummary,fastCompress,packPixels} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 
 const hash='a'.repeat(64),event=(type:string,value:unknown):ExactEntry=>({kind:'event',seq:1,time:0,type,value});
 const frame={kind:'frame',id:7,width:8,height:8,time:2,hash,canonical:true,encoding:'raw',bytes:256} as unknown as ExactEntry;
@@ -17,6 +17,24 @@ test('measured receipts verify actual acquisition IDs and exact capture chronolo
  const replay=run();replay.accept(event('canonical-source-use',{...use,acquisitionFrameId:34,phase:'recovery'}));
  replay.accept(event('canonical-raster-receipt',{...receipt,acquisitionFrameId:34}));
  assert.deepEqual(replay.summary(true),{supported:true,complete:true,matches:true,uses:2,measured:2,verified:2});
+});
+test('linked input must have its own source and receipt at the same capture time and phase',()=>{
+ for(const change of [{frameId:32},{captureTime:3},{phase:'recovery'}]){
+  const replay=run();replay.accept(event('input-link',{inputId:3,frameId:31,captureTime:2,phase:'input',...change}));
+  assert.throws(()=>replay.summary(true),/연결/);
+ }
+ const good=run();good.accept(event('input-link',{inputId:3,frameId:31,captureTime:2,phase:'input'}));
+ good.accept(event('canonical-source-use',{...use,acquisitionFrameId:34,phase:'recovery'}));
+ good.accept(event('canonical-raster-receipt',{...receipt,acquisitionFrameId:34}));
+ assert.equal(good.summary(true).complete,true,'recovery use without an input link is valid');
+ const partial=run();partial.accept(event('input-link',{inputId:3,frameId:32,captureTime:2,phase:'input'}));
+ assert.equal(partial.summary(false).matches,null,'missing partial input remains unverified');
+});
+test('malformed legacy links are ignored only when the new raster contract is absent',()=>{
+ const noContract=new CanonicalRasterReplay();noContract.accept(event('input-link',{legacyField:'unknown'}));
+ assert.equal(noContract.summary(true).supported,false);
+ assert.throws(()=>noContract.accept(event('canonical-raster-contract',{version:1})),/입력 프레임 연결/);
+ const declared=run();assert.throws(()=>declared.accept(event('input-link',{legacyField:'unknown'})),/입력 프레임 연결/);
 });
 test('same pixels/time cannot substitute source identity, acquisition identity or geometry',()=>{
  for(const changes of [{receipt:{sourceFrameId:8}},{receipt:{acquisitionFrameId:32}},{receipt:{captureTime:3}},

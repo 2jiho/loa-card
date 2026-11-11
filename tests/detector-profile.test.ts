@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {recordDetectorStage,detectorProfile,addDetectorProfile,type DetectorProfile} from '../src/features/card-scanner/detector-profile';
+import {recordDetectorStage,detectorProfile,addDetectorProfile,type DetectorProfile} from '../src/features/card-scanner/acquisition/detector-profile';
 test('detector work keeps global search, tracking, refinement and growth separate',()=>{
  const p:DetectorProfile={};
  recordDetectorStage(p,{stage:'coarse',tracked:false,cached:false,elapsedMs:20});

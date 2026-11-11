@@ -1,13 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {CaptureObservations} from '../src/features/card-scanner/capture-quality';
-import {FreshObservations} from '../src/features/card-scanner/fresh-observation';
-import {needsLatestSavedProof,resolvedSavedObservation,type SavedObservation} from '../src/features/card-scanner/saved-acquisition';
-import {CardReadAttempts,CardReadTimeout} from '../src/features/card-scanner/card-read-budget';
-import {countReliability} from '../src/features/card-scanner/count-confidence';
-import {confirmedReadingCount} from '../src/features/card-scanner/recovery-completion';
-import {CURRENT_FIELD_REVIEW,pendingScanFields,projectCurrentScanFields} from '../src/features/card-scanner/current-scan-fields';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+import {CaptureObservations} from '../src/features/card-scanner/acquisition/capture-quality';
+import {FreshObservations} from '../src/features/card-scanner/session/fresh-observation';
+import {needsLatestSavedProof,resolvedSavedObservation,type SavedObservation} from '../src/features/card-scanner/acquisition/saved-acquisition';
+import {CardReadAttempts,CardReadTimeout} from '../src/features/card-scanner/recognition/card-read-budget';
+import {countReliability} from '../src/features/card-scanner/recognition/count-confidence';
+import {confirmedReadingCount} from '../src/features/card-scanner/session/recovery-completion';
+import {CURRENT_FIELD_REVIEW,pendingScanFields,projectCurrentScanFields} from '../src/features/card-scanner/session/current-scan-fields';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 
 function setup(){
   const observation={order:10,frame:'capture/1',stable:true,identity:{id:'card',review:[]}} as unknown as SavedObservation;

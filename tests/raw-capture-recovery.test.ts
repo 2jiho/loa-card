@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import type { TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { createCaptureEncoder } from '../src/features/card-scanner/capture-encoder';
+import { createCaptureEncoder } from '../src/features/card-scanner/capture/capture-encoder';
 
 function setup(t: TestContext, bitmapFactory?: () => Promise<ImageBitmap>) {
   const drawn: number[][] = [];

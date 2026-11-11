@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {scanMonitorInputFacts,scanMonitorOutcome,scanMonitorRecentCounts} from '../src/features/card-scanner/scan-monitor-outcome';
+import {scanHasInputWarnings,scanMonitorInputFacts,scanMonitorOutcome,scanMonitorRecentCounts} from '../src/features/card-scanner/session/scan-monitor-outcome';
+import {csvInventoryState} from '../src/inventory-csv';
 
 test('recent visible cells never count unknown or empty slots as queued work',()=>{
  const cells=Array.from({length:40},(_,i)=>({status:i<18?'read' as const:'unknown' as const}));
@@ -20,12 +21,31 @@ test('recent counts follow exact waiting, active, completed and rejected transit
 });
 
 const ended={busy:false,sharing:false};
-const complete={currentRunRead:385,expected:385,unresolvedCount:0,hasInput:true,queued:0,activeReadings:0};
+const complete={currentRunRead:385,expected:385,unresolvedCount:0,droppedFrames:0,hasInput:true,queued:0,activeReadings:0};
+
+test('a header conflict keeps an otherwise fully read inventory in review',()=>{
+ const conflict={...complete,headerConflict:true};
+ assert.equal(scanHasInputWarnings(conflict),true);
+ const outcome=scanMonitorOutcome(conflict,ended);
+ assert.equal(outcome.kind,'review');
+ assert.match(outcome.message,/보관함 수량과 용량/);
+ assert.match(outcome.detail,/수량·용량 확인 필요/);
+ const projected=scanMonitorInputFacts(conflict);
+ assert.equal(projected.headerConflict,true);
+ assert.equal(scanMonitorOutcome({...conflict,headerConflict:false},ended).kind,'complete');
+});
 
 test('one missing card keeps an ended scan in review with its map and a re-show request',()=>{
  const outcome=scanMonitorOutcome({...complete,currentRunRead:384},ended);
  assert.equal(outcome.kind,'review');assert.equal(outcome.header,'확인 필요');assert.equal(outcome.missingCount,1);
- assert.equal(outcome.showGrid,true);assert.match(outcome.detail,/1종 부족/);assert.match(outcome.message,/다시 보여/);
+ assert.equal(outcome.showGrid,true);assert.match(outcome.detail,/1종 이름 미확인/);assert.match(outcome.message,/다시 보여/);
+});
+
+test('live monitor separates uncollected names from cards that need review',()=>{
+ const outcome=scanMonitorOutcome({...complete,expected:384,currentRunRead:357,currentRunNames:361,review:5},ended);
+ assert.equal(outcome.kind,'review');assert.equal(outcome.missingCount,23);
+ assert.match(outcome.detail,/23종 이름 미확인/);assert.match(outcome.detail,/확인 필요 5종/);
+ assert.doesNotMatch(outcome.detail,/27종 부족/);
 });
 
 test('equal card counts cannot hide unresolved inputs or call a full scan complete',()=>{
@@ -39,11 +59,11 @@ test('equal counts and no unidentified crops still show unresolved changed-field
  const state={...complete,unresolvedFieldChanges:2};
  const outcome=scanMonitorOutcome(state,ended);
  assert.equal(outcome.kind,'review');assert.equal(outcome.missingCount,0);assert.equal(outcome.unresolvedCount,0);
- assert.equal(outcome.unresolvedFieldChanges,2);assert.match(outcome.detail,/최신 필드 확인 2건/);
+ assert.equal(outcome.unresolvedFieldChanges,2);assert.match(outcome.detail,/확인할 화면 관측 있음/);
  assert.equal(scanMonitorOutcome({...state,hasInput:false},ended).kind,'review','restored unresolved proof is not hidden by an idle input clock');
  assert.equal(scanMonitorOutcome({...state,unresolvedFieldChanges:0},ended).kind,'complete');
  assert.equal(scanMonitorOutcome({...state,unresolvedFieldChanges:NaN},ended).kind,'review');
- assert.match(scanMonitorOutcome({...state,unresolvedFieldChanges:NaN},ended).detail,/최신 필드 상태 확인 필요/);
+ assert.match(scanMonitorOutcome({...state,unresolvedFieldChanges:NaN},ended).detail,/화면 관측 상태 확인 필요/);
 });
 
 test('known zero unresolved input labels reading complete without claiming scan verification',()=>{
@@ -92,4 +112,43 @@ test('raw scanner facts count observations while projecting only a boolean input
  assert.equal(scanMonitorInputFacts({unresolvedCount:0,unidentified}).unresolvedCount,2,'raw evidence defeats a stale projected count');
  assert.equal(scanMonitorInputFacts({currentRunRead:5}).hasInput,true);
  assert.equal(scanMonitorInputFacts({sampled:0,currentRunRead:5}).hasInput,false,'an explicit raw input clock protects restored inventory');
+});
+
+test('ledger-only unresolved inputs are not erased by an empty diagnostic list or double counted',()=>{
+ const raw={...complete,sampled:42,unidentified:[],unresolvedObservations:3};
+ assert.equal(scanMonitorInputFacts(raw).unresolvedCount,3);
+ const outcome=scanMonitorOutcome(raw,ended);
+ assert.equal(outcome.kind,'review');assert.match(outcome.detail,/확인할 입력 3건/);
+ assert.equal(scanHasInputWarnings(raw),true);
+ assert.equal(scanMonitorInputFacts({...raw,unidentified:[{},{}],unresolvedObservations:3}).unresolvedCount,3);
+ assert.equal(scanMonitorInputFacts({...raw,unidentified:[{},{},{},{}],unresolvedObservations:3}).unresolvedCount,4);
+ const resolved={...raw,unresolvedObservations:0};
+ assert.equal(scanMonitorOutcome(resolved,ended).kind,'complete');assert.equal(scanHasInputWarnings(resolved),false);
+});
+
+test('missing or invalid aggregate and dropped-frame evidence cannot produce completion',()=>{
+ for(const unresolvedObservations of [undefined,NaN,-1,Infinity]){
+  const state={...complete,sampled:1,unidentified:[],unresolvedObservations};
+  assert.equal(scanMonitorOutcome(state,ended).kind,'review');assert.equal(scanHasInputWarnings(state),true);
+ }
+ for(const droppedFrames of [undefined,NaN,-1,Infinity,1]){
+  const state={...complete,droppedFrames};
+  assert.equal(scanMonitorOutcome(state,ended).kind,'review');assert.equal(scanHasInputWarnings(state),true);
+ }
+ assert.match(scanMonitorOutcome({...complete,droppedFrames:1},ended).message,/처음부터 다시 스캔/);
+ assert.equal(scanHasInputWarnings(null),false);
+});
+
+test('CSV import remains idle and a legacy restored scan stays neutral when its input proof is absent',()=>{
+ const csv=csvInventoryState([],'');
+ assert.equal(scanHasInputWarnings(csv),false);
+ assert.equal(scanMonitorOutcome(csv,ended).kind,'idle');
+ const legacy={...csv,status:'복원',sampled:1,expected:1,currentRunRead:1};
+ const outcome=scanMonitorOutcome(legacy,ended);
+ assert.equal(outcome.kind,'review');assert.equal(outcome.header,'상태 확인 불가');
+ assert.doesNotMatch(outcome.message,/미식별.*남/);
+ assert.equal(scanHasInputWarnings(legacy),true,'missing evidence must not produce a green completion check');
+ const {droppedFrames:_,...older}=legacy;
+ assert.equal(scanMonitorOutcome(older,ended).header,'상태 확인 불가');
+ assert.equal(scanHasInputWarnings(older),true,'missing drop evidence is not a verified scan');
 });

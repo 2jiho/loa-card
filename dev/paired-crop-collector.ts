@@ -1,4 +1,4 @@
-import type {RecognitionInputObserver,RecognitionInputMeta,RecognitionInputOutcome,RecognitionInspection,RecognitionPixels,NameLabelRecipe} from '../src/features/card-scanner/recognition-input-observer';
+import type {RecognitionInputObserver,RecognitionInputMeta,RecognitionInputOutcome,RecognitionInspection,RecognitionPixels,NameLabelRecipe} from '../src/features/card-scanner/recognition/recognition-input-observer';
 import type {PairedCropWorkerResult} from './paired-crop-worker';
 
 export interface PairedCropTarget {processingFrame:number;slot:number}
@@ -58,7 +58,8 @@ function outcome(value:RecognitionInputOutcome){
  const v=value as unknown as Record<string,unknown>,identified=plain(v.identified)?v.identified:null,accepted=plain(v.acceptedIdentity)?v.acceptedIdentity:null;
  const diagnostics=Array.isArray(v.diagnostics)?v.diagnostics:[];
  return {admitted:v.admitted===true,identifyExecuted:v.identifyExecuted===true,nameMatchCount:natural(v.nameMatchCount)?v.nameMatchCount:null,
-  budgetRemainingAtStart:finite(v.budgetRemainingAtStart)?v.budgetRemainingAtStart:null,budgetRemainingAtEnd:finite(v.budgetRemainingAtEnd)?v.budgetRemainingAtEnd:null,
+  budgetRemainingAtStart:v.admitted===true&&finite(v.budgetRemainingAtStart)?v.budgetRemainingAtStart:null,
+  budgetRemainingAtEnd:v.admitted===true&&finite(v.budgetRemainingAtEnd)?v.budgetRemainingAtEnd:null,
   elapsedMs:finite(v.elapsedMs)?v.elapsedMs:null,timedOut:v.timedOut===true,error:text(v.error,1000),
   identified:identified?{id:text(identified.id),name:text(identified.name),confidence:finite(identified.confidence)?identified.confidence:null,
    review:Array.isArray(identified.review)?identified.review.slice(0,16).map(value=>text(value,200)):null}:null,

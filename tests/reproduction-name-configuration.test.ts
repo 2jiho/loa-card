@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import {beginReproduction,createReproductionBundle,openReproduction,replaySettings,replayNameConfiguration,
-  createReproductionSessionAccess,createScanDiagnosticSummary} from '../src/features/card-scanner/scan-reproduction';
-import type {ReproductionFile} from '../src/features/card-scanner/scan-reproduction';
-import {createReproductionSessionStore,SESSION_LEASE_MS,SessionStorageLimitError} from '../src/features/card-scanner/reproduction-session-store';
-import {NORMAL_SCANNER_NAME_CONFIGURATION,parseScannerNameConfiguration} from '../src/features/card-scanner/scanner-name-configuration';
+  createReproductionSessionAccess,createScanDiagnosticSummary} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import type {ReproductionFile} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import {createReproductionSessionStore,SESSION_LEASE_MS,SessionStorageLimitError} from '../src/features/card-scanner/reproduction/reproduction-session-store';
+import {NORMAL_SCANNER_NAME_CONFIGURATION,parseScannerNameConfiguration} from '../src/features/card-scanner/session/scanner-name-configuration';
 
 const environment={browser:'test',catalog:'test',build:'test'};
 const continued=()=>parseScannerNameConfiguration({version:1,rawResultPolicy:'continue'});
@@ -157,7 +157,7 @@ test('invalid or over-budget optional metrics remain unavailable and preserve ex
     const summary=createScanDiagnosticSummary(state({nameOcrMetrics:Array.isArray(metrics)?metrics:[metrics],cards:[
       {id:'card',name:'카드',awakening:null,extraCopies:null,review:['장수 확인'],image,time:1}]}),false);
     assert.equal(summary.performance?.nameOcr,undefined);assert.equal(summary.performance?.nameOcrUnavailable,'invalid-or-over-limit');
-    assert.equal(summary.images[0].image,image);assert.equal(summary.result?.cards[0].extraCopies,null);
+    assert.equal(summary.images[0].image,image);assert.equal('cards' in summary.result!,false);
   }
 });
 

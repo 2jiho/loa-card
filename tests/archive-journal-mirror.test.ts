@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createArchiveJournalMirror} from '../src/features/card-scanner/archive-journal-mirror';
+import {createArchiveJournalMirror} from '../src/features/card-scanner/persistence/archive-journal-mirror';
 const turn=()=>new Promise<void>(resolve=>setImmediate(resolve));
 
 test('default disk drain reduces writes without increasing byte credits or delaying a small tail',async()=>{

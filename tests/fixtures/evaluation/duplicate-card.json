@@ -1,0 +1,25 @@
+{
+  "kind": "loacard-human-label",
+  "version": 2,
+  "status": "human-confirmed",
+  "scope": "partial",
+  "caseId": "fixture-duplicate",
+  "cards": [
+    {
+      "id": "3200003",
+      "fields": {
+        "name": {"status": "known", "value": "국왕 실리안"},
+        "awakening": {"status": "known", "value": 5},
+        "extraCopies": {"status": "known", "value": 0}
+      }
+    },
+    {
+      "id": "3200003",
+      "fields": {
+        "name": {"status": "known", "value": "국왕 실리안"},
+        "awakening": {"status": "known", "value": 5},
+        "extraCopies": {"status": "known", "value": 0}
+      }
+    }
+  ]
+}

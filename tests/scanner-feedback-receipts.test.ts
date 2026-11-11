@@ -1,8 +1,8 @@
 /** Model-free regression coverage for bounded fact/publication/DOM-target receipts. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createFeedbackFactReceipts,FEEDBACK_RECEIPT_CAPS} from '../src/features/card-scanner/scanner-feedback-receipts';
-import type {FeedbackFact,FeedbackFactHandle,FeedbackPublication,FeedbackSurface} from '../src/features/card-scanner/scanner-feedback-receipts';
+import {createFeedbackFactReceipts,FEEDBACK_RECEIPT_CAPS} from '../src/features/card-scanner/ui/scanner-feedback-receipts';
+import type {FeedbackFact,FeedbackFactHandle,FeedbackPublication,FeedbackSurface} from '../src/features/card-scanner/ui/scanner-feedback-receipts';
 
 const input=(id=1):FeedbackFact=>({id,kind:'read-task-end',source:{sessionId:'session-1',frameId:id,observationId:`observation-${id}`,
   captureOrder:id,captureTime:40_000+id,phase:'input',slot:2},

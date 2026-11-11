@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createLiveCapturePipeline} from '../src/features/card-scanner/live-capture-pipeline';
-import type {LiveCaptureDecision} from '../src/features/card-scanner/live-capture-pipeline';
-import {createLiveInputAdmission} from '../src/features/card-scanner/live-input-admission';
-import type {LiveInputAdmissionFact} from '../src/features/card-scanner/live-input-admission';
-import {InputDecisionReplay,parseInputCheckpoint,parseInputFrameLink} from '../src/features/card-scanner/live-input-decision-replay';
+import {createLiveCapturePipeline} from '../src/features/card-scanner/capture/live-capture-pipeline';
+import type {LiveCaptureDecision} from '../src/features/card-scanner/capture/live-capture-pipeline';
+import {createLiveInputAdmission} from '../src/features/card-scanner/capture/live-input-admission';
+import type {LiveInputAdmissionFact} from '../src/features/card-scanner/capture/live-input-admission';
+import {InputDecisionReplay,parseInputCheckpoint,parseInputFrameLink} from '../src/features/card-scanner/reproduction/live-input-decision-replay';
 
 const signal=()=>new AbortController().signal;
 const turn=()=>new Promise<void>(resolve=>setTimeout(resolve,0));
@@ -215,6 +215,117 @@ test('v2 joins a successful frozen admission and only enriches previously absent
   assert.throws(()=>mismatch.pipeline(v2Stream().offer(1,{source:{frameTimestampUs:21}})),/복사 승인/);
   const missing=seed({frameTimestampUs:20});assert.throws(()=>missing.pipeline(v2Stream().offer(1)),/복사 승인/);
   const wrongTime=seed();assert.throws(()=>wrongTime.pipeline(v2Stream().offer(1,{observedAtMs:2})),/복사 승인/);
+});
+
+test('a verification-skipped callback is not a replayable acquisition without an explicit recovery transition',()=>{
+  const replay=new InputDecisionReplay(signal()),stream=v2Stream();
+  const stamp={inputId:1,captureTime:0.1,observedAtMs:1};
+  replay.admission({kind:'consider',stamp,gates:{capturing:true,checkingCompletion:true},expected:'verification'});
+  assert.throws(()=>replay.pipeline(stream.offer(1,{observedAtMs:1})),/복사 승인|소유권 충돌/,
+    'a retained frame must not be silently presented as an ordinary admitted input');
+});
+
+test('verification-skipped pixels require an explicit retained and FIFO recovery path to reproduce a checkpoint',async()=>{
+  const events:{kind:'admission'|'recovery'|'link';value:unknown}[]=[],live=new InputDecisionReplay(signal());
+  const push=(kind:'admission'|'recovery'|'link',value:unknown)=>{events.push({kind,value:structuredClone(value)});
+    if(kind==='admission')live.admission(value);else if(kind==='recovery')live.recovery(value);else live.link(value);};
+  for(const inputId of [1,2]){
+    const stamp={inputId,captureTime:inputId/10,observedAtMs:inputId};
+    push('admission',{kind:'consider',stamp,gates:{capturing:true,checkingCompletion:true},expected:'verification'});
+    push('recovery',{version:1,seq:inputId,kind:'retained',stamp});
+  }
+  let seq=2;
+  for(const inputId of [1,2]){
+    push('recovery',{version:1,seq:++seq,kind:'started',inputId});
+    push('link',{inputId,frameId:100+inputId,captureTime:inputId/10,phase:'input'});
+    push('recovery',{version:1,seq:++seq,kind:'finished',inputId,outcome:'completed'});
+    push('recovery',{version:1,seq:++seq,kind:'released',inputId,reason:'processed',failed:false});
+  }
+  const captured=await live.summary();assert.equal(captured.settled,true);assert.equal(captured.recovery?.linked,2);
+  assert.equal(captured.pipeline.offered,0,'recovery is not a normal admission');
+  const replay=new InputDecisionReplay(signal());for(const event of events){
+    if(event.kind==='admission')replay.admission(event.value);else if(event.kind==='recovery')replay.recovery(event.value);else replay.link(event.value);
+  }
+  replay.checkpoint({complete:true,hash:captured.hash});assert.equal((await replay.summary()).matchesCapturedState,true);
+});
+
+test('recovery rejects fabricated, out-of-order, duplicated, unstamped and unlinked evidence',async()=>{
+  const stamp={inputId:1,captureTime:.1,observedAtMs:1};
+  const seed=()=>{const replay=new InputDecisionReplay(signal());replay.admission({kind:'consider',stamp,
+    gates:{capturing:true,checkingCompletion:true},expected:'verification'});return replay;};
+  for(const fact of [
+    {version:1,seq:1,kind:'retained',stamp:{...stamp,captureTime:.2}},
+    {version:1,seq:2,kind:'retained',stamp},
+    {version:1,seq:1,kind:'started',inputId:1},
+    {version:1,seq:1,kind:'retained',stamp:{...stamp,extra:'invalid'}},
+  ]){const replay=seed();assert.throws(()=>replay.recovery(fact));await assert.rejects(replay.summary());}
+  const replay=seed();replay.recovery({version:1,seq:1,kind:'retained',stamp});
+  replay.recovery({version:1,seq:2,kind:'started',inputId:1});
+  assert.throws(()=>replay.link({inputId:1,frameId:1,captureTime:.2,phase:'input'}));
+  const unlinked=seed();unlinked.recovery({version:1,seq:1,kind:'retained',stamp});
+  unlinked.recovery({version:1,seq:2,kind:'started',inputId:1});
+  unlinked.recovery({version:1,seq:3,kind:'finished',inputId:1,outcome:'completed'});
+  unlinked.recovery({version:1,seq:4,kind:'released',inputId:1,reason:'processed',failed:false});
+  assert.equal((await unlinked.summary()).settled,false,'an unlinked recovery cannot prove completeness');
+});
+
+test('comparison is not recognition and loss or failed release remains unresolved',async()=>{
+  const stamp={inputId:1,captureTime:.1,observedAtMs:1};
+  const seed=()=>{const replay=new InputDecisionReplay(signal());replay.admission({kind:'consider',stamp,
+    gates:{capturing:true,checkingCompletion:true},expected:'verification'});return replay;};
+  const compared=seed();compared.recovery({version:1,seq:1,kind:'retained',stamp});
+  compared.recovery({version:1,seq:2,kind:'verified',inputId:1});
+  compared.recovery({version:1,seq:3,kind:'released',inputId:1,reason:'compared',failed:false});
+  const result=await compared.summary();assert.equal(result.settled,true);assert.equal(result.recovery?.started,0);assert.equal(result.recovery?.linked,0);
+  const lost=seed();lost.recovery({version:1,seq:1,kind:'lost',inputId:1,reason:'overflow'});
+  assert.equal((await lost.summary()).settled,false);assert.equal((await lost.summary()).recovery?.lost,1);
+  const failed=seed();failed.recovery({version:1,seq:1,kind:'retained',stamp});
+  failed.recovery({version:1,seq:2,kind:'verified',inputId:1});
+  failed.recovery({version:1,seq:3,kind:'released',inputId:1,reason:'compared',failed:true});
+  assert.equal((await failed.summary()).settled,false);
+  assert.equal((await failed.summary()).recovery?.owned,1,'failed physical release is not treated as successful');
+});
+
+test('a previously matching frame can be processed if a later frame invalidates the comparison',async()=>{
+ const replay=new InputDecisionReplay(signal()),stamp={inputId:1,captureTime:.1,observedAtMs:1};
+ replay.admission({kind:'consider',stamp,gates:{capturing:true,checkingCompletion:true},expected:'verification'});
+ replay.recovery({version:1,seq:1,kind:'retained',stamp});
+ replay.recovery({version:1,seq:2,kind:'verified',inputId:1});
+ replay.recovery({version:1,seq:3,kind:'started',inputId:1});
+ replay.link({inputId:1,frameId:12,captureTime:.1,phase:'input'});
+ replay.recovery({version:1,seq:4,kind:'finished',inputId:1,outcome:'completed'});
+ replay.recovery({version:1,seq:5,kind:'released',inputId:1,reason:'processed',failed:false});
+ assert.equal((await replay.summary()).settled,true);
+});
+
+test('legacy normal pipeline and recovery never share an input identity or run overlapping consumers',async()=>{
+ const stamp=(inputId:number)=>({inputId,captureTime:inputId/10,observedAtMs:inputId});
+ const skip=(replay:InputDecisionReplay,inputId:number)=>replay.admission({kind:'consider',stamp:stamp(inputId),
+   gates:{capturing:true,checkingCompletion:true},expected:'verification'});
+ const retain=(replay:InputDecisionReplay,inputId:number)=>replay.recovery({version:1,seq:1,kind:'retained',stamp:stamp(inputId)});
+ {
+  const replay=new InputDecisionReplay(signal());skip(replay,1);
+  assert.throws(()=>replay.pipeline(completedInput(1)[0]),/소유권 충돌/,'v1 cannot disguise a verification skip');
+ }
+ {
+  const replay=new InputDecisionReplay(signal());skip(replay,1);retain(replay,1);
+  assert.throws(()=>replay.pipeline(completedInput(1)[0]),/소유권 충돌/);
+ }
+ {
+  const replay=new InputDecisionReplay(signal());replay.pipeline(completedInput(1)[0]);skip(replay,1);
+  assert.throws(()=>retain(replay,1),/소유권/,'already owned normal input cannot be retained again');
+ }
+ {
+  const replay=new InputDecisionReplay(signal()),normal=completedInput(1);replay.pipeline(normal[0]);replay.pipeline(normal[1]);
+  skip(replay,2);retain(replay,2);
+  assert.throws(()=>replay.recovery({version:1,seq:2,kind:'started',inputId:2}),/판독 순서/);
+ }
+ {
+  const replay=new InputDecisionReplay(signal());skip(replay,1);retain(replay,1);
+  replay.recovery({version:1,seq:2,kind:'started',inputId:1});
+  const normal=completedInput(2);replay.pipeline(normal[0]);
+  assert.throws(()=>replay.pipeline(normal[1]),/판독 시작/);
+ }
 });
 
 test('capacity deferrals and the later admitted v2 input replay to the same final checkpoint without invented jobs',async()=>{

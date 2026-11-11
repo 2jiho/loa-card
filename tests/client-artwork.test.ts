@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync, readdirSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {matchCardName} from '../src/features/card-scanner/card-dictionary';
+import {matchCardName} from '../src/features/card-scanner/recognition/card-dictionary';
 
 const json=(path:string)=>JSON.parse(readFileSync(path,'utf8'));
 const catalog=json('public/scanner/cards.json');

@@ -40,10 +40,14 @@ console.log(
       review: actual.cards.filter((c) => c.review.length).length,
       annotatedCards: expectedCards.length,
       additionalCounterSamples: counters.length,
+      verificationStatus: "unverified-source",
+      verificationScope: "Partial labelled fields only; input source and code version are not verified.",
       failures,
     },
     null,
     2,
   ),
 );
-if (failures.length) process.exitCode = 1;
+// Matching these old labels is useful diagnostically, but this report has no
+// source or version binding. Never let a matching result pass a release gate.
+process.exitCode = failures.length ? 1 : 3;

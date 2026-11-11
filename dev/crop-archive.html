@@ -1,0 +1,9 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>판독 크롭 기록 내보내기</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;max-width:960px;margin:32px auto;padding:0 16px}button,input,select{font:inherit}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f3f5;padding:16px}</style></head><body>
+<h1>판독 크롭 기록 내보내기</h1><p>브라우저 기록을 파일로 저장하거나 검증된 파일을 새 브라우저 기록으로 복사합니다. 이 파일은 판독 크롭과 관측 이벤트만 포함합니다. 원본 화면, 카드 획득, 전체 스캔, 실시간 속도는 재현하지 않습니다.</p>
+<p><button id="list" type="button">기록 목록</button> <select id="runs" aria-label="저장된 기록"><option value="">기록 선택</option></select>
+<label>기록 ID <input id="id" autocomplete="off"></label> <button id="export" type="button">파일로 내보내기</button></p>
+<p><label>기록 파일 <input id="file" type="file" accept=".loacrops,application/octet-stream"></label> <button id="verify" type="button">파일 무결성 확인</button> <button id="import" type="button">새 브라우저 기록으로 복원</button></p>
+<p>내보내기는 이 기록이 저장된 브라우저의 파일 저장 선택기가 필요합니다. 선택기 미지원 시 다른 내보내기 경로는 아직 없습니다. 개발 스캐너의 전체 세션 저장은 별도 방식입니다. 가져오기는 기존 기록을 덮어쓰지 않습니다. 저장 중단 또는 용량 한도에 걸린 기록은 부분 상태로 남고 자동 삭제하지 않습니다.</p>
+<p id="status" role="status"></p><pre id="result" aria-label="파일 검증 결과"></pre>
+<script type="module" src="/dev/crop-archive-ui.ts"></script></body></html>

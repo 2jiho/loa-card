@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseAcquisitionCapture, parseRecognitionCapture } from '../src/features/card-scanner/capture-provenance';
-import type { AcquisitionCapture, RecognitionCapture } from '../src/features/card-scanner/capture-provenance';
+import { parseAcquisitionCapture, parseRecognitionCapture } from '../src/features/card-scanner/capture/capture-provenance';
+import type { AcquisitionCapture, RecognitionCapture } from '../src/features/card-scanner/capture/capture-provenance';
 import { RunStateTrace, parseRunStateTrace, replayRunStateTrace } from '../dev/run-state-trace';
 
 function acquisition() {
@@ -34,6 +34,20 @@ function deeplyFrozen(value: unknown): void {
   assert.equal(Object.isFrozen(value), true);
   for (const child of Object.values(value)) deeplyFrozen(child);
 }
+
+test('pre-border classification keeps source time and survives overwritten final quality reason',()=>{
+  const input=acquisition();
+  const fact={...input,capture:{...input.capture,preBorder:{kind:'tooltip',reason:'툴팁 패널 가림 · 가림 해제 후 재관측'}},
+    quality:{...input.quality,usable:false,reason:'카드 테두리 불완전 · 재관측 대기'}};
+  const result=parseAcquisitionCapture(fact);
+  assert.deepEqual(result.capture.preBorder,fact.capture.preBorder);
+  assert.equal(result.captureTime,1.25);assert.equal(result.acquisitionFrameId,7);
+  assert.equal(result.quality.reason,fact.quality.reason);
+  assert.equal(Object.hasOwn(parseAcquisitionCapture(input).capture,'preBorder'),false,'legacy absence is unknown');
+  assert.throws(()=>parseAcquisitionCapture({...fact,capture:{...fact.capture,preBorder:{kind:'invented',reason:''}}}));
+  assert.throws(()=>parseAcquisitionCapture({...fact,capture:{...fact.capture,preBorder:{kind:'tooltip',reason:'x'.repeat(257)}}}));
+  deeplyFrozen(result);
+});
 
 test('field revision survives recording as selection metadata without changing exact pixel identity',()=>{
   const input={...acquisition(),fieldRevision:'worker/fields/2'};
@@ -89,6 +103,16 @@ test('resolved omitted crops preserve cached analysis without claiming materiali
   for (const patch of [ { cropWidth: null }, { cropHeight: null }, { cropWidth: null, cropHeight: null },
     { cropState: 'omitted' }, { cropState: undefined } ])
     assert.throws(() => parseAcquisitionCapture({ ...acquisition(), ...patch }));
+});
+
+test('rejected transport omissions require rejected quality and never claim delivered raster dimensions',()=>{
+  const original=acquisition(),input={...original,cropState:'omitted-rejected',cropWidth:null,cropHeight:null,
+    quality:{...original.quality,usable:false,reason:'가려진 카드'}};
+  const parsed=parseAcquisitionCapture(input);
+  assert.equal(parsed.cropState,'omitted-rejected');assert.equal(parsed.cropWidth,null);assert.equal(parsed.cropHeight,null);
+  assert.deepEqual(parsed.quality,input.quality);assert.deepEqual(parsed.contentBox,input.contentBox);
+  for(const patch of [{quality:{...input.quality,usable:true}},{cropWidth:140},{cropHeight:210},{cropWidth:0}])
+    assert.throws(()=>parseAcquisitionCapture({...input,...patch}));
 });
 
 test('legacy acquisition receipts round trip without inferring crop materialization', () => {
@@ -231,6 +255,40 @@ test('legacy crop state absence survives compressed trace parsing without gainin
   const replay = await replayRunStateTrace(blob, signal);
   for (const key of ['grid', 'inventory', 'input', 'observations', 'unknownLifecycle'] as const)
     assert.equal(replay[key].supported, false);
+});
+
+test('rejected raster omissions survive trace roundtrip as absent pixels without adding state authority',async()=>{
+  const source=acquisition(),trace=new RunStateTrace(),signal=new AbortController().signal;
+  const first={...source,slot:0,quality:{...source.quality,usable:false,reason:'미보유 카드 뒷면 · 빈 슬롯'}};
+  const omitted={...first,slot:1,observationId:'omitted-1',cropState:'omitted-rejected',cropWidth:null,cropHeight:null};
+  assert.equal(trace.record('acquisition-capture',first,0),true);
+  assert.equal(trace.record('acquisition-capture',omitted,1),true);
+  const blob=await trace.snapshotBlob(),parsed=await parseRunStateTrace(blob,signal);
+  assert.equal(parsed.complete,true);assert.equal(parsed.dropped,0);assert.equal(parsed.events.length,2);
+  const event=parsed.events[1];assert.equal(event.type,'acquisition-capture');
+  if(event.type!=='acquisition-capture')throw Error('Expected acquisition receipt');
+  assert.equal(event.value.cropState,'omitted-rejected');assert.equal(event.value.cropWidth,null);assert.equal(event.value.cropHeight,null);
+  assert.equal(event.value.quality.usable,false);assert.equal(event.value.quality.reason,first.quality.reason);
+  assert.deepEqual(event.value.contentBox,first.contentBox);deeplyFrozen(event.value);
+  const replay=await replayRunStateTrace(blob,signal);
+  for(const key of ['grid','inventory','input','observations','unknownLifecycle'] as const)assert.equal(replay[key].supported,false);
+  const invalid=new RunStateTrace();
+  assert.equal(invalid.record('acquisition-capture',{...omitted,quality:{...omitted.quality,usable:true}},0),false);
+  assert.equal(invalid.stats.complete,false);assert.equal(invalid.stats.dropped,1);
+});
+
+test('pre-border finding and capture chronology survive trace serialization without becoming completion proof',async()=>{
+  const trace=new RunStateTrace(),source=acquisition();
+  const fact={...source,capture:{...source.capture,preBorder:{kind:'tooltip',reason:'툴팁 패널 가림 · 가림 해제 후 재관측'}},
+    quality:{...source.quality,usable:false,reason:'카드 테두리 불완전 · 재관측 대기'}};
+  assert.equal(trace.record('acquisition-capture',fact,1.25),true);
+  const signal=new AbortController().signal,blob=await trace.snapshotBlob(),parsed=await parseRunStateTrace(blob,signal);
+  assert.equal(parsed.complete,true);const event=parsed.events[0];
+  assert.equal(event.type,'acquisition-capture');if(event.type!=='acquisition-capture')throw Error('Expected acquisition receipt');
+  assert.deepEqual(event.value.capture.preBorder,fact.capture.preBorder);
+  assert.equal(event.value.captureTime,1.25);assert.equal(event.value.acquisitionFrameId,7);
+  const replay=await replayRunStateTrace(blob,signal);
+  assert.equal(replay.inventory.supported,false);assert.equal(replay.input.supported,false);
 });
 
 test('malformed capture receipts and explicit recording failure make traces incomplete', async () => {

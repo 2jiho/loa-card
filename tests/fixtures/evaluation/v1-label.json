@@ -1,0 +1,17 @@
+{
+  "kind": "loacard-human-label",
+  "version": 1,
+  "status": "human-confirmed",
+  "scope": "partial",
+  "caseId": "fixture-v1",
+  "cards": [
+    {
+      "id": "3200132",
+      "fields": {
+        "name": {"status": "known", "value": "절망의 레키엘"},
+        "awakening": {"status": "known", "value": 0},
+        "extraCopies": {"status": "known", "value": 15}
+      }
+    }
+  ]
+}

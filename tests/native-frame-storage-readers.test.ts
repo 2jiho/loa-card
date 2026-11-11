@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {prepareNativeStorage,rgbaFrameStorage,frameDecodeWorkBytes} from '../src/features/card-scanner/native-frame-storage';
-import type {FrameStorage,NativeStorage} from '../src/features/card-scanner/native-frame-storage';
-import type {NativeYuvFrameMetadata} from '../src/features/card-scanner/native-yuv-recipe';
-import {CanonicalFrameIndex} from '../src/features/card-scanner/canonical-frame-index';
-import {readCanonicalFrame} from '../src/features/card-scanner/canonical-frame-reader';
-import {entryParts,exactEntries,exactPixels,exactReplayFrames,executionSummary,packPixels,fastCompress,pixelHash} from '../src/features/card-scanner/exact-recording-codec';
-import type {ExactFrame} from '../src/features/card-scanner/exact-recording-codec';
-import {inspectExactPrefix} from '../src/features/card-scanner/exact-recording-prefix';
+import {prepareNativeStorage,rgbaFrameStorage,frameDecodeWorkBytes} from '../src/features/card-scanner/reproduction/native-frame-storage';
+import type {FrameStorage,NativeStorage} from '../src/features/card-scanner/reproduction/native-frame-storage';
+import type {NativeYuvFrameMetadata} from '../src/features/card-scanner/acquisition/native-yuv-recipe';
+import {CanonicalFrameIndex} from '../src/features/card-scanner/reproduction/canonical-frame-index';
+import {readCanonicalFrame} from '../src/features/card-scanner/reproduction/canonical-frame-reader';
+import {entryParts,exactEntries,exactPixels,exactReplayFrames,executionSummary,packPixels,fastCompress,pixelHash} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import type {ExactFrame} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {inspectExactPrefix} from '../src/features/card-scanner/reproduction/exact-recording-prefix';
 
 const signal=()=>new AbortController().signal;
 function metadata(format:'I420'|'NV12'='I420',profile:'bt709'|'smpte170m'='bt709',width=4,height=4):NativeYuvFrameMetadata {

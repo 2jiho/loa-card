@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {applyLiveInputAdmissionFact,createLiveInputAdmission,hashLiveInputAdmission,parseLiveInputAdmissionFact} from '../src/features/card-scanner/live-input-admission';
-import type {InputStamp,LiveInputAdmissionFact,LiveInputGates} from '../src/features/card-scanner/live-input-admission';
+import {applyLiveInputAdmissionFact,createLiveInputAdmission,hashLiveInputAdmission,parseLiveInputAdmissionFact} from '../src/features/card-scanner/capture/live-input-admission';
+import type {InputStamp,LiveInputAdmissionFact,LiveInputGates} from '../src/features/card-scanner/capture/live-input-admission';
 
 const open={capturing:true,checkingCompletion:false};
 

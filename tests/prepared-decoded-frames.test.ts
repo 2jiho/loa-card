@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {preparedDecodedFrames} from '../src/features/card-scanner/prepared-decoded-frames';
-import type {PreparedDecodeSample,PreparedDecodedFramesPlatform} from '../src/features/card-scanner/prepared-decoded-frames';
-import {recordedFrames} from '../src/features/card-scanner/continuous-capture';
+import {preparedDecodedFrames} from '../src/features/card-scanner/acquisition/prepared-decoded-frames';
+import type {PreparedDecodeSample,PreparedDecodedFramesPlatform} from '../src/features/card-scanner/acquisition/prepared-decoded-frames';
+import {recordedFrames} from '../src/features/card-scanner/capture/continuous-capture';
 
 const tick=()=>new Promise<void>(resolve=>setImmediate(resolve));
 function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(yes=>{resolve=yes;});return {promise,resolve};}

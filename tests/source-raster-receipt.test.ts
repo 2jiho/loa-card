@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parsePreparedAcquisitionInput,parsePreparedRasterBinding,parseMeasuredSourceRasterReceipt,parseSourceRasterReceipt,
-  validateMeasuredSourceRasterReceipt,parseAcquisitionPixelProof} from '../src/features/card-scanner/source-raster-receipt';
+  validateMeasuredSourceRasterReceipt,parseAcquisitionPixelProof} from '../src/features/card-scanner/acquisition/source-raster-receipt';
 
 const input=()=>({pixels:new Uint8Array(8),width:2,height:1,binding:{sourceFrameId:7,captureTime:0}});
 const receipt={version:1,kind:'measured',sourceFrameId:7,captureTime:0,acquisitionFrameId:2,width:2,height:1,hash:'a'.repeat(64)}as const;

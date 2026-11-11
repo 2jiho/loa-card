@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { consensus } from "../src/features/card-scanner/consensus.ts";
-import type { ScannedCard } from "../src/features/card-scanner/recognizer.ts";
+import { consensus } from "../src/features/card-scanner/recognition/consensus.ts";
+import type { ScannedCard } from "../src/features/card-scanner/recognition/recognizer.ts";
 const observation = (
   awakening: number | null,
   extraCopies: number | null,

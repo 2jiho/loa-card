@@ -1,11 +1,11 @@
 import {ALL_FORMATS,BlobSource,Input,VideoSampleSink} from 'mediabunny';
-import {createExactRecording,type ExactRecorder} from '../src/features/card-scanner/exact-recording';
-import {createReproductionBundle,openReproduction,beginReproduction} from '../src/features/card-scanner/scan-reproduction';
-import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction-session-store';
-import {exactEntries,exactPixels,exactReplayFrames,executionSummary} from '../src/features/card-scanner/exact-recording-codec';
-import {prepareNativeStorage,parseNativeYuvMetadata,type FrameStorage} from '../src/features/card-scanner/native-frame-storage';
-import {planNativeYuvFrame,type NativeYuvFrameMetadata} from '../src/features/card-scanner/native-yuv-recipe';
-import {pixelHash} from '../src/features/card-scanner/recording-frame-integrity';
+import {createExactRecording,type ExactRecorder} from '../src/features/card-scanner/reproduction/exact-recording';
+import {createReproductionBundle,openReproduction,beginReproduction} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction/reproduction-session-store';
+import {exactEntries,exactPixels,exactReplayFrames,executionSummary} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {prepareNativeStorage,parseNativeYuvMetadata,type FrameStorage} from '../src/features/card-scanner/reproduction/native-frame-storage';
+import {planNativeYuvFrame,type NativeYuvFrameMetadata} from '../src/features/card-scanner/acquisition/native-yuv-recipe';
+import {pixelHash} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
 import {loadComparisonOriginal} from './comparison-original';
 
 type CorpusCase={id:string;name:string;kind:string;inputs:{url:string;bytes:number;type:string;sha256:string}[]};

@@ -1,0 +1,17 @@
+{
+  "kind": "loacard-human-label",
+  "version": 2,
+  "status": "human-confirmed",
+  "scope": "partial",
+  "caseId": "fixture-unknown",
+  "cards": [
+    {
+      "id": "3200813",
+      "fields": {
+        "name": {"status": "known", "value": "베스칼"},
+        "awakening": {"status": "known", "value": 0},
+        "extraCopies": {"status": "unknown"}
+      }
+    }
+  ]
+}

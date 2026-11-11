@@ -3,7 +3,7 @@ import { test } from "node:test";
 import {
   parseExtraCopies,
   parseInventoryTotal,
-} from "../src/features/card-scanner/ocr-values.ts";
+} from "../src/features/card-scanner/recognition/ocr-values.ts";
 test("inventory OCR accepts the complete owned/capacity pair only", () => {
   assert.deepEqual(parseInventoryTotal(" (384 / 450)\n"), {
     owned: 384,

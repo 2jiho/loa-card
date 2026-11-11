@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {integerCropPixels} from '../src/features/card-scanner/integer-crop-pixels';
-import {hasNamePixels} from '../src/features/card-scanner/name-pattern';
+import {integerCropPixels} from '../src/features/card-scanner/acquisition/integer-crop-pixels';
+import {hasNamePixels} from '../src/features/card-scanner/recognition/name-pattern';
 
 test('integer crop preserves row order, alpha and independent ownership',()=>{
  const source=Uint8ClampedArray.from({length:7*6*4},(_,i)=>(i*73)%256);

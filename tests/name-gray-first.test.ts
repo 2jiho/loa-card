@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {NAME_GRAY_FIRST_RECIPE,createGrayNameFirstLine} from '../src/features/card-scanner/name-gray-first';
+import {NAME_GRAY_FIRST_RECIPE,createGrayNameFirstLine} from '../src/features/card-scanner/recognition/name-gray-first';
 
 const pixels=()=>new Uint8ClampedArray(128*36*4);
 

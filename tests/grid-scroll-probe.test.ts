@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {pixelRegion} from '../src/features/card-scanner/pixel-region';
-import {createGridScrollProbe} from '../src/features/card-scanner/grid-scroll-probe';
-import type {Layout} from '../src/features/card-scanner/detector';
+import {pixelRegion} from '../src/features/card-scanner/acquisition/pixel-region';
+import {createGridScrollProbe} from '../src/features/card-scanner/session/grid-scroll-probe';
+import type {Layout} from '../src/features/card-scanner/acquisition/detector';
 const layout={area:{x:0,y:0,width:100,height:40},scale:1,cells:Array.from({length:40},(_,i)=>({x:i%10*10,y:Math.floor(i/10)*10,width:10,height:10}))} as Layout;
 function grid(offset=0){
  const data=new Uint8ClampedArray(100*40*4);

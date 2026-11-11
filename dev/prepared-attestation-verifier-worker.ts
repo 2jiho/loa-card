@@ -1,6 +1,6 @@
-import {createPreparedNativeAttestationInbox,verifyAttestedPreparedNative} from '../src/features/card-scanner/prepared-native-attestation';
-import {parseNativeYuvMetadata,prepareNativeStorage} from '../src/features/card-scanner/native-frame-storage';
-import {planNativeYuvFrame} from '../src/features/card-scanner/native-yuv-recipe';
+import {createPreparedNativeAttestationInbox,verifyAttestedPreparedNative} from '../src/features/card-scanner/acquisition/prepared-native-attestation';
+import {parseNativeYuvMetadata,prepareNativeStorage} from '../src/features/card-scanner/reproduction/native-frame-storage';
+import {planNativeYuvFrame} from '../src/features/card-scanner/acquisition/native-yuv-recipe';
 
 // Development-only transport/verification probe. No OPFS write, stored ACK,
 // field acceptance or canonical-raster-contract is produced by this worker.

@@ -1,7 +1,7 @@
 import {parseCardCropProofData} from './card-crop-proof-core';
 import type {CardCropProofData} from './card-crop-proof-core';
-import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/scanner-name-configuration';
-import type {ScannerNameConfiguration} from '../src/features/card-scanner/scanner-name-configuration';
+import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/session/scanner-name-configuration';
+import type {ScannerNameConfiguration} from '../src/features/card-scanner/session/scanner-name-configuration';
 
 export type CardCropProofModeId='baseline'|'gray-first-line-opt-in'|'fractional-registration-opt-in'|'contrast-first-line-opt-in';
 export interface CardCropProofMode {

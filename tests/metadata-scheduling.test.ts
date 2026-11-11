@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {deferCompletionForMetadata, waitForReaderMetadata} from '../src/features/card-scanner/metadata-scheduling';
-import type {MetadataWork} from '../src/features/card-scanner/metadata-scheduling';
+import {canReserveCompletionDrain,deferCompletionForMetadata, waitForReaderMetadata} from '../src/features/card-scanner/session/metadata-scheduling';
+import type {MetadataWork} from '../src/features/card-scanner/session/metadata-scheduling';
+import {CompletionDrainReservation} from '../src/features/card-scanner/session/completion-drain-reservation';
+import {headerSnapshotMatches,snapshotHeader} from '../src/features/card-scanner/session/completion-header-snapshot';
 
 function deferred() {
   let resolve!: () => void, reject!: (reason: unknown) => void;
@@ -86,4 +88,33 @@ test('metadata rejection propagates and always releases completion capture reser
   reading.reject(error); await rejected;
   assert.deepEqual(pauses, [true, false]);
   await assert.rejects(waitForReaderMetadata(true, metadata), error);
+});
+
+test('DEV drain may reserve while metadata is pending, but never races the primary OCR reader',()=>{
+ const ready={held:true,active:false,primaryOcrReading:false,previewWaiting:0,readingJobs:0,queueSettled:true,video:true,callbackClock:true};
+ assert.equal(canReserveCompletionDrain(ready),true,'metadata is not a reservation precondition');
+ assert.equal(canReserveCompletionDrain({...ready,previewWaiting:1}),true,'presentation is independent of the reader session');
+ for(const changed of [{held:false},{active:true},{primaryOcrReading:true},{readingJobs:1},{queueSettled:false},{video:false},{callbackClock:false}])
+  assert.equal(canReserveCompletionDrain({...ready,...changed}),false);
+});
+
+test('a stalled metadata job cannot extend the input reservation, and the primary session remains occupied',async()=>{
+ const reading=deferred();let paused=false,primaryStarted=false,metadataPending=true;
+ const metadata:MetadataWork={pending:()=>metadataPending,settle:()=>reading.promise};
+ const reservation=new CompletionDrainReservation(()=>{paused=false;},20);
+ const id=reservation.start();
+ const settling=deferCompletionForMetadata(true,metadata,value=>{if(reservation.valid(id))paused=value;});
+ const primary=waitForReaderMetadata(true,metadata).then(()=>{primaryStarted=true;});
+ assert.equal(paused,true);assert.equal(primaryStarted,false);
+ await new Promise(resolve=>setTimeout(resolve,60));
+ assert.equal(reservation.active,false);assert.equal(paused,false,'capture reopens without waiting for OCR');
+ assert.equal(primaryStarted,false,'timed-out metadata retains exclusive ownership of its OCR session');
+ metadataPending=false;reading.resolve();assert.equal(await settling,true);await primary;
+ assert.equal(primaryStarted,true);
+});
+
+test('after pending metadata settles, a changed header cannot reuse the previous OCR pixels',()=>{
+ const previous=snapshotHeader({width:1,height:1,pixels:Uint8ClampedArray.of(1,2,3,255),captureTime:1,sourceFrame:1});
+ const changed={width:1,height:1,pixels:Uint8ClampedArray.of(1,2,4,255),captureTime:2,sourceFrame:2};
+ assert.equal(headerSnapshotMatches(previous,changed),false);
 });

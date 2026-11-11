@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {ScrollCoverage} from '../src/features/card-scanner/scroll-coverage';
+import {ScrollCoverage} from '../src/features/card-scanner/session/scroll-coverage';
 const all=Array<boolean>(40).fill(true);
 const near=(a:number,b:number)=>assert.ok(Math.abs(a-b)<1e-6,`${a} != ${b}`);
 
@@ -46,4 +46,38 @@ test('invalid geometry is ignored and new thumb scale or sort reset discards old
   coverage.offer(.5,.16,all);assert.deepEqual(coverage.gaps(),[]);
   coverage.offer(.8,.16,all);assert.ok(coverage.gaps().length>0);
   coverage.reset();assert.deepEqual(coverage.gaps(),[]);
+});
+
+test('temporarily unreadable thumb retains only an uncertain warning, never old coordinates',()=>{
+  for(const [first,last] of [[.2,.4],[.4,.2]]) {
+    const coverage=new ScrollCoverage();
+    coverage.offer(first,.08,all);coverage.offer(last,.08,all);
+    assert.ok(coverage.gaps().length>0);
+    coverage.loseGeometry();
+    assert.equal(coverage.hasUncertainPastGap(),true);
+    assert.deepEqual(coverage.gaps(),[]);
+    assert.ok(coverage.snapshot().columns.every(column=>column.length===0));
+    coverage.loseGeometry();
+    coverage.offer(.3,.08,all);coverage.offer(.3,.08,all);
+    assert.equal(coverage.hasUncertainPastGap(),true);
+    assert.deepEqual(coverage.gaps(),[],'old epoch cannot create a gap or connect to new measurements');
+    coverage.reset();
+    assert.equal(coverage.hasUncertainPastGap(),false,'sort/layout change invalidates old hint');
+  }
+});
+
+test('unreadable thumb without an existing gap does not assert a missing region',()=>{
+  const coverage=new ScrollCoverage();coverage.offer(.5,.08,all);
+  coverage.loseGeometry();coverage.offer(.8,.08,all);
+  assert.equal(coverage.hasUncertainPastGap(),false);
+  assert.deepEqual(coverage.gaps(),[]);
+});
+
+test('reverse scrolling does not warn for a current page still being acquired',()=>{
+  const coverage=new ScrollCoverage(),partial=[...all];partial[0]=false;
+  coverage.offer(.1,.08,all);coverage.offer(0,.08,partial);
+  assert.deepEqual(coverage.gaps().map(gap=>[gap.from,gap.to]),[[.08,.1]],
+    'the passed gap remains, but the rejected cell on the visible page is not yet a skipped region');
+  coverage.offer(0,.08,all);
+  assert.deepEqual(coverage.gaps().map(gap=>[gap.from,gap.to]),[[.08,.1]]);
 });

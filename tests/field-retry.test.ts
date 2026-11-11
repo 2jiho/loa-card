@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {fieldRetryIdentity,obsoleteFieldRetry,pruneFieldRetries} from '../src/features/card-scanner/field-retry';
-import {consensus} from '../src/features/card-scanner/consensus';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+import {coveredFieldRetry,fieldRetryIdentity,obsoleteFieldRetry,pruneFieldRetries,retryNeedsIdentity} from '../src/features/card-scanner/session/field-retry';
+import {consensus} from '../src/features/card-scanner/recognition/consensus';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 
 test('only a completed same or newer observation cancels known field work',()=>{
  const retry={needsIdentity:false,fieldTarget:{id:'a',order:20}};
@@ -26,6 +26,29 @@ test('field-only identity reuse never promotes uncertain or unrelated names',()=
  assert.equal(fieldRetryIdentity({...retry,fieldTarget:{id:'b',order:20}}),undefined);
  assert.equal(fieldRetryIdentity({...retry,knownIdentity:{...knownIdentity,review:['이름 확인']}}),undefined);
  assert.equal(fieldRetryIdentity({...retry,knownIdentity:undefined}),undefined);
+});
+test('field retries require the retained crop accepted identity and otherwise remain identity work',()=>{
+ const accepted={id:'a',review:[] as string[]};
+ assert.equal(retryNeedsIdentity(false,'a',accepted),false);
+ assert.equal(retryNeedsIdentity(true,'a',accepted),true);
+ assert.equal(retryNeedsIdentity(false,undefined,accepted),true);
+ assert.equal(retryNeedsIdentity(false,'a',undefined),true);
+ assert.equal(retryNeedsIdentity(false,'b',accepted),true);
+ assert.equal(retryNeedsIdentity(false,'a',{...accepted,review:['이름 확인']}),true);
+});
+test('completion retirement needs the retained crop identity and current name and field proofs',()=>{
+ const retry={needsIdentity:false,knownIdentity:{id:'a',review:[] as string[]},fieldTarget:{id:'a',order:20}};
+ const fields=new Map([['a',20]]),names=new Map([['a',20]]);
+ assert.equal(coveredFieldRetry(retry,fields,names),true);
+ assert.equal(coveredFieldRetry({...retry,knownIdentity:undefined},fields,names),false);
+ assert.equal(coveredFieldRetry({...retry,knownIdentity:{id:'a',review:['이름 확인']}},fields,names),false);
+ assert.equal(coveredFieldRetry({...retry,knownIdentity:{id:'b',review:[]}},fields,names),false);
+ assert.equal(coveredFieldRetry(retry,new Map([['a',19]]),names),false);
+ assert.equal(coveredFieldRetry(retry,fields,new Map([['a',19]])),false);
+ assert.equal(coveredFieldRetry(retry,fields,new Map()),false);
+ const queue=[retry,{...retry,fieldTarget:{id:'a',order:21}}],released:typeof queue=[];
+ assert.equal(pruneFieldRetries(queue,fields,item=>released.push(item),item=>coveredFieldRetry(item,fields,names)),1);
+ assert.equal(released.length,1);assert.equal(queue[0].fieldTarget.order,21);
 });
 test('pruning releases only obsolete jobs once and preserves unknown/newer job order',()=>{
  const jobs=[{id:'old',needsIdentity:false,fieldTarget:{id:'a',order:1}},

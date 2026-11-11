@@ -1,10 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {inspectVisual,readVisual,reusableVisualPixels} from '../src/features/card-scanner/visual-fields';
-import {pixelRegion} from '../src/features/card-scanner/pixel-region';
-import {prepareContrastPattern} from '../src/features/card-scanner/count-pattern';
-import type {Raster,RasterContext} from '../src/features/card-scanner/acquisition-raster';
+import {inspectVisual,readVisual,reusableVisualPixels} from '../src/features/card-scanner/recognition/visual-fields';
+import {pixelRegion} from '../src/features/card-scanner/acquisition/pixel-region';
+import {prepareContrastPattern} from '../src/features/card-scanner/recognition/count-pattern';
+import type {Raster,RasterContext} from '../src/features/card-scanner/acquisition/acquisition-raster';
 
 test('only native-size fully opaque inputs permit visual readback reuse',()=>{
   const pixels=new Uint8ClampedArray(140*210*4).fill(255);

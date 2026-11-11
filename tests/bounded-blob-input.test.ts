@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createBoundedBlobInput,type BoundedInputMode} from '../src/features/card-scanner/bounded-blob-input';
-import {decodeFastPixelPatchFromSource,type SourceStreamPatchOptions} from '../src/features/card-scanner/streaming-delta-source';
-import {fastCompress,packPixels} from '../src/features/card-scanner/exact-recording-codec';
+import {createBoundedBlobInput,type BoundedInputMode} from '../src/features/card-scanner/capture/bounded-blob-input';
+import {decodeFastPixelPatchFromSource,type SourceStreamPatchOptions} from '../src/features/card-scanner/capture/streaming-delta-source';
+import {fastCompress,packPixels} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 
 const decodeBlobPatch=(blob:Blob,target:Uint8Array<ArrayBuffer>,options:SourceStreamPatchOptions & {inputMode?:BoundedInputMode}={})=>{
   const {inputMode,...decodeOptions}=options;

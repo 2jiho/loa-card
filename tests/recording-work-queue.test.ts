@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createRecordingWorkQueue,type RecordingWorkLane} from '../src/features/card-scanner/recording-work-queue';
+import {createRecordingWorkQueue,type RecordingWorkLane} from '../src/features/card-scanner/reproduction/recording-work-queue';
 
 function held(){let release!:()=>void;const promise=new Promise<void>(resolve=>{release=resolve;});return {promise,release};}
 async function turn(){await new Promise<void>(resolve=>setImmediate(resolve));}

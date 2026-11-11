@@ -1,11 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {FreshnessEvidence,FRESHNESS_EVIDENCE_LIMITS,hashFreshnessEvidence,parseFreshnessCheckpoint,
-  parseFreshnessFact,parseFreshnessSeed,type FreshnessBinding,type FreshnessFact,type FreshnessSeed} from '../src/features/card-scanner/freshness-evidence';
-import {FreshnessEvidenceReplay} from '../src/features/card-scanner/freshness-evidence-replay';
-import {InventoryEvidence,type InventorySource} from '../src/features/card-scanner/inventory-evidence';
-import type {ObservationSource} from '../src/features/card-scanner/observation-execution';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+  parseFreshnessFact,parseFreshnessSeed,type FreshnessBinding,type FreshnessFact,type FreshnessSeed} from '../src/features/card-scanner/session/freshness-evidence';
+import {FreshnessEvidenceReplay} from '../src/features/card-scanner/reproduction/freshness-evidence-replay';
+import {InventoryEvidence,type InventorySource} from '../src/features/card-scanner/session/inventory-evidence';
+import type {ObservationSource} from '../src/features/card-scanner/session/observation-execution';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 
 const sessionId='freshness-regression';
 const seed=(groups=2048,facts=20_000):FreshnessSeed=>({version:1,sessionId,limits:{groups,facts}});
@@ -247,7 +247,7 @@ test('strict facts reject accessors, sparse/oversized reviews, unknown fields an
 
 test('strict seeds and checkpoints cannot normalize unknown/oversized or partial data into complete',()=>{
   assert.deepEqual(parseFreshnessSeed(seed()).limits,FRESHNESS_EVIDENCE_LIMITS);
-  for(const value of [seed(0),seed(2049),seed(1,20_001),{...seed(),version:2},{...seed(),sessionId:''}])
+  for(const value of [seed(0),seed(2049),seed(1,20_001),{...seed(),version:3},{...seed(),sessionId:''}])
     assert.throws(()=>parseFreshnessSeed(value));
   for(const value of [{version:1,complete:true,events:0,hash:null},
     {version:1,complete:false,events:0,hash:'a'.repeat(64)},

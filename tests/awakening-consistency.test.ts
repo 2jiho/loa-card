@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {consistentAwakening} from '../src/features/card-scanner/visual-fields';
+import {consistentAwakening} from '../src/features/card-scanner/recognition/visual-fields';
 
 test('a readable positive count contradicts full awakening, while an icon alone does not',()=>{
   for(const count of [1,12,15]) assert.equal(consistentAwakening(5,count),null);

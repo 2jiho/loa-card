@@ -1,5 +1,4 @@
-import type { ScannerState } from '../card-scanner/scanner';
-import type { ScannedCard } from '../card-scanner/recognizer';
+import type { ScannedCard, ScannerState } from '../card-scanner/public';
 import type { GrowthMaster } from './optimizer';
 import { bookEffectActive, trustedInventory } from './optimizer';
 import type { GrowthSequenceStep } from './growth-sequence';

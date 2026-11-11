@@ -1,5 +1,5 @@
 import data from './merchants.json';
-import type {ScannedCard} from '../card-scanner/recognizer';
+import type {ScannedCard} from '../card-scanner/public';
 
 export const merchants=data.groups;
 export type MerchantStatus='needed'|'complete'|'unknown';

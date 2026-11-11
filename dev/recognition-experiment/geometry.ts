@@ -1,5 +1,5 @@
-import { alignCardBorders as original } from '../../src/features/card-scanner/card-borders';
-import type { Box } from '../../src/features/card-scanner/detector';
+import { alignCardBorders as original } from '../../src/features/card-scanner/acquisition/card-borders';
+import type { Box } from '../../src/features/card-scanner/acquisition/detector';
 
 /** Bounded scale correction only if four continuous sides improve together.
  * Never stretch a crop merely because one portrait/tooltip edge matches. */

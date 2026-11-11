@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {exactEntries,exactPixels} from '../src/features/card-scanner/exact-recording-codec';
+import {exactEntries,exactPixels} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 
 async function harness(run:(h:any)=>Promise<void>){
  const names=['self','navigator','OffscreenCanvas','Worker'],previous=names.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)] as const);
@@ -36,7 +36,7 @@ async function harness(run:(h:any)=>Promise<void>){
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{storage:{async getDirectory(){return {async getDirectoryHandle(){return directory;}};}}}});
  const until=async(predicate:()=>boolean)=>{const deadline=Date.now()+3000;while(!predicate()){if(Date.now()>deadline)throw Error('nested integration deadline');await new Promise<void>(resolve=>setImmediate(resolve));}};
  try{
-  const address=new URL('../src/features/card-scanner/exact-recording-worker.ts',import.meta.url);address.searchParams.set('nested-test',crypto.randomUUID());
+  const address=new URL('../src/features/card-scanner/reproduction/exact-recording-worker.ts',import.meta.url);address.searchParams.set('nested-test',crypto.randomUUID());
   await import(address.href);await scope.onmessage({data:{kind:'init',port}});
   await run({source:(data:any)=>port.onmessage({data}),send:(data:any)=>scope.onmessage({data}),child:child!,messages,sourceMessages,timeline,until,
    removed:()=>removed,closed:()=>closed});

@@ -4,8 +4,8 @@ import { readFile } from "node:fs/promises";
 import {
   readStarPatterns,
   readStarObservation,
-} from "../src/features/card-scanner/star-pattern.ts";
-import { packCount } from "../src/features/card-scanner/count-pattern.ts";
+} from "../src/features/card-scanner/recognition/star-pattern.ts";
+import { packCount } from "../src/features/card-scanner/recognition/count-pattern.ts";
 
 test("visually checked game jewel samples retain their awakening levels in Worker matching", async () => {
   const stars = JSON.parse(await readFile("public/scanner/stars.json", "utf8"));
@@ -119,5 +119,5 @@ test("white count-like artwork without the cyan card icon is not a positive coun
       pixels.fill(255, (y * 140 + x) * 4, (y * 140 + x + 1) * 4);
   const result = packCount(pixels);
   assert.ok(result.pixels > 35);
-  assert.equal(result.hasIcon, false);
+  assert.equal(result.hasIcon, null,'transparent background is insufficient to certify zero copies');
 });

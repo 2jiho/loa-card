@@ -1,9 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {saveAcquisition,SavedAcquisitions,resolvedSavedObservation,coveredSavedAcquisition,sourceObservationFrame,exactSourceSavedObservation,selectObservationSourceFrameId} from '../src/features/card-scanner/saved-acquisition';
-import type {SavedAcquisition,SavedObservation} from '../src/features/card-scanner/saved-acquisition';
-import {CountObservations,countReliability} from '../src/features/card-scanner/count-confidence';
-import {normalizeScannerInputFrame} from '../src/features/card-scanner/scanner-input-frame';
+import {saveAcquisition,beginNewCaptureSlot,newSavedObservation,SavedAcquisitions,resolvedSavedObservation,coveredSavedAcquisition,sourceObservationFrame,exactSourceSavedObservation,selectObservationSourceFrameId} from '../src/features/card-scanner/acquisition/saved-acquisition';
+import type {SavedAcquisition,SavedObservation} from '../src/features/card-scanner/acquisition/saved-acquisition';
+import {CountObservations,countReliability} from '../src/features/card-scanner/recognition/count-confidence';
+import {normalizeScannerInputFrame} from '../src/features/card-scanner/capture/scanner-input-frame';
 
 const observation={order:10,frame:'capture/1',stable:true,identity:{id:'a',review:[]}} as SavedObservation;
 function saved():SavedAcquisition {
@@ -29,6 +29,21 @@ test('future originals must all be covered; totals cannot excuse unlocated or oc
   const empty={...saved(),observations:[],cells:[{quality:{usable:false,reason:'미보유 카드 뒷면 · 빈 슬롯'}}] as SavedAcquisition['cells']};
   assert.equal(coveredSavedAcquisition(empty,confirmed),true);
   assert.equal(coveredSavedAcquisition(saved(),new Map()),false);
+});
+
+test('a new capture cannot skip recovery using a prior frame observation with matching pixels',()=>{
+ const old=saved(),newFrame={...saved(),observations:[old.observations[0]]},confirmed=new Map([['a',20]]);
+ assert.equal(coveredSavedAcquisition(newFrame,confirmed),true,'an incorrectly borrowed old object would skip this frame');
+ beginNewCaptureSlot(newFrame,0);
+ assert.equal(newFrame.observations[0],undefined);
+ assert.equal(coveredSavedAcquisition(newFrame,confirmed),false,'a duplicate without its own accepted observation remains eligible for recovery');
+ assert.equal(old.observations[0],observation,'the original frame and its observation remain intact');
+ const current=newSavedObservation(30,true,'capture/3');current.identity=observation.identity;
+ newFrame.observations[0]=current;
+ assert.equal(coveredSavedAcquisition(newFrame,confirmed),false,'older proof cannot settle the newer frame');
+ confirmed.set('a',30);
+ assert.equal(coveredSavedAcquisition(newFrame,confirmed),true,'this capture has its own order and a new field proof');
+ assert.throws(()=>beginNewCaptureSlot(newFrame,40),/Invalid captured slot/);
 });
 
 test('receipt cache is ID-specific and bounded; evicted or missing frames require acquisition',()=>{

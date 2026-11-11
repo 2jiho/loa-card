@@ -1,5 +1,5 @@
 import type { GrowthSequenceStep } from './growth-sequence';
-import { cardRarityClass } from '../../card-rarity';
+import { cardRarityClass } from '../../shared/card-rarity';
 import { growthDisplayRows } from './growth-display';
 
 const number = (n: number) => n.toLocaleString('ko-KR');

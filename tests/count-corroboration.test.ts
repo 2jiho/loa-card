@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { corroboratedCount } from "../src/features/card-scanner/count-corroboration";
+import { corroboratedCount } from "../src/features/card-scanner/recognition/count-corroboration";
+import { COUNT_UNEXPLAINED_TRAILING_GLYPH } from "../src/features/card-scanner/recognition/count-pattern";
 test("independent digit agreement corroborates a low-gap count without guessing from awakening capacity", () => {
   const observation = { awakening: 0, value: 15, iconPresent: true, ocrAgreed: true,
     pattern: { value: 15, candidate: 15, score: .4267, gap: .0221, reason: "장수 전체 패턴 일치" } };
@@ -18,4 +19,9 @@ test("validated numeric OCR resolves Haenu's close 8 pattern while preserving co
     { pattern: { ...observation.pattern, value: 9 } }, { pattern: { ...observation.pattern, candidate: 9 } },
     { pattern: { ...observation.pattern, score: .399 } }, { pattern: { ...observation.pattern, gap: NaN } }])
     assert.equal(corroboratedCount({ ...observation, ...change }), false);
+});
+test("numeric OCR cannot corroborate a partial single-digit pattern with another unexplained glyph", () => {
+  const input = { awakening:0, value:1, iconPresent:true, ocrConfirmedValue:1, ocrAgreed:true,
+    pattern:{value:null,candidate:1,score:.55,gap:.08,reason:COUNT_UNEXPLAINED_TRAILING_GLYPH} };
+  assert.equal(corroboratedCount(input),false);
 });

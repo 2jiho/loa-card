@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {freezeLiveFrame,freezeLiveFrameTimed,type LiveFramePlatform} from '../src/features/card-scanner/freeze-live-frame.ts';
-import {createLiveInputAdmission} from '../src/features/card-scanner/live-input-admission';
+import {freezeLiveFrame,freezeLiveFrameTimed,type LiveFramePlatform} from '../src/features/card-scanner/capture/freeze-live-frame.ts';
+import {createLiveInputAdmission} from '../src/features/card-scanner/capture/live-input-admission';
 
 function video(width=1920,height=1080) {
  return {videoWidth:width,videoHeight:height} as HTMLVideoElement;

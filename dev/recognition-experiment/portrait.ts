@@ -1,9 +1,9 @@
 import {createPortraitMatcher as original} from './legacy-portrait';
-import type { Reference } from '../../src/features/card-scanner/recognizer';
-import type { PortraitTextEvidence } from '../../src/features/card-scanner/portrait-matcher';
+import type { Reference } from '../../src/features/card-scanner/recognition/recognizer';
+import type { PortraitTextEvidence } from '../../src/features/card-scanner/recognition/portrait-matcher';
 import {createMaskedMatcher} from './masked-matcher';
 import type {MaskedAtlas,PortraitPixels} from './masked-matcher';
-export type {PortraitEvidence,PortraitTextEvidence} from '../../src/features/card-scanner/portrait-matcher';
+export type {PortraitEvidence,PortraitTextEvidence} from '../../src/features/card-scanner/recognition/portrait-matcher';
 
 export function createPortraitMatcher(cards:Reference[],atlas:Record<string,string>,supplement:Record<string,string>,experiment:MaskedAtlas) {
   const masked=createMaskedMatcher(cards,experiment);

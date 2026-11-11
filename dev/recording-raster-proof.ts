@@ -54,7 +54,7 @@ async function videoBitmap(){
 }
 button.addEventListener('click',async()=>{
  button.disabled=true;pngButton.disabled=true;select.disabled=true;status.textContent='변환을 비교하고 있습니다.';rows.replaceChildren();result.textContent='';
- const acquisition=new Worker(new URL('../src/features/card-scanner/acquisition-worker.ts',import.meta.url),{type:'module'}),
+ const acquisition=new Worker(new URL('../src/features/card-scanner/acquisition/acquisition-worker.ts',import.meta.url),{type:'module'}),
   recorder=new Worker(new URL('./recording-raster-proof-worker.ts',import.meta.url),{type:'module'}),channel=new MessageChannel();
  const waiting=new Map<number,{resolve:(value:CombinedProof)=>void;reject:(reason:unknown)=>void;acquisition?:Proof;recording?:Proof;timer:ReturnType<typeof setTimeout>}>();
  const results:unknown[]=[];let id=0;

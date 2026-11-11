@@ -1,9 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
-import { decodeCtc } from "../src/features/card-scanner/ctc-decoder.ts";
-import { createCtcLexicon, joinCtcLines } from "../src/features/card-scanner/ctc-lexicon.ts";
-import { matchCardName } from "../src/features/card-scanner/card-dictionary.ts";
-import { matchCtcCardName } from "../src/features/card-scanner/ctc-name-match.ts";
+import { decodeCtc } from "../src/features/card-scanner/recognition/ctc-decoder.ts";
+import { createCtcLexicon, joinCtcLines } from "../src/features/card-scanner/recognition/ctc-lexicon.ts";
+import { matchCardName } from "../src/features/card-scanner/recognition/card-dictionary.ts";
+import { matchCtcCardName } from "../src/features/card-scanner/recognition/ctc-name-match.ts";
 
 const json = async path => JSON.parse(await readFile(path, "utf8"));
 const characters = await json("public/scanner/paddle-characters.json");

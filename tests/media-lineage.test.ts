@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createMediaDecodedFrame, createMediaSequenceEnd, createMediaSequenceStart, mediaSourceFor,
   parseMediaDecodedFrame, parseMediaInputLink, parseMediaLineageFact, parseMediaSequenceEnd,
-  parseMediaSequenceStart, parseMediaSource, withMediaLineage } from '../src/features/card-scanner/media-lineage';
-import type { MediaInputLink, MediaLineageFact, MediaSequenceEnd } from '../src/features/card-scanner/media-lineage';
+  parseMediaSequenceStart, parseMediaSource, withMediaLineage } from '../src/features/card-scanner/capture/media-lineage';
+import type { MediaInputLink, MediaLineageFact, MediaSequenceEnd } from '../src/features/card-scanner/capture/media-lineage';
 import { RunStateTrace, parseRunStateTrace, replayRunStateTrace } from '../dev/run-state-trace';
 
 const blob = () => new Blob(['video bytes'], { type: 'video/mp4' });

@@ -1,8 +1,56 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LiveScanCadence, timedCaptureOrder, liveLanePlan } from '../src/features/card-scanner/live-scan-policy';
-import { consensus } from '../src/features/card-scanner/consensus';
-import type { ScannedCard } from '../src/features/card-scanner/recognizer';
+import { LiveScanCadence, timedCaptureOrder, liveLanePlan } from '../src/features/card-scanner/session/live-scan-policy';
+
+test('optional extra visual workers help only idle OCR lanes and never displace OCR retries',async()=>{
+ const {LiveReaderSchedule}=await import('../src/features/card-scanner/session/live-scan-policy');
+ const plan=liveLanePlan(8),idle={queued:20,short:0,full:0,live:true};
+ assert.equal(new LiveReaderSchedule().next(2,plan,idle),undefined,'default remains unchanged');
+ assert.equal(new LiveReaderSchedule().next(2,plan,idle,true),'fast');
+ assert.equal(new LiveReaderSchedule().next(3,plan,idle,true),'fast');
+ assert.equal(new LiveReaderSchedule().next(2,plan,{...idle,short:1},true),'short');
+ assert.equal(new LiveReaderSchedule().next(3,plan,{...idle,full:1},true),'full');
+ assert.equal(new LiveReaderSchedule().next(2,plan,{...idle,queued:0},true),undefined);
+});
+
+test('a large live queue borrows idle OCR lanes without displacing retries',async()=>{
+ const {LiveReaderSchedule}=await import('../src/features/card-scanner/session/live-scan-policy');
+ const plan=liveLanePlan(8);
+ const large={queued:100,short:0,full:0,live:true};
+ assert.equal(new LiveReaderSchedule().next(2,plan,large),'fast');
+ assert.equal(new LiveReaderSchedule().next(3,plan,large),'fast');
+ assert.equal(new LiveReaderSchedule().next(2,plan,{...large,queued:63}),undefined,'small queues keep the default reservation');
+ assert.equal(new LiveReaderSchedule().next(2,plan,{...large,short:1}),'short','short retries still take precedence');
+ assert.equal(new LiveReaderSchedule().next(3,plan,{...large,full:1}),'full','full retries still take precedence');
+});
+
+test('experimental OCR assist borrows only the idle second fast lane while preserving the normal lanes',async()=>{
+ const {LiveReaderSchedule}=await import('../src/features/card-scanner/session/live-scan-policy');
+ const plan=liveLanePlan(8),idle={queued:0,short:0,full:2,live:true};
+ const pick=(index:number,jobs=idle,enabled=true,p=plan)=>new LiveReaderSchedule().next(index,p,jobs,false,enabled);
+ assert.equal(pick(1,idle,false),undefined,'default fast lane never starts full OCR');
+ assert.equal(pick(1),'full');
+ assert.equal(pick(0),undefined,'first fast lane remains available');
+ assert.equal(pick(2),undefined,'dedicated short lane does not start full OCR');
+ assert.equal(pick(3),'full','dedicated full lane still serves full OCR');
+ assert.equal(pick(1,{...idle,queued:1}),'fast','available visual work wins');
+ assert.equal(pick(1,{...idle,full:1}),undefined,'a single full task stays on the normal lane');
+ assert.equal(pick(0,idle,true,liveLanePlan(4)),undefined,'no visual lane is borrowed on a smaller machine');
+ assert.equal(pick(1,idle,true,{fast:2,readers:3}),undefined,'both dedicated OCR roles are required');
+ assert.equal(pick(1,{...idle,short:2}),'full','the separate short lane continues to serve short work');
+ assert.equal(pick(2,{...idle,short:2}),'short');
+});
+
+test('OCR assist request is opt-in and rejects ambiguous or malformed query values',async()=>{
+ const {parseScannerExperiment}=await import('../dev/latest-pixel-gate-report');
+ assert.equal(parseScannerExperiment('','fastOcrAssist'),false);
+ assert.equal(parseScannerExperiment('?fastOcrAssist=0','fastOcrAssist'),false);
+ assert.equal(parseScannerExperiment('?fastOcrAssist=1','fastOcrAssist'),true);
+ assert.throws(()=>parseScannerExperiment('?fastOcrAssist=1&fastOcrAssist=1','fastOcrAssist'));
+ assert.throws(()=>parseScannerExperiment('?fastOcrAssist=true','fastOcrAssist'));
+});
+import { consensus } from '../src/features/card-scanner/recognition/consensus';
+import type { ScannedCard } from '../src/features/card-scanner/recognition/recognizer';
 test('a completed acquisition accepts the next delivered frame without a second wall-time delay', () => {
   const cadence = new LiveScanCadence();
   assert.equal(cadence.take(0), true);
@@ -34,7 +82,7 @@ test('live concurrency is bounded and reserves a separate OCR lane when resource
 });
 
 test('a dedicated short OCR lane cannot be occupied by slow fallback during a live queue gap',async()=>{
- const {liveOcrLane,LiveOcrSchedule}=await import('../src/features/card-scanner/live-scan-policy');
+ const {liveOcrLane,LiveOcrSchedule}=await import('../src/features/card-scanner/session/live-scan-policy');
  const short=new LiveOcrSchedule(),full=new LiveOcrSchedule();
  assert.equal(liveOcrLane(0,10,0,2,true,short),undefined);
  assert.equal(liveOcrLane(0,10,1,2,true,full),'full');
@@ -47,7 +95,7 @@ test('a dedicated short OCR lane cannot be occupied by slow fallback during a li
 });
 
 test('live OCR serves full retries without waiting for capture to end',async()=>{
- const {LiveOcrSchedule}=await import('../src/features/card-scanner/live-scan-policy');
+ const {LiveOcrSchedule}=await import('../src/features/card-scanner/session/live-scan-policy');
  const schedule=new LiveOcrSchedule();
  assert.equal(schedule.next(0,0),undefined);
  assert.equal(schedule.next(0,2),'full');
@@ -57,7 +105,7 @@ test('live OCR serves full retries without waiting for capture to end',async()=>
 });
 
 test('live OCR never invents a job in an empty queue and bounds accumulated priority',async()=>{
- const {LiveOcrSchedule}=await import('../src/features/card-scanner/live-scan-policy');
+ const {LiveOcrSchedule}=await import('../src/features/card-scanner/session/live-scan-policy');
  const schedule=new LiveOcrSchedule();
  for(let i=0;i<1000;i++)assert.equal(schedule.next(1,0),'short');
  assert.equal(schedule.next(0,0),undefined);
@@ -66,7 +114,7 @@ test('live OCR never invents a job in an empty queue and bounds accumulated prio
 });
 
 test('unknown identities get OCR first without losing or reordering field retries',async()=>{
- const {shiftOcrRetry}=await import('../src/features/card-scanner/live-scan-policy');
+ const {shiftOcrRetry}=await import('../src/features/card-scanner/session/live-scan-policy');
  const queue=[{id:'count-a',needsIdentity:false},{id:'count-b',needsIdentity:false},{id:'name-a',needsIdentity:true},{id:'name-b',needsIdentity:true},{id:'count-c',needsIdentity:false}];
  assert.equal(shiftOcrRetry(queue)?.id,'name-a');
  assert.equal(shiftOcrRetry(queue)?.id,'name-b');
@@ -80,7 +128,7 @@ test('unknown identities get OCR first without losing or reordering field retrie
 });
 
 test('OCR prioritizes still-unread groups over repeated name retries without dropping their fields',async()=>{
- const {shiftOcrRetry}=await import('../src/features/card-scanner/live-scan-policy');
+ const {shiftOcrRetry}=await import('../src/features/card-scanner/session/live-scan-policy');
  const reads=new Map<string,number>();
  const queue=[{id:'count',group:'known',needsIdentity:false},
   {id:'a1',group:'a',needsIdentity:true},{id:'a2',group:'a',needsIdentity:true},
@@ -95,7 +143,7 @@ test('OCR prioritizes still-unread groups over repeated name retries without dro
 });
 
 test('missing fields outrank already-confirmed repeats and newer count changes keep their priority',async()=>{
- const {retryWorkPriority,shiftOcrRetry}=await import('../src/features/card-scanner/live-scan-policy');
+ const {retryWorkPriority,shiftOcrRetry}=await import('../src/features/card-scanner/session/live-scan-policy');
  const confirmed=new Map([['known',20]]);
  const stale={needsIdentity:false,fieldTarget:{id:'known',order:10}};
  const current={needsIdentity:false,fieldTarget:{id:'known',order:21}};
@@ -111,7 +159,7 @@ test('missing fields outrank already-confirmed repeats and newer count changes k
 });
 
 test('latest field failures precede older same-card fallbacks without discarding either crop',async()=>{
- const {retryWorkPriority,shiftOcrRetry}=await import('../src/features/card-scanner/live-scan-policy');
+ const {retryWorkPriority,shiftOcrRetry}=await import('../src/features/card-scanner/session/live-scan-policy');
  const old={id:'old',reads:0,needsIdentity:false,fieldTarget:{id:'a',order:10}};
  const middle={id:'middle',reads:0,needsIdentity:false,fieldTarget:{id:'a',order:20}};
  const latest={id:'latest',reads:500,needsIdentity:false,fieldTarget:{id:'a',order:30}};
@@ -128,7 +176,7 @@ test('latest field failures precede older same-card fallbacks without discarding
 });
 
 test('latest-field priority stays below older fallbacks regardless of prior group read count',async()=>{
- const {retryWorkPriority}=await import('../src/features/card-scanner/live-scan-policy');
+ const {retryWorkPriority}=await import('../src/features/card-scanner/session/live-scan-policy');
  const current={needsIdentity:false,fieldTarget:{id:'a',order:20}},old={...current,fieldTarget:{id:'a',order:10}};
  const confirmed=new Map([['a',5]]),orders=new Map([['a',20]]);
  assert.ok(retryWorkPriority(current,2_000_000,confirmed,orders)<retryWorkPriority(old,0,confirmed,orders));
@@ -139,7 +187,7 @@ test('latest-field priority stays below older fallbacks regardless of prior grou
 });
 
 test('latest-field ordering preserves unknown-name priority and bounded fallback service',async()=>{
- const {LiveRetrySchedule,retryWorkPriority}=await import('../src/features/card-scanner/live-scan-policy');
+ const {LiveRetrySchedule,retryWorkPriority}=await import('../src/features/card-scanner/session/live-scan-policy');
  const latestOrders=new Map([['a',20]]),confirmed=new Map<string,number>(),schedule=new LiveRetrySchedule();
  const old={id:'old-field',needsIdentity:false,fieldTarget:{id:'a',order:10}};
  const latest={id:'latest-field',needsIdentity:false,fieldTarget:{id:'a',order:20}};
@@ -152,7 +200,7 @@ test('latest-field ordering preserves unknown-name priority and bounded fallback
 });
 
 test('a replenished name queue cannot starve an unconfirmed counter',async()=>{
- const {LiveRetrySchedule,retryWorkPriority}=await import('../src/features/card-scanner/live-scan-policy');
+ const {LiveRetrySchedule,retryWorkPriority}=await import('../src/features/card-scanner/session/live-scan-policy');
  const schedule=new LiveRetrySchedule(),confirmed=new Map([['done',10]]);
  const stale={id:'stale',needsIdentity:false,fieldTarget:{id:'done',order:1}};
  const urgent={id:'counter',needsIdentity:false,fieldTarget:{id:'pending',order:5}};
@@ -167,7 +215,7 @@ test('a replenished name queue cannot starve an unconfirmed counter',async()=>{
 });
 
 test('actual single-reader dispatch services short and full OCR while capture stays active',async()=>{
-  const {LiveReaderSchedule}=await import('../src/features/card-scanner/live-scan-policy');
+  const {LiveReaderSchedule}=await import('../src/features/card-scanner/session/live-scan-policy');
   for(const cores of [1,2,3,NaN]){
     const schedule=new LiveReaderSchedule(),plan=liveLanePlan(cores),jobs={queued:100,short:20,full:1,live:true};
     const work=Array.from({length:81},()=>schedule.next(0,plan,jobs));
@@ -179,7 +227,7 @@ test('actual single-reader dispatch services short and full OCR while capture st
 });
 
 test('multi-reader dispatch preserves metadata fast lane and dedicated OCR roles',async()=>{
-  const {LiveReaderSchedule}=await import('../src/features/card-scanner/live-scan-policy');
+  const {LiveReaderSchedule}=await import('../src/features/card-scanner/session/live-scan-policy');
   const plan=liveLanePlan(8),jobs={queued:40,short:2,full:2,live:true};
   for(const index of [0,1]){
     const schedule=new LiveReaderSchedule();

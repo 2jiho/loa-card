@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { softNamePixels, normalizeSoftNamePixels } from "../src/features/card-scanner/soft-name-pixels.ts";
+import { softNamePixels, normalizeSoftNamePixels } from "../src/features/card-scanner/recognition/soft-name-pixels.ts";
 
 test("name retries retain observed luminance without converting faint strokes to solid white", () => {
   const rgba = new Uint8ClampedArray(128 * 36 * 4);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {exactPixels} from '../src/features/card-scanner/exact-recording-codec';
+import {exactPixels} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 
 async function runWorker(syncEnabled:boolean,run:(h:any)=>Promise<void>){
  const previous=['self','navigator','OffscreenCanvas'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)] as const);
@@ -27,7 +27,7 @@ async function runWorker(syncEnabled:boolean,run:(h:any)=>Promise<void>){
  Object.defineProperty(globalThis,'OffscreenCanvas',{configurable:true,value:Canvas});
  const until=async(predicate:()=>boolean)=>{const deadline=Date.now()+5000;while(!predicate()){if(Date.now()>deadline)throw Error('canonical Worker deadline');await new Promise<void>(resolve=>setImmediate(resolve));}};
  try{
-  const address=new URL('../src/features/card-scanner/exact-recording-worker.ts',import.meta.url);address.searchParams.set('canonical-test',crypto.randomUUID());
+  const address=new URL('../src/features/card-scanner/reproduction/exact-recording-worker.ts',import.meta.url);address.searchParams.set('canonical-test',crypto.randomUUID());
   await import(address.href);
   const send=(data:any)=>scope.onmessage({data});
   await send({kind:'init',port});
@@ -44,6 +44,36 @@ function input(id:number){
  const bitmap={width:320,height:240,pixels,closed:0,close(){this.closed++;}};
  return {pixels,bitmap,message:{kind:'frame',canonical:true,role:'backup',id,time:20-id,width:320,height:240,phase:'input',bitmap}};
 }
+
+test('actual recorder emits one immediate input gap warning and ignores gaps after end',async()=>{
+ await runWorker(true,async(h:any)=>{
+  const item=input(1);h.source(item.message);
+  h.source({kind:'gap',id:2});h.source({kind:'gap',id:3});
+  assert.equal(h.messages.filter((message:any)=>message.kind==='input-gap').length,1);
+  h.source({kind:'end'});h.source({kind:'gap',id:4});
+  await h.send({kind:'finish',noSource:false});await h.until(()=>h.messages.some((message:any)=>message.kind==='done'));
+  const done=h.messages.find((message:any)=>message.kind==='done');
+  assert.equal(done.stats.dropped,2);assert.equal(done.stats.complete,false);
+  assert.equal(h.messages.filter((message:any)=>message.kind==='input-gap').length,1);
+  await h.send({kind:'dispose'});
+ });
+});
+
+test('ordinary source rejection is reported before finishing and does not issue repeated warnings',async()=>{
+ await runWorker(true,async(h:any)=>{
+  const first=input(0);first.message.canonical=false;
+  h.source(first.message);
+  await h.until(()=>h.messages.some((message:any)=>message.kind==='input-gap'));
+  const warning=h.messages.find((message:any)=>message.kind==='input-gap');
+  assert.match(warning.reason,/식별|시각/);
+  const second=input(2);second.message.canonical=false;h.source(second.message);
+  h.source({kind:'end'});await h.send({kind:'finish',noSource:false});
+  await h.until(()=>h.messages.some((message:any)=>message.kind==='done'));
+  assert.equal(h.messages.filter((message:any)=>message.kind==='input-gap').length,1);
+  assert.equal(h.messages.find((message:any)=>message.kind==='done').stats.complete,false);
+  await h.send({kind:'dispose'});
+ });
+});
 
 test('canonical Worker reads committed key chains while recording and preserves its compression predecessor',async()=>{
  await runWorker(true,async(h:any)=>{

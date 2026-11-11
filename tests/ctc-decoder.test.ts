@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodeCtc } from "../src/features/card-scanner/ctc-decoder.ts";
+import { decodeCtc } from "../src/features/card-scanner/recognition/ctc-decoder.ts";
 function probabilities(indices: number[], classes: number) {
   return Float32Array.from(
     indices.flatMap((index) =>

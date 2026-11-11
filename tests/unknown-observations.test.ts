@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {updateUnknown} from '../src/features/card-scanner/unknown-observations';
-import {ConfirmedNameGroups} from '../src/features/card-scanner/confirmed-name-groups';
+import {updateUnknown} from '../src/features/card-scanner/session/unknown-observations';
+import {ConfirmedNameGroups} from '../src/features/card-scanner/session/confirmed-name-groups';
 
 test('newer failure replaces time/image/reason and survives an older name proof',()=>{
   const vector=new Uint8Array(3240).fill(80),vectors:Uint8Array[]=[];

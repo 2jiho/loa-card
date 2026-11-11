@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initializeWithin } from '../src/features/card-scanner/initialization';
+import { initializeWithin } from '../src/features/card-scanner/capture/initialization';
 test('cancel immediately and dispose a resource created after cancellation', async () => {
   const controller = new AbortController(); let complete!: (value: number) => void, disposed = 0;
   const ready = initializeWithin(new Promise<number>(resolve => { complete = resolve; }), controller.signal, value => { disposed = value; });

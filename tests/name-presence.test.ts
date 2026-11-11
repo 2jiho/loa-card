@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hasNamePixels, nameMask, NAME_WIDTH, NAME_HEIGHT } from '../src/features/card-scanner/name-pattern';
+import { hasNamePixels, nameMask, NAME_WIDTH, NAME_HEIGHT } from '../src/features/card-scanner/recognition/name-pattern';
 
 const legacy = (rgba: Uint8ClampedArray) => [0,1,2,3,4].some(grade =>
   nameMask(rgba,grade).reduce((sum,value) => sum+value,0) >= 35);

@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { countReliability, CountObservations } from "../src/features/card-scanner/count-confidence";
+import { countReliability, currentCountReliability, CountObservations } from "../src/features/card-scanner/recognition/count-confidence";
+import { COUNT_UNEXPLAINED_TRAILING_GLYPH } from "../src/features/card-scanner/recognition/count-pattern";
+test("unexplained trailing glyph blocks OCR and even a stable-frame shortcut",()=>{
+  const sample={stable:true,borderAlignment:1,awakening:0,extraCopies:1,iconPresent:true,ocrConfirmedValue:1,
+    pattern:{value:null,candidate:1,score:.55,gap:.08,reason:COUNT_UNEXPLAINED_TRAILING_GLYPH}};
+  assert.equal(countReliability(sample),"unconfirmed");
+  assert.equal(currentCountReliability(sample),"unconfirmed");
+});
 test("numeric confirmation reaches final reliability only on an intact card", () => {
   const observation = { stable: false, borderAlignment: .95, awakening: 0, extraCopies: 8,
     iconPresent: true, ocrConfirmedValue: 8,
@@ -9,8 +16,8 @@ test("numeric confirmation reaches final reliability only on an intact card", ()
   assert.equal(countReliability({ ...observation, ocrConfirmedValue: undefined }), "unconfirmed");
   assert.equal(countReliability({ ...observation, borderAlignment: .79 }), "unconfirmed");
 });
-import { consensus } from "../src/features/card-scanner/consensus";
-import type { ScannedCard } from "../src/features/card-scanner/recognizer";
+import { consensus } from "../src/features/card-scanner/recognition/consensus";
+import type { ScannedCard } from "../src/features/card-scanner/recognition/recognizer";
 
 const clear = { stable: false, borderAlignment: .95, awakening: 0,
   extraCopies: 13, pattern: { value: 13, candidate: 13, score: .441, gap: .059, reason: "장수 전체 패턴 일치" } };
@@ -47,7 +54,7 @@ test("moderate contrast can distinguish a closed-set count without lowering the 
     assert.equal(countReliability(input), "unconfirmed");
 });
 
-test("counter stability uses independent frames of the same DB card and awakening", () => {
+test("counter stability distinguishes supplied observation IDs for the same card and awakening", () => {
   const observations = new CountObservations(), vector = new Uint8Array(3240).fill(100);
   const moderate = { ...clear, pattern: { ...clear.pattern, score: .32, gap: .02 } };
   assert.equal(observations.offer("a", "1", vector, moderate), false);
@@ -64,13 +71,34 @@ test("counter stability uses independent frames of the same DB card and awakenin
   assert.equal(countReliability({ ...moderate, repeatedCount }), "repeated-pattern");
   assert.equal(countReliability({ ...moderate, repeatedCount, pattern: { ...moderate.pattern, gap: .01 } }), "unconfirmed");
 });
+test("scanner does not turn processing attempt IDs into independent count evidence", () => {
+  const observations = new CountObservations(), vector = new Uint8Array(3240).fill(100);
+  const weak = { ...clear, pattern: { ...clear.pattern, score: .32, gap: .02 } };
+  observations.offer("a", "processing/1", vector, weak);
+  const repeatedCount = observations.offer("a", "processing/2", vector, weak);
+  assert.equal(repeatedCount, true, "legacy heuristic cannot authenticate source identity");
+  const attemptedPromotion = { ...weak, repeatedCount };
+  assert.equal(currentCountReliability(attemptedPromotion), "unconfirmed");
+  assert.equal(currentCountReliability(clear), "clear-pattern");
+  assert.equal(currentCountReliability({ ...weak, stable: true }), "unconfirmed");
+});
+test("scanner requires count evidence beyond unverified temporal stability", () => {
+  const weak = { ...clear, stable: true, pattern: { ...clear.pattern, score: .32, gap: .02 } };
+  assert.equal(currentCountReliability(weak), "unconfirmed");
+  assert.equal(currentCountReliability({ ...weak, pattern: undefined }), "unconfirmed");
+  assert.equal(currentCountReliability({ ...clear, stable: true }), "clear-pattern");
+  assert.equal(currentCountReliability({ ...clear, stable: true, awakening: 0, extraCopies: 0, iconPresent: false }), "empty-counter");
+  assert.equal(currentCountReliability({ ...weak, iconPresent:true, pattern: {...weak.pattern, value:null, score:.458, gap:.013}, ocrConfirmedValue:13 }), "pattern-ocr");
+  assert.equal(currentCountReliability({ ...weak, awakening:5, extraCopies:0 }), "fixed-zero");
+});
 test("zero counts retain their explicit max-awakening or growthless evidence", () => {
   assert.equal(countReliability({ ...clear, awakening: 5, extraCopies: 0 }), "fixed-zero");
   assert.equal(countReliability({ ...clear, maxAwakening: 0, extraCopies: 0 }), "fixed-zero");
   assert.equal(countReliability({ ...clear, awakening: 5, extraCopies: null }), "unconfirmed");
 });
 
-test("an intact card with no extra-copy overlay means zero without a second frame", () => {
+test("a supplied absent-icon decision accepts zero without a second frame", () => {
+  // This checks the confidence contract, not whether an image is unobstructed.
   const empty = { stable: false, borderAlignment: .95, awakening: 0,
     extraCopies: 0, iconPresent: false };
   for (let awakening = 0; awakening < 5; awakening++)

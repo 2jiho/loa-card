@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ObservationWork } from '../src/features/card-scanner/observation-work';
-import { reduceObservationExecution } from '../src/features/card-scanner/observation-execution';
-import type { ObservationExecutionState, ObservationFact, ObservationSource } from '../src/features/card-scanner/observation-execution';
+import { ObservationWork } from '../src/features/card-scanner/session/observation-work';
+import { reduceObservationExecution } from '../src/features/card-scanner/session/observation-execution';
+import type { ObservationExecutionState, ObservationFact, ObservationSource } from '../src/features/card-scanner/session/observation-execution';
 
 const source: ObservationSource = { sessionId: 'capture', frameId: 8, observationId: '12',
   captureOrder: 50, captureTime: 1.25, phase: 'recovery', slot: 7 };
@@ -90,4 +90,31 @@ test('observer errors propagate after an already validated transition instead of
   assert.equal(work.state.phase, 'reading');
   fail = false;
   assert.equal(work.cancel(), true); assert.equal(work.state.status, 'review');
+});
+
+test('repeated cancellation after a failed observer callback does not invent another attempt', () => {
+  const facts: ObservationFact[] = []; let fail = true;
+  const work = new ObservationWork(source, fact => {
+    facts.push(fact);
+    if (fact.kind === 'read-finished' && fail) throw new Error('recording failed');
+  });
+  assert.throws(() => work.cancel(), /recording failed/);
+  assert.equal(work.state.phase, 'finished'); assert.equal(work.state.status, 'review');
+  fail = false;
+  assert.equal(work.cancel(), false);
+  assert.deepEqual(facts.map(fact => [fact.kind, fact.attemptId]), [['queued', 0], ['read-finished', 0]]);
+  const lease = work.start();
+  assert.equal(work.finish('read', lease), true, 'an actual subsequent read still creates a new attempt');
+});
+
+test('cancelling deferred waiting work changes it to review even after its reader finished', () => {
+  const facts: ObservationFact[] = [];
+  const work = new ObservationWork(source, fact => facts.push(fact));
+  assert.equal(work.finish('waiting', work.start()), true);
+  assert.equal(work.state.phase, 'finished'); assert.equal(work.state.status, 'waiting');
+  assert.equal(work.cancel(), true);
+  assert.equal(work.state.status, 'review');
+  assert.equal(work.cancel(), false);
+  assert.deepEqual(facts.map(fact => [fact.kind, fact.attemptId]),
+    [['queued', 0], ['read-started', 1], ['read-finished', 1], ['read-finished', 2]]);
 });

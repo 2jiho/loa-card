@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createNativeYuvTransformWorkerRuntime} from '../dev/native-yuv-transform-worker';
 import type {NativeYuvTransformFrame,NativeYuvTransformPlatform} from '../dev/native-yuv-transform-worker';
-import {pixelHash} from '../src/features/card-scanner/exact-recording-codec';
+import {pixelHash} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 import {nativeYuvDescriptorJson} from '../dev/native-yuv-recipe';
 import {describeNativeYuvTransformFrame} from '../dev/native-yuv-transform';
 

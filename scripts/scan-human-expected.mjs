@@ -117,6 +117,41 @@ async function immutable(directory,filename,bytes){
 function confirmationBytes(label){return encoded({kind:'loacard-human-confirmation',version:1,...label.confirmation});}
 function labelFile(root,id){return join(registry(root),'labels',`${hash(id)}.json`);}
 async function storedLabel(root,id){const file=labelFile(root,id),bytes=await readCorpusBytes(file,MAX_HUMAN_LABEL_BYTES);if(sha(bytes)!==id)fail('Stored human-label checksum mismatch.');return{file,bytes,label:parseHumanExpected(decode(bytes))};}
+function quarantineFile(root,id){return join(registry(root),'quarantine',`${hash(id)}.json`);}
+async function optionalRecord(directory,file){
+ try{await safeDirectory(directory);await lstat(file);}catch(e){if(e.code==='ENOENT')return null;throw e;}
+ return readJson(file);
+}
+async function quarantineRecord(root,id,label){
+ const value=await optionalRecord(join(registry(root),'quarantine'),quarantineFile(root,id));
+ if(value){
+  object(value,['kind','version','labelSha256','reason','recordedAt']);
+  if(value.kind!=='loacard-human-label-quarantine'||value.version!==1||value.labelSha256!==id)fail('Invalid human-label quarantine record.');
+  return{...value,reason:text(value.reason,2000),recordedAt:iso(value.recordedAt)};
+ }
+ const confirmationSha256=sha(confirmationBytes(label??(await storedLabel(root,id)).label));
+ const confirmation=await optionalRecord(join(registry(root),'confirmation-quarantine'),join(registry(root),'confirmation-quarantine',`${confirmationSha256}.json`));
+ if(!confirmation)return null;
+ object(confirmation,['kind','version','confirmationSha256','reason','recordedAt']);
+ if(confirmation.kind!=='loacard-human-confirmation-quarantine'||confirmation.version!==1||confirmation.confirmationSha256!==confirmationSha256)fail('Invalid human-confirmation quarantine record.');
+ return{...confirmation,reason:text(confirmation.reason,2000),recordedAt:iso(confirmation.recordedAt)};
+}
+/** Preserve the source label and confirmation; quarantine only prevents its
+ * future use as a comparison oracle until a corrected label is registered. */
+export async function quarantineHumanExpected(id,reason,{root=DEFAULT_CORPUS_ROOT}={}){
+ id=hash(id);reason=text(reason,2000);const{label}=await storedLabel(root,id);await bind(label,root);
+ const existing=await quarantineRecord(root,id,label);
+ if(existing&&existing.reason!==reason)fail('Human label already has a different quarantine reason.');
+ const confirmationSha256=sha(confirmationBytes(label)),confirmationDirectory=join(registry(root),'confirmation-quarantine');
+ const confirmationPath=join(confirmationDirectory,`${confirmationSha256}.json`);
+ if(!await optionalRecord(confirmationDirectory,confirmationPath)){
+  const record={kind:'loacard-human-confirmation-quarantine',version:1,confirmationSha256,reason,recordedAt:new Date().toISOString()};
+  await immutable(confirmationDirectory,`${confirmationSha256}.json`,encoded(record));
+ }
+ if(existing)return{created:false,...existing};
+ const record={kind:'loacard-human-label-quarantine',version:1,labelSha256:id,reason,recordedAt:new Date().toISOString()};
+ await immutable(join(registry(root),'quarantine'),`${id}.json`,encoded(record));return{created:true,...record};
+}
 function checkPng(bytes,label){
  if(bytes.length!==label.anchor.png.bytes||sha(bytes)!==label.anchor.png.sha256||bytes.length<33||bytes.subarray(0,8).toString('hex')!=='89504e470d0a1a0a'||
   bytes.readUInt32BE(16)!==label.anchor.box.width||bytes.readUInt32BE(20)!==label.anchor.box.height)fail('Anchor PNG hash/size/dimensions mismatch.');
@@ -145,7 +180,7 @@ export async function listHumanExpected({root=DEFAULT_CORPUS_ROOT,caseId}={}){
  for(const f of files.sort((a,b)=>a.name.localeCompare(b.name))){
   if(!/^[a-f0-9]{64}\.json$/.test(f.name)||!f.isFile())fail('Unexpected human-label registry entry.');
   const id=f.name.slice(0,-5),{label}=await storedLabel(root,id);await bind(label,root);
-  if(caseId===undefined||label.caseId===caseId)labels.push({sha256:id,caseId:label.caseId,scope:label.scope,cards:label.cards.length,confirmationSha256:sha(confirmationBytes(label))});
+  if(caseId===undefined||label.caseId===caseId)labels.push({sha256:id,caseId:label.caseId,scope:label.scope,cards:label.cards.length,confirmationSha256:sha(confirmationBytes(label)),quarantine:await quarantineRecord(root,id,label)});
  }
  return{labels,confirmations:new Set(labels.map(l=>l.confirmationSha256)).size};
 }
@@ -154,32 +189,38 @@ export async function verifyHumanExpected(id,{root=DEFAULT_CORPUS_ROOT}={}){
   confirmationSha256=sha(confirmationBytes(label)),confirmed=await readCorpusBytes(join(registry(root),'confirmations',`${confirmationSha256}.json`),MAX_HUMAN_LABEL_BYTES);
  if(!confirmed.equals(confirmationBytes(label)))fail('Human confirmation storage mismatch.');
  if(label.anchor){if(label.anchor.caseId!==label.caseId)await verifyCorpus({root,id:label.anchor.caseId});checkPng(await readCorpusBytes(join(registry(root),'assets',`${label.anchor.png.sha256}.png`),MAX_HUMAN_ASSET_BYTES),label);}
- return{verified:true,labelSha256:id,caseId:label.caseId,confirmationSha256,inputVerification,anchorAssetVerified:!!label.anchor,
-  anchorPixelProof:'not-restored-by-this-command',humanTruth:'operator-asserted',scope:'partial'};
+ const quarantine=await quarantineRecord(root,id);
+ return{verified:true,verificationScope:'stored-bytes-and-structure-only',comparisonStatus:quarantine?'quarantined':'not-quarantined',
+  labelSha256:id,caseId:label.caseId,confirmationSha256,inputVerification,anchorAssetVerified:!!label.anchor,
+  anchorPixelProof:'not-restored-by-this-command',humanTruth:'operator-asserted',scope:'partial',quarantine};
 }
 async function latestInventory(report){
  const unsupported=reason=>({supported:false,reason});
  if(report.executionExpected&&Object.hasOwn(report.executionExpected,'inventoryHash')&&!HASH.test(report.executionExpected.inventoryHash??''))fail('Invalid captured inventory hash.');
  if(!report.execution||!HASH.test(report.executionExpected?.inventoryHash??''))return unsupported('No captured inventory checkpoint hash.');
  const start=report.validation?.sourceStart?.sourceDigest,end=report.validation?.sourceEnd?.sourceDigest;
- if(!HASH.test(start??'')||start!==end||report.validation.sourceChanged===true)return unsupported('Producer source is not stable/verified.');
+ if(!HASH.test(start??'')||start!==end||report.validation.sourceChanged!==false)return unsupported('Producer source is not stable/verified.');
  // Optional TypeScript capability: old plain-Node corpus commands never load this.
  let traceApi,evidenceApi,replayApi,proofApi;
- try{[traceApi,evidenceApi,replayApi,proofApi]=await Promise.all([import('../dev/run-state-trace.ts'),import('../src/features/card-scanner/inventory-evidence.ts'),
-  import('../src/features/card-scanner/inventory-evidence-replay.ts'),import('../src/features/card-scanner/recovery-completion.ts')]);}
+ try{[traceApi,evidenceApi,replayApi,proofApi]=await Promise.all([import('../dev/run-state-trace.ts'),import('../src/features/card-scanner/session/inventory-evidence.ts'),
+  import('../src/features/card-scanner/reproduction/inventory-evidence-replay.ts'),import('../src/features/card-scanner/session/recovery-completion.ts')]);}
  catch(e){if(['ERR_UNKNOWN_FILE_EXTENSION','ERR_MODULE_NOT_FOUND','ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX'].includes(e.code))return unsupported('Inventory replay requires the documented TypeScript runtime.');throw e;}
  const signal=AbortSignal.timeout(120_000),trace=await traceApi.parseRunStateTrace(new Blob([JSON.stringify(report.execution)]),signal);
  if(trace.version!==2||trace.complete!==true||trace.dropped!==0)return unsupported('A complete v2 execution trace is required.');
  const replay=new replayApi.InventoryEvidenceReplay(signal);let seed;const events=[];
  for(const e of trace.events){if(e.type==='inventory-seed'){replay.seed(e.value);seed=e.value;}
-  else if(e.type==='inventory-event'){replay.accept(e.value);events.push(e.value);}else if(e.type==='inventory-checkpoint')replay.checkpoint(e.value);}
+  else if(e.type==='inventory-event'){replay.accept(e.value);events.push(e.value);}else if(e.type==='inventory-preview-confirmation')replay.previewConfirmation(e.value);else if(e.type==='inventory-checkpoint')replay.checkpoint(e.value);}
  const summary=await replay.summary();if(!summary.supported||summary.matchesCapturedState!==true||summary.hash!==report.executionExpected.inventoryHash)return unsupported('Inventory checkpoint is absent, stale or mismatched.');
- const inventory=evidenceApi.replayInventoryEvidence(seed.cards,events);
+ const inventory=evidenceApi.replayInventoryEvidence(seed.cards,events,seed.version===6?{seedPolicy:seed.seedPolicy,consensusPolicy:seed.consensusPolicy,countConflictPolicy:seed.countConflictPolicy}:
+  seed.version===5?{seedPolicy:seed.seedPolicy,consensusPolicy:seed.consensusPolicy}:
+  seed.version!==1?{seedPolicy:seed.seedPolicy}:{});
  if(await evidenceApi.hashInventoryEvidence(inventory.snapshot())!==summary.hash)fail('Inventory reconstruction hash mismatch.');
  return{supported:true,inventory,summary,confirmedReadingCount:proofApi.confirmedReadingCount};
 }
 export async function compareHumanExpected(id,reportFile,{root=DEFAULT_CORPUS_ROOT,valuesOnly=false}={}){
- const{label}=await storedLabel(root,hash(id));await bind(label,root);const report=await readJson(reportFile,MAX_CORPUS_RUN_BYTES),actual=parseScanResult(report);
+ id=hash(id);const{label}=await storedLabel(root,id);await bind(label,root);
+ const quarantine=await quarantineRecord(root,id);if(quarantine)fail(`Human label quarantined: ${quarantine.reason}`);
+ const report=await readJson(reportFile,MAX_CORPUS_RUN_BYTES),actual=parseScanResult(report);
  if(report.validation?.caseId!==label.caseId||!Array.isArray(report.validation.input))fail('Actual report belongs to another case.');
  equalInputs(report.validation.input.map(v=>({index:v.index,sha256:hash(v.sha256),bytes:integer(v.bytes)})),label.inputs);
  const rows=new Map(actual.cards.map(c=>[c.id,c])),latest=valuesOnly?{supported:false,reason:'Explicit values-only comparison.'}:await latestInventory(report),cards=[];
@@ -209,23 +250,27 @@ export async function compareHumanExpected(id,reportFile,{root=DEFAULT_CORPUS_RO
  const fieldProofPassed=checked===0||!latest.supported?null:valueMatches&&allResolved,
   verdict=!valueMatches?'value-mismatch':checked===0?'no-known-fields':fieldProofPassed===true?'scoped-fresh-field-match':latest.supported?'latest-evidence-unresolved':'latest-evidence-unsupported',
   exitCode=!valueMatches?2:fieldProofPassed===true?0:3;
+ // A review may quarantine the label while replay is in progress. This last
+ // check narrows that window; it is not a cross-process lock or transaction.
+ const finalQuarantine=await quarantineRecord(root,id);if(finalQuarantine)fail(`Human label quarantined: ${finalQuarantine.reason}`);
  return{scope:'partial-human-fields',labelSha256:id,caseId:label.caseId,checkedFields:checked,headersChecked:false,otherCardsChecked:false,reviewLabelled:false,
   valueMatches,latestEvidenceSupported:latest.supported,latestEvidenceUnresolved:latest.supported?!allResolved:null,fieldProofPassed,verdict,cards,exitCode,
   interpretation:'Recorded-state evidence comparison, not pixel/OCR accuracy, whole-inventory coverage or cryptographic human truth.'};
 }
 
-const USAGE=`Usage: scan-human-expected <import|list|verify|compare> ...
+const USAGE=`Usage: scan-human-expected <import|list|verify|compare|quarantine> ...
  import <case-id> <label.json> --operator-confirmed [--migrate-private-v1] [--asset crop.png] [--root path]
  list [case-id] [--root path]
  verify <label-sha256> [--root path]
  compare <label-sha256> <actual-report.json> [--values-only] [--root path]
+ quarantine <label-sha256> --reason text [--root path]
 Known zero differs from missing/unknown. Import is an explicit operator human assertion.
 Compare exits: 0 scoped fresh proof; 2 value mismatch; 3 unresolved/unsupported; 1 invalid input.
 Latest proof requires Node 22 with --import tsx. Values-only never claims fresh proof.`;
 export async function runHumanExpectedCli(args,write=text=>process.stdout.write(`${text}\n`)){
  if(!args.length||['--help','help'].includes(args[0])){write(USAGE);return 0;}const[command,...rest]=args;
- if(!['import','list','verify','compare'].includes(command))fail('Unknown human-expected command.');
- const options={},files=[],allowed={import:['root','asset','operator-confirmed','migrate-private-v1'],list:['root'],verify:['root'],compare:['root','values-only']}[command];
+ if(!['import','list','verify','compare','quarantine'].includes(command))fail('Unknown human-expected command.');
+ const options={},files=[],allowed={import:['root','asset','operator-confirmed','migrate-private-v1'],list:['root'],verify:['root'],compare:['root','values-only'],quarantine:['root','reason']}[command];
  for(let i=0;i<rest.length;i++){const arg=rest[i];if(!arg.startsWith('--')){files.push(arg);continue;}const key=arg.slice(2);
   if(!allowed.includes(key)||Object.hasOwn(options,key))fail('Unknown or repeated human-expected option.');
   if(['operator-confirmed','migrate-private-v1','values-only'].includes(key))options[key]=true;
@@ -234,6 +279,7 @@ export async function runHumanExpectedCli(args,write=text=>process.stdout.write(
  let result;if(command==='import'){if(files.length!==2)fail('import requires a case ID and label file.');result=await importHumanExpected(files[0],files[1],opts);}
  else if(command==='list'){if(files.length>1)fail('list accepts at most one case ID.');result=await listHumanExpected({...opts,caseId:files[0]});}
  else if(command==='verify'){if(files.length!==1)fail('verify requires a registered label SHA.');result=await verifyHumanExpected(files[0],opts);}
+ else if(command==='quarantine'){if(files.length!==1||!options.reason)fail('quarantine requires a registered label SHA and reason.');result=await quarantineHumanExpected(files[0],options.reason,opts);}
  else{if(files.length!==2)fail('compare requires a registered label SHA and actual report.');result=await compareHumanExpected(files[0],files[1],opts);}
  write(JSON.stringify(result,null,2));return result.exitCode??0;
 }

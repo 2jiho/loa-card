@@ -1,4 +1,4 @@
-import type {Acquisition} from '../src/features/card-scanner/acquisition-client';
+import type {Acquisition} from '../src/features/card-scanner/acquisition/acquisition-client';
 
 export const PIPELINE_PROOF_FRAMES=30;
 export const PIPELINE_PROOF_MAX_START_SECONDS=10;

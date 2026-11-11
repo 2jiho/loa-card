@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createAcquisitionClient} from '../src/features/card-scanner/acquisition-client';
-import {pixelHash} from '../src/features/card-scanner/recording-frame-integrity';
+import {createAcquisitionClient} from '../src/features/card-scanner/acquisition/acquisition-client';
+import {pixelHash} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
 
 const tick=()=>new Promise<void>(resolve=>setImmediate(resolve));
 const input=(id=7,time=3.25)=>({pixels:Uint8Array.from([10,20,30,255,50,60,70,255]),width:2,height:1,binding:{sourceFrameId:id,captureTime:time}});

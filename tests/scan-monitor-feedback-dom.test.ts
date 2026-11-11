@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {commitScanMonitorFeedback} from '../src/features/card-scanner/scan-monitor-feedback-dom';
-import type {ScannerFeedback,FeedbackDomBinding} from '../src/features/card-scanner/scanner-feedback';
-import type {ScanMonitorState} from '../src/features/card-scanner/scan-monitor-store';
+import {commitScanMonitorFeedback} from '../src/features/card-scanner/ui/scan-monitor-feedback-dom';
+import type {ScannerFeedback,FeedbackDomBinding} from '../src/features/card-scanner/ui/scanner-feedback';
+import type {ScanMonitorState} from '../src/features/card-scanner/ui/scan-monitor-store';
 
 const rectangle=(left=20,top=20,width=10,height=10)=>({left,top,width,height,right:left+width,bottom:top+height}) as DOMRect;
 class OwnerDocument{

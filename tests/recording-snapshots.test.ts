@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DebugRecorder } from "../src/features/card-scanner/debug-capture";
-import type { DebugCapture } from "../src/features/card-scanner/debug-capture";
-import { recorderSnapshotParts } from "../src/features/card-scanner/recording-snapshots";
+import { DebugRecorder } from "../src/features/card-scanner/reproduction/debug-capture";
+import type { DebugCapture } from "../src/features/card-scanner/reproduction/debug-capture";
+import { recorderSnapshotParts } from "../src/features/card-scanner/reproduction/recording-snapshots";
 
 test("initial scanning sees the same archived and current PNG parts as file replay", async () => {
   const archive = new Map<number, DebugCapture>();

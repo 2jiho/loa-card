@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createEncodedPixelResidual,MAX_ENCODED_PIXEL_RESIDUAL_EDITS,restoreEncodedPixels} from '../src/features/card-scanner/encoded-pixel-residual';
-import {MAX_FRAME_BYTES,pixelHash} from '../src/features/card-scanner/exact-recording-codec';
+import {createEncodedPixelResidual,MAX_ENCODED_PIXEL_RESIDUAL_EDITS,restoreEncodedPixels} from '../src/features/card-scanner/reproduction/encoded-pixel-residual';
+import {MAX_FRAME_BYTES,pixelHash} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 
 const base=()=>Uint8Array.from([10,20,30,255,40,50,60,255,70,80,90,255,100,110,120,255]);
 const changed=()=>{const result=base();result[0]=9;result[7]=254;result[15]=0;return result;};

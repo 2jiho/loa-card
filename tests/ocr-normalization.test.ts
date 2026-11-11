@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { normalizeName, matchCardName } from "../src/features/card-scanner/card-dictionary.ts";
-import { confirmName } from "../src/features/card-scanner/name-confidence.ts";
-import { normalizeNumericOcr } from "../src/features/card-scanner/ocr-normalization.ts";
-import { parseExtraCopies, parseInventoryTotal } from "../src/features/card-scanner/ocr-values.ts";
-import { parseCounterEvidence } from "../src/features/card-scanner/counter-evidence.ts";
-import { parseGrowthPoints } from "../src/features/card-scanner/capture-metadata.ts";
+import { normalizeName, matchCardName } from "../src/features/card-scanner/recognition/card-dictionary.ts";
+import { confirmName } from "../src/features/card-scanner/recognition/name-confidence.ts";
+import { normalizeNumericOcr } from "../src/features/card-scanner/recognition/ocr-normalization.ts";
+import { parseExtraCopies, parseInventoryTotal } from "../src/features/card-scanner/recognition/ocr-values.ts";
+import { parseCounterEvidence } from "../src/features/card-scanner/recognition/counter-evidence.ts";
+import { parseGrowthPoints } from "../src/features/card-scanner/recognition/capture-metadata.ts";
 
 test("name normalization composes jamo, removes invisible spacing and preserves catalog digits", () => {
   assert.equal(normalizeName("니아\u200b"), "니아");

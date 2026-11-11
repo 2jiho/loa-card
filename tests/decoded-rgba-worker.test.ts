@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDecodedRgbaWorkerRuntime} from '../src/features/card-scanner/decoded-rgba-worker';
-import type {RgbaDecodeInput,RgbaDecodePlatform,RgbaDecodeSample,RgbaDecodeTrack,RgbaNativeFrame} from '../src/features/card-scanner/decoded-rgba-worker';
-import {pixelHash} from '../src/features/card-scanner/exact-recording-codec';
+import {createDecodedRgbaWorkerRuntime} from '../src/features/card-scanner/acquisition/decoded-rgba-worker';
+import type {RgbaDecodeInput,RgbaDecodePlatform,RgbaDecodeSample,RgbaDecodeTrack,RgbaNativeFrame} from '../src/features/card-scanner/acquisition/decoded-rgba-worker';
+import {pixelHash} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 
 const ticks=async()=>{for(let index=0;index<8;index++)await Promise.resolve();};
 function deferred<T>(){let resolve!:(value:T)=>void,reject!:(error:unknown)=>void;const promise=new Promise<T>((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}

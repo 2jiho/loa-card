@@ -1,13 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {entryParts,executionSummary} from '../src/features/card-scanner/exact-recording-codec';
-import {MAX_SCROLL_CAPTURE_FACT_BYTES,parseScrollCaptureFact,parseInventoryHeaderFact} from '../src/features/card-scanner/scroll-capture-diagnostic';
-import {ScanGrid} from '../src/features/card-scanner/scan-grid';
-import {recordScanGrid,hashScanGridReplay,scanGridReplaySnapshot} from '../src/features/card-scanner/scan-grid-command';
-import {InventoryEvidence,serializeInventorySeed,hashInventoryEvidence} from '../src/features/card-scanner/inventory-evidence';
-import {InputDecisionReplay} from '../src/features/card-scanner/live-input-decision-replay';
-import {UnknownLifecycle,hashUnknownLifecycle} from '../src/features/card-scanner/unknown-lifecycle';
-import {UNKNOWN_LIFECYCLE_LIMITS} from '../src/features/card-scanner/unknown-lifecycle-types';
+import {entryParts,executionSummary} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {MAX_SCROLL_CAPTURE_FACT_BYTES,parseScrollCaptureFact,parseInventoryHeaderFact} from '../src/features/card-scanner/session/scroll-capture-diagnostic';
+import {ScanGrid} from '../src/features/card-scanner/session/scan-grid';
+import {recordScanGrid,hashScanGridReplay,scanGridReplaySnapshot} from '../src/features/card-scanner/session/scan-grid-command';
+import {InventoryEvidence,serializeInventorySeed,hashInventoryEvidence} from '../src/features/card-scanner/session/inventory-evidence';
+import {InputDecisionReplay} from '../src/features/card-scanner/reproduction/live-input-decision-replay';
+import {UnknownLifecycle,hashUnknownLifecycle} from '../src/features/card-scanner/session/unknown-lifecycle';
+import {UNKNOWN_LIFECYCLE_LIMITS} from '../src/features/card-scanner/session/unknown-lifecycle-types';
 
 const signal=()=>new AbortController().signal;
 const source={sessionId:'exact-scroll',processingFrame:9,acquisitionFrameId:7,canonicalSourceFrameId:3,

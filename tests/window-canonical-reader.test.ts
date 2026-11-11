@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CanonicalFrameIndex,type CanonicalFrameCommit} from '../src/features/card-scanner/canonical-frame-index';
-import {readCanonicalFrame} from '../src/features/card-scanner/canonical-frame-reader';
-import {inspectExactPrefix} from '../src/features/card-scanner/exact-recording-prefix';
-import {entryParts,packPixels,fastCompress,pixelHash,type ExactFrame} from '../src/features/card-scanner/exact-recording-codec';
-import {RGBA_WINDOW_CODEC,RGBA_WINDOW_POLICY,windowWorkingSet} from '../src/features/card-scanner/rgba-window-policy';
-import type {BoundedReadSource} from '../src/features/card-scanner/generic-bounded-input';
+import {CanonicalFrameIndex,type CanonicalFrameCommit} from '../src/features/card-scanner/reproduction/canonical-frame-index';
+import {readCanonicalFrame} from '../src/features/card-scanner/reproduction/canonical-frame-reader';
+import {inspectExactPrefix} from '../src/features/card-scanner/reproduction/exact-recording-prefix';
+import {entryParts,packPixels,fastCompress,pixelHash,type ExactFrame} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {RGBA_WINDOW_CODEC,RGBA_WINDOW_POLICY,windowWorkingSet} from '../src/features/card-scanner/reproduction/rgba-window-policy';
+import type {BoundedReadSource} from '../src/features/card-scanner/capture/generic-bounded-input';
 
 const signal=()=>new AbortController().signal;
 const tags={codec:RGBA_WINDOW_CODEC,policy:RGBA_WINDOW_POLICY};

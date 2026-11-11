@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createAcquisitionClient} from '../src/features/card-scanner/acquisition-client';
-import type {Layout} from '../src/features/card-scanner/detector';
+import {createAcquisitionClient} from '../src/features/card-scanner/acquisition/acquisition-client';
+import type {Layout} from '../src/features/card-scanner/acquisition/detector';
 
 test('local crop opt-in forwards only normal requests and materializes mixed output with cancellation cleanup',async()=>{
  const names=['Worker','OffscreenCanvas','createImageBitmap','document','ImageData','VideoFrame'];

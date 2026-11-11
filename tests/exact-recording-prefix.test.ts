@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {entryParts} from '../src/features/card-scanner/exact-recording-codec';
-import {inspectExactPrefix} from '../src/features/card-scanner/exact-recording-prefix';
+import {entryParts} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {inspectExactPrefix} from '../src/features/card-scanner/reproduction/exact-recording-prefix';
 const signal=()=>new AbortController().signal;
 const event=(seq:number)=>new Blob(entryParts({kind:'event',seq,time:seq,type:'fact',value:{}}));
 const frame=(id:number,key:boolean)=>new Blob(entryParts({kind:'frame',id,time:id,width:2,height:2,key,

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { recordingBitrate } from "../src/features/card-scanner/capture-settings";
+import { recordingBitrate } from "../src/features/card-scanner/capture/capture-settings";
 test("capture encoder scales its budget for sharp text at higher resolutions and frame rates", () => {
   assert.equal(recordingBitrate({}), 12_000_000);
   assert.equal(recordingBitrate({ width: 2560, height: 1440, frameRate: 30 }), 16_588_800);

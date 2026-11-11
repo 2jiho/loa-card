@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createDebugBundle, isDebugBundle, indexDebugBundle, readDebugBundlePart, readContinuousRecording } from "../src/features/card-scanner/debug-bundle";
-import type { DebugCapture } from "../src/features/card-scanner/debug-capture";
+import { createDebugBundle, isDebugBundle, indexDebugBundle, readDebugBundlePart, readContinuousRecording } from "../src/features/card-scanner/reproduction/debug-bundle";
+import type { DebugCapture } from "../src/features/card-scanner/reproduction/debug-capture";
 const part = (index: number): DebugCapture => ({ kind: "loacard-capture", version: 1, createdAt: "2026-10-03",
   source: "screen", rowMode: "stable", captureOnly: true, seed: [], recordingId: "test", part: index,
   frames: [{ image: "data:image/png;base64,AAAA", time: index, elapsed: index * 100 }], truncated: false });

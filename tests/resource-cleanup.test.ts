@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {initializeOwnedResource,onceDisposer,settleDisposals} from '../src/features/card-scanner/resource-cleanup';
+import {initializeOwnedResource,onceDisposer,settleDisposals} from '../src/features/card-scanner/capture/resource-cleanup';
 
 function deferred<T=void>(){
   let resolve!:(value:T|PromiseLike<T>)=>void,reject!:(error:unknown)=>void;

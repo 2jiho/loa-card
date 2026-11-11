@@ -1,5 +1,5 @@
-import type { Reference } from '../../src/features/card-scanner/recognizer';
-import { normalizeName } from '../../src/features/card-scanner/card-dictionary';
+import type { Reference } from '../../src/features/card-scanner/recognition/recognizer';
+import { normalizeName } from '../../src/features/card-scanner/recognition/card-dictionary';
 export interface PortraitEvidence { upper: number; lower: number; correlation: number; margin: number;
  region?: 'above-badge'; left?: number; right?: number }
 export interface PortraitTextEvidence { rawText?: string; ocrConfidence: number; score: number; gap: number;

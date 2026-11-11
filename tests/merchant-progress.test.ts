@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {merchants,merchantProgress,remainingMerchantCopies,merchantListText,merchantCardIssues} from '../src/features/merchants/merchant-progress';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 const make=(id:string,awakening=5,extraCopies=0):ScannedCard=>({id,name:id,awakening,extraCopies,countReliable:true,review:[],confidence:1,image:'',time:0,observations:1});
 
 test('card-list references distinguish missing cards from uncertain owned observations without inventing counts',()=>{

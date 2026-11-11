@@ -2,8 +2,8 @@ import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {parseRunStateTrace} from '../dev/run-state-trace.ts';
-import {ScanGrid} from '../src/features/card-scanner/scan-grid.ts';
-import {applyScanGridCommand} from '../src/features/card-scanner/scan-grid-command.ts';
+import {ScanGrid} from '../src/features/card-scanner/session/scan-grid.ts';
+import {applyScanGridCommand} from '../src/features/card-scanner/session/scan-grid-command.ts';
 
 const stats=values=>{
   values.sort((a,b)=>a-b);

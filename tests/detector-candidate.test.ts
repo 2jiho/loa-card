@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createDetector} from '../src/features/card-scanner/detector';
-import type {DetectorPlatform} from '../src/features/card-scanner/detector';
-import {recordDetectorStage,type DetectorProfile} from '../src/features/card-scanner/detector-profile';
+import {createDetector} from '../src/features/card-scanner/acquisition/detector';
+import type {DetectorPlatform} from '../src/features/card-scanner/acquisition/detector';
+import {recordDetectorStage,type DetectorProfile} from '../src/features/card-scanner/acquisition/detector-profile';
 
 /** Synthetic CV scores isolate the coarse/native acceptance contract. Real
  * translated screenshot checks separately exercise the OpenCV computation. */

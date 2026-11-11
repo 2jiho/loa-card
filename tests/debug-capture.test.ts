@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DebugRecorder, parseDebugCapture, MAX_DEBUG_FRAMES, assertNextDebugPart } from "../src/features/card-scanner/debug-capture";
+import { DebugRecorder, parseDebugCapture, MAX_DEBUG_FRAMES, assertNextDebugPart } from "../src/features/card-scanner/reproduction/debug-capture";
 
 const settings = { source: "screen" as const, rowMode: "all" as const, captureOnly: false, seed: [] };
 const frame = { image: "data:image/png;base64,AAAA", time: 0, elapsed: 0 };

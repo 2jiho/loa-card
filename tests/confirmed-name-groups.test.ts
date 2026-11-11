@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ConfirmedNameGroups } from '../src/features/card-scanner/confirmed-name-groups';
+import { ConfirmedNameGroups } from '../src/features/card-scanner/session/confirmed-name-groups';
 
 test('late recovery timeout stays resolved after a newer read of the same observation group', () => {
   const names = new ConfirmedNameGroups();

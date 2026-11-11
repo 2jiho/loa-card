@@ -1,4 +1,4 @@
-import {createLiveInputAdmission,applyLiveInputAdmissionFact} from '../src/features/card-scanner/live-input-admission.ts';
+import {createLiveInputAdmission,applyLiveInputAdmissionFact} from '../src/features/card-scanner/capture/live-input-admission.ts';
 
 /** Replay the actual admission policy; skipped callbacks contain no retained pixels. */
 export function analyzeInputAdmission(trace) {

@@ -2,11 +2,13 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createMaskedMatcher,rarityHint} from '../dev/recognition-experiment/masked-matcher.ts';
 import {alignCardBorders,visibleIdentity} from '../dev/recognition-experiment/geometry.ts';
-import {consensus} from '../src/features/card-scanner/consensus.ts';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+import {consensus} from '../src/features/card-scanner/recognition/consensus.ts';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 import {identityObservation} from '../dev/recognition-experiment/identity-observation.ts';
-import {CaptureObservations} from '../src/features/card-scanner/capture-quality.ts';
+import {CaptureObservations} from '../src/features/card-scanner/acquisition/capture-quality.ts';
 
+// Synthetic closed-set inputs reuse their generated pixels in the atlas.
+// These tests exercise matcher behavior, not real-world recognition accuracy.
 function fixture() {
   let seed=19;
   const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed>>>24;};
@@ -37,7 +39,7 @@ test('a false rarity hint cannot remove the correct identity or its shared-artwo
   assert.equal(createMaskedMatcher(cards,{...atlas,cards:{...atlas.cards,b:atlas.cards.a}})(input),null);
 });
 
-test('blank, random backgrounds and one matching half do not become accepted identities',()=>{
+test('a blank, 50 seeded random backgrounds and one partial synthetic match remain unconfirmed',()=>{
   const {pixels,cards,atlas}=fixture(),match=createMaskedMatcher(cards,atlas);
   assert.equal(match({pixels:new Uint8Array(pixels.length).fill(90),width:48,height:64}),null);
   let seed=231;

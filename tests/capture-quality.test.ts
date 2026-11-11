@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { insideCard, inspectCapture, CaptureObservations, sameCapture, sameFieldObservation, settledFields } from "../src/features/card-scanner/capture-quality";
+import { insideCard, inspectCapture, CaptureObservations, sameCapture, sameFieldObservation, settledFields } from "../src/features/card-scanner/acquisition/capture-quality";
 
 test('field comparison preserves strict budgets at every field boundary',()=>{
  const a=new Uint8Array(3240),b=a.slice();

@@ -1,8 +1,8 @@
-import {createExactRecording} from '../src/features/card-scanner/exact-recording';
-import {createCanonicalCapture} from '../src/features/card-scanner/canonical-capture';
-import {exactReplayFrames} from '../src/features/card-scanner/exact-recording-codec';
-import {createReproductionBundle,openReproduction} from '../src/features/card-scanner/scan-reproduction';
-import type {ScannerInputProvenance} from '../src/features/card-scanner/scanner-input-frame';
+import {createExactRecording} from '../src/features/card-scanner/reproduction/exact-recording';
+import {createCanonicalCapture} from '../src/features/card-scanner/reproduction/canonical-capture';
+import {exactReplayFrames} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {createReproductionBundle,openReproduction} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import type {ScannerInputProvenance} from '../src/features/card-scanner/capture/scanner-input-frame';
 
 type CorpusCase={id:string;name:string;kind:string;inputs:{url:string}[]};
 type NativeSource=ImageBitmap|VideoFrame;

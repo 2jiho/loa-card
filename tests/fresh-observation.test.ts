@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {FreshObservations} from '../src/features/card-scanner/fresh-observation';
+import {FreshObservations} from '../src/features/card-scanner/session/fresh-observation';
 
 test('new stable pixels reopen exhausted unresolved work, not active work or exact repeats', () => {
   const gate = new FreshObservations<object>(), observation = {};

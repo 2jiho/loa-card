@@ -21,7 +21,7 @@ export function recognitionExperiment():Plugin {
       }
     }
     if(file.endsWith('/card-acquisition.ts')) {
-      code=replace(code,'import { alignCardBorders } from "./card-borders";',
+      code=replace(code,'import { alignCardBorders } from "../../src/features/card-scanner/acquisition/card-borders";',
         'import { alignCardBorders, visibleIdentity } from "/dev/recognition-experiment/geometry";\nimport {identityObservation} from "/dev/recognition-experiment/identity-observation";');
       code=replace(code,'const result:Cell =',`if(complete&&!intact&&labelVisible&&region&&quality.reason.startsWith('카드 테두리 불완전')&&
         visibleIdentity(region.data,region.width,region.height,{...content,x:content.x-left,y:content.y-top},layout.scale)) {

@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { auditPortraitCompetitors } from './audit-portrait-competitors.mjs';
 const read = async path => JSON.parse(await readFile(path, 'utf8'));
 const review = await read('data-review.json');
 const sources = {};
@@ -12,6 +13,13 @@ for (const [path, expected] of Object.entries(review.files)) {
 }
 const catalog = await read('public/scanner/cards.json'), growth = await read('public/growth/master.json');
 const raid = await read('public/raid/master.json'), merchants = await read('src/features/merchants/merchants.json');
+auditPortraitCompetitors(
+  await read('public/scanner/portrait-competitors.json'),
+  await read('src/features/card-scanner/portrait-competitor-pins.json'),
+  catalog,
+  await read('public/scanner/artwork-details.json'),
+  await read('public/scanner/screen-artwork-details.json'),
+);
 const byId = new Map(catalog.cards.map(card => [card.id, card]));
 if (byId.size !== catalog.cards.length) throw new Error('Duplicate catalog IDs');
 for (const card of [...growth.cards, ...raid.cards, ...merchants.groups.flatMap(group => group.cards)]) {

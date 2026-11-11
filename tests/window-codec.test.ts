@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {entryParts,exactEntries,exactPixels,exactReplayFrames,executionSummary,fastCompress,packPixels,pixelHash,type ExactFrame} from '../src/features/card-scanner/exact-recording-codec';
-import {RGBA_WINDOW_CODEC,RGBA_WINDOW_POLICY} from '../src/features/card-scanner/rgba-window-policy';
+import {entryParts,exactEntries,exactPixels,exactReplayFrames,executionSummary,fastCompress,packPixels,pixelHash,type ExactFrame} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {RGBA_WINDOW_CODEC,RGBA_WINDOW_POLICY} from '../src/features/card-scanner/reproduction/rgba-window-policy';
 
 const signal=()=>new AbortController().signal;
 async function archive(count=3,window=true,extra?:{badHash?:number;missingPolicy?:number;legacyAt?:number;ninthDelta?:boolean}){

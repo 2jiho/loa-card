@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {preparedRecoveryPrefetch,type RecoveryPreparationInput} from '../src/features/card-scanner/prepared-recovery-prefetch';
-import type {PreparedAcquisitionInput} from '../src/features/card-scanner/source-raster-receipt';
-import {withMediaLineage,type MediaDecodedFrame,type MediaLineageFact} from '../src/features/card-scanner/media-lineage';
-import {mergeFrames} from '../src/features/card-scanner/merge-frames';
+import {preparedRecoveryPrefetch,type RecoveryPreparationInput} from '../src/features/card-scanner/acquisition/prepared-recovery-prefetch';
+import type {PreparedAcquisitionInput} from '../src/features/card-scanner/acquisition/source-raster-receipt';
+import {withMediaLineage,type MediaDecodedFrame,type MediaLineageFact} from '../src/features/card-scanner/capture/media-lineage';
+import {mergeFrames} from '../src/features/card-scanner/session/merge-frames';
+import {createRestoredPixelCapabilities} from '../src/features/card-scanner/acquisition/restored-pixel-capability';
+import {pixelHash} from '../src/features/card-scanner/reproduction/recording-frame-integrity';
 
 const tick=()=>new Promise<void>(resolve=>setImmediate(resolve));
 function deferred<T>(){let resolve!:(value:T)=>void,reject!:(error:unknown)=>void;const promise=new Promise<T>((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
@@ -124,6 +126,72 @@ test('canonical source keeps ID, hash, mutable analysis reference and owned RGBA
  assert.equal(s.jobs.length,0);assert.equal(s.readyCalls,0);assert.equal((first.element as unknown as Canvas).draws,0);
  const second=(await frames.next()).value!;assert.equal(second.canonicalFrameId,8);assert.equal(second.rgba![0],2);await frames.return();
  assert.equal(frames.stats.canonical,2);assert.equal(frames.stats.prepared,0);assert.equal(frames.stats.retainedBytes,0);
+});
+
+test('optional canonical owner consumes the actual restored token before prefetch moves the pixels',async()=>{
+ const signal=new AbortController().signal,owner=createRestoredPixelCapabilities({maxFrames:2,lifetimeMs:10000,maxWorkingBytes:32});
+ const pixels=new Uint8ClampedArray(16).fill(7),hash=await pixelHash(new Uint8Array(pixels));
+ const identity={sourceFrameId:7,time:0,width:2,height:2,hash};
+ const issued=await owner.issue(pixels,identity,signal,()=>true),s=sourceScope(),c=canvases();
+ const input={element:{width:2,height:2} as HTMLCanvasElement,time:0,percent:100,canonicalFrameId:7,
+  rgba:issued.pixels,sourceHash:hash,restoredPixelCapability:issued.token};
+ const upstream={async *[Symbol.asyncIterator](){yield input;}};
+ const frames=preparedRecoveryPrefetch(upstream,s.sources,signal,{elapsed:()=>0,canvasFactory:c.factory,
+  consumeRestoredPixelCapability:owner.consume});
+ const frame=(await frames.next()).value!;
+ assert.deepEqual([...frame.rgba!],new Array(16).fill(7));assert.equal(issued.pixels.byteLength,0);
+ assert.equal(frame.canonicalFrameId,7);assert.equal(frame.sourceHash,hash);
+ assert.equal(Object.hasOwn(frame,'restoredPixelCapability'),false,'the input token cannot be reused downstream');
+ assert.equal(await owner.consume(issued.token,identity,signal),undefined);assert.equal(s.jobs.length,0);
+ await frames.return();assert.equal(frames.stats.retainedBytes,0);assert.equal(frames.stats.restoredTransfers,1);owner.close();
+});
+
+test('opt-in canonical handoff fails closed when its token is missing',async()=>{
+ const p=provider({count:1,canonical:true}),s=sourceScope(),c=canvases(),owner=createRestoredPixelCapabilities({maxFrames:1,lifetimeMs:10000,maxWorkingBytes:32});
+ const frames=preparedRecoveryPrefetch(p.frames,s.sources,new AbortController().signal,{elapsed:()=>0,canvasFactory:c.factory,consumeRestoredPixelCapability:owner.consume});
+ await assert.rejects(frames.next(),/capability missing/);assert.equal(frames.stats.restoredTransfers,0);
+ assert.equal(frames.stats.retainedBytes,0);owner.close();
+});
+
+test('restored capability requires its owner and never falls back after invalid ownership',async()=>{
+ const signal=new AbortController().signal,owner=createRestoredPixelCapabilities({maxFrames:4,lifetimeMs:10000,maxWorkingBytes:32});
+ const other=createRestoredPixelCapabilities({maxFrames:3,lifetimeMs:10000,maxWorkingBytes:32});
+ const pixels=new Uint8ClampedArray(16).fill(9),hash=await pixelHash(new Uint8Array(pixels)),identity={sourceFrameId:7,time:0,width:2,height:2,hash};
+ for(const scenario of ['no-owner','wrong-owner','wrong-id','not-canonical'] as const){
+  const issued=await owner.issue(pixels,identity,signal,()=>true),s=sourceScope(),c=canvases();
+  const input={element:{width:2,height:2} as HTMLCanvasElement,time:0,percent:100,
+   ...(scenario==='not-canonical'?{}:{canonicalFrameId:scenario==='wrong-id'?8:7}),
+   rgba:issued.pixels,sourceHash:hash,restoredPixelCapability:issued.token};
+  const upstream={async *[Symbol.asyncIterator](){yield input;}};
+  const frames=preparedRecoveryPrefetch(upstream,s.sources,signal,{elapsed:()=>0,canvasFactory:c.factory,
+   ...(scenario==='no-owner'?{}:{consumeRestoredPixelCapability:scenario==='wrong-owner'?other.consume:owner.consume})});
+  await assert.rejects(frames.next(),/Invalid restored pixel|Restored pixel transfer/);
+  assert.equal(frames.stats.retainedBytes,0);assert.equal(s.jobs.length,0);
+  if(scenario==='wrong-id')assert.equal(await owner.consume(issued.token,identity,signal),undefined,'a mismatched attempt cannot retry');
+ }
+ owner.close();other.close();
+});
+
+test('a shadowed byteLength cannot fake transfer of the actual source buffer',async()=>{
+ const signal=new AbortController().signal,source=new Uint8Array(16).fill(3),hash=await pixelHash(source);
+ Object.defineProperty(source,'byteLength',{value:0});
+ const input={element:{width:2,height:2} as HTMLCanvasElement,time:0,percent:100,
+  canonicalFrameId:7,rgba:source,sourceHash:hash,restoredPixelCapability:{}};
+ const upstream={async *[Symbol.asyncIterator](){yield input;}};
+ const s=sourceScope(),c=canvases(),frames=preparedRecoveryPrefetch(upstream,s.sources,signal,{elapsed:()=>0,canvasFactory:c.factory,
+  consumeRestoredPixelCapability:async (_token,identity)=>({pixels:new Uint8Array(16),identity})});
+ await assert.rejects(frames.next(),/ownership/);assert.equal(frames.stats.retainedBytes,0);
+});
+
+test('legacy canonical transfer uses the real buffer even if its buffer property is shadowed',async()=>{
+ const signal=new AbortController().signal,source=new Uint8Array(16).fill(8),realBuffer=source.buffer;
+ Object.defineProperty(source,'buffer',{value:new ArrayBuffer(16)});
+ const input={element:{width:2,height:2} as HTMLCanvasElement,time:0,percent:100,
+  canonicalFrameId:7,rgba:source,sourceHash:'a'.repeat(64)};
+ const upstream={async *[Symbol.asyncIterator](){yield input;}};
+ const s=sourceScope(),c=canvases(),frames=preparedRecoveryPrefetch(upstream,s.sources,signal,{elapsed:()=>0,canvasFactory:c.factory});
+ const frame=(await frames.next()).value!;assert.deepEqual([...frame.rgba!],new Array(16).fill(8));
+ assert.equal(realBuffer.byteLength,0);await frames.return();
 });
 
 test('one large next frame waits for the current owner instead of dropping input or widening its byte cap',async()=>{

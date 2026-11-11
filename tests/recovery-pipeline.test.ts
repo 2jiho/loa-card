@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {runRecoveryPipeline} from '../src/features/card-scanner/recovery-pipeline';
+import {runRecoveryPipeline} from '../src/features/card-scanner/session/recovery-pipeline';
 
 function deferred<T=void>() {
   let resolve!:(value:T|PromiseLike<T>)=>void,reject!:(error:unknown)=>void;

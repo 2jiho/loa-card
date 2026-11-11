@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {startOptionalRecording,shouldRecordContinuous} from '../src/features/card-scanner/optional-recording';
+import {startOptionalRecording,shouldRecordContinuous} from '../src/features/card-scanner/reproduction/optional-recording';
 
 test('basic diagnostics do not record video; detailed capture is explicitly selected',()=>{
  for(const development of [true,false]){

@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {RunStateTrace,replayRunStateTrace} from '../dev/run-state-trace';
-import {entryParts,executionSummary} from '../src/features/card-scanner/exact-recording-codec';
-import {FreshnessEvidence,hashFreshnessEvidence} from '../src/features/card-scanner/freshness-evidence';
-import {FRESHNESS_EVIDENCE_LIMITS} from '../src/features/card-scanner/freshness-evidence-types';
-import {InventoryEvidence,inventoryEventData} from '../src/features/card-scanner/inventory-evidence';
-import type {InventorySource} from '../src/features/card-scanner/inventory-evidence';
-import type {ScannedCard} from '../src/features/card-scanner/recognizer';
+import {entryParts,executionSummary} from '../src/features/card-scanner/reproduction/exact-recording-codec';
+import {FreshnessEvidence,hashFreshnessEvidence} from '../src/features/card-scanner/session/freshness-evidence';
+import {FRESHNESS_EVIDENCE_LIMITS} from '../src/features/card-scanner/session/freshness-evidence-types';
+import {InventoryEvidence,inventoryEventData} from '../src/features/card-scanner/session/inventory-evidence';
+import type {InventorySource} from '../src/features/card-scanner/session/inventory-evidence';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 
 const signal=()=>AbortSignal.timeout(30_000);
 const source:InventorySource={sessionId:'fresh-recording',frameId:1,observationId:'first',captureOrder:10,

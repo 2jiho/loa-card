@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {loadComparisonOriginal,MAX_COMPARISON_SOURCE_BYTES} from '../dev/comparison-original';
-import {pixelHash} from '../src/features/card-scanner/exact-recording-codec';
+import {pixelHash} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 
 test('comparison source verifies the exact bounded original, preserving its bytes and type',async()=>{
  const bytes=new Uint8Array([0,1,2,255]),sha256=await pixelHash(bytes);

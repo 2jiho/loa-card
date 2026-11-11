@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
-import {guardScan} from '../src/features/card-scanner/scan-watchdog';
-import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/scanner-name-configuration';
-import type {PreparedScanner} from '../src/features/card-scanner/scanner-preparation';
-import type {ScannerState} from '../src/features/card-scanner/scanner';
+import {guardScan} from '../src/features/card-scanner/ui/scan-watchdog';
+import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/session/scanner-name-configuration';
+import type {PreparedScanner} from '../src/features/card-scanner/session/scanner-preparation';
+import type {ScannerState} from '../src/features/card-scanner/orchestration/scanner';
 
 const continued={version:1,rawResultPolicy:'continue'} as const;
 const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};};
@@ -16,8 +16,8 @@ let sequence=0;
 
 /** Real preparation ownership/claim/release code, with model-free resource
  * factories. Real guardScan drives cancellation and actual-settlement timing. */
-async function fixture(work:(value:{create:typeof import('../src/features/card-scanner/scanner-name-operation').createScannerNameOperation;
-  prepare:()=>Promise<PreparedScanner>;preparation:typeof import('../src/features/card-scanner/scanner-preparation');
+async function fixture(work:(value:{create:typeof import('../src/features/card-scanner/session/scanner-name-operation').createScannerNameOperation;
+  prepare:()=>Promise<PreparedScanner>;preparation:typeof import('../src/features/card-scanner/session/scanner-preparation');
   state:{resources:Resource[];signals:AbortSignal[];cleanupGate:ReturnType<typeof deferred>|null;cleanupFailure:string|null;finished:number}})=>Promise<void>){
   const id=++sequence,key=`__scannerNameOperation${id}`,globals=globalThis as unknown as Record<string,unknown>;
   const previousNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
@@ -35,9 +35,9 @@ async function fixture(work:(value:{create:typeof import('../src/features/card-s
     state.signals.push(signal);return resource('acquisition');},visual:(signal:AbortSignal)=>{
     state.signals.push(signal);return resource('visual');}};
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{hardwareConcurrency:1}});
-  const operationUrl=new URL(`../src/features/card-scanner/scanner-name-operation.ts?operation-test=${id}`,import.meta.url).href;
-  const preparationUrl=new URL(`../src/features/card-scanner/scanner-preparation.ts?operation-test=${id}`,import.meta.url).href;
-  const dependencies:Record<string,string>={'./detector':'detector','./recognizer':'recognizer','./acquisition-client':'acquisition','./visual-client':'visual'};
+  const operationUrl=new URL(`../src/features/card-scanner/session/scanner-name-operation.ts?operation-test=${id}`,import.meta.url).href;
+  const preparationUrl=new URL(`../src/features/card-scanner/session/scanner-preparation.ts?operation-test=${id}`,import.meta.url).href;
+  const dependencies:Record<string,string>={'../acquisition/detector':'detector','../recognition/recognizer':'recognizer','../acquisition/acquisition-client':'acquisition','../recognition/visual-client':'visual'};
   const names:Record<string,string>={detector:'createDetector',recognizer:'createRecognizer',acquisition:'createAcquisitionClient',visual:'createVisualClient'};
   const hooks=registerHooks({resolve(specifier,context,next){
     if(context.parentURL===operationUrl&&specifier==='./scanner-preparation')return {url:preparationUrl,shortCircuit:true};
@@ -50,7 +50,7 @@ async function fixture(work:(value:{create:typeof import('../src/features/card-s
     return next(url,context);
   }});
   const pools:PreparedScanner[]=[];
-  let preparation:typeof import('../src/features/card-scanner/scanner-preparation')|undefined;
+  let preparation:typeof import('../src/features/card-scanner/session/scanner-preparation')|undefined;
   try{
     const operation=await import(operationUrl);preparation=await import(preparationUrl);const owned=preparation;
     await work({create:operation.createScannerNameOperation,preparation:owned,state,prepare:async()=>{
@@ -147,26 +147,26 @@ test('cancellation never frees active transferred resources, and late cleanup fe
 
 test('primary failure survives a failed joined cleanup and observers cannot replace it',async()=>{
   await fixture(async({create,prepare,state})=>{
-    const pool=await prepare(),primary=Error('primary recognition failed'),diagnostics:unknown[]=[];let settled=0;
+    const pool=await prepare(),primary=Error('primary recognition failed'),diagnostics:unknown[]=[];let settled=0,uncertain=0;
     state.cleanupFailure='reader';
     const operation=create({prepared:pool,development:false,input:{},run:async()=>{throw primary;},
-      diagnostic:error=>{diagnostics.push(error);throw Error('diagnostic observer');},onSettled:()=>{settled++;throw Error('settlement observer');}});
+      diagnostic:error=>{diagnostics.push(error);throw Error('diagnostic observer');},onSettled:()=>{settled++;throw Error('settlement observer');},onCleanupUncertain:()=>{uncertain++;}});
     await assert.rejects(guardScan({signal:new AbortController().signal,update:()=>{},sharing:()=>false,
       run:signal=>operation.run(signal),cancelResources:operation.cancel,onRunSettled:operation.settled}),error=>error===primary);
-    await turn();assert.equal(settled,1);assert.equal(diagnostics.length,1);assert.ok(diagnostics[0] instanceof AggregateError);
+    await turn();assert.equal(settled,0);assert.equal(uncertain,1);assert.equal(diagnostics.length,1);assert.ok(diagnostics[0] instanceof AggregateError);
     assert.equal(state.finished,state.resources.length);assert.ok(state.resources.every(resource=>resource.disposals===1));
   });
 });
 
-test('pre-abort cleanup rejection is observed and still releases settlement without an unhandled rejection',async()=>{
+test('pre-abort cleanup rejection is observed and leaves settlement gated without an unhandled rejection',async()=>{
   await fixture(async({create,prepare,state})=>{
-    const pool=await prepare();state.cleanupFailure='detector';let diagnostics=0,settled=0;
+    const pool=await prepare();state.cleanupFailure='detector';let diagnostics=0,settled=0,uncertain=0;
     const operation=create({prepared:pool,development:false,input:{},run:async()=>assert.fail('started'),
       diagnostic:async()=>{diagnostics++;throw Error('asynchronous diagnostic observer');},
-      onSettled:async()=>{settled++;throw Error('asynchronous settlement observer');}});
+      onSettled:async()=>{settled++;throw Error('asynchronous settlement observer');},onCleanupUncertain:()=>{uncertain++;}});
     await assert.rejects(guardScan({signal:AbortSignal.abort(),update:()=>{},sharing:()=>false,
       run:signal=>operation.run(signal),cancelResources:operation.cancel,onRunSettled:operation.settled}),{name:'AbortError'});
-    await turn();assert.equal(diagnostics,1);assert.equal(settled,1);assert.equal(state.finished,state.resources.length);
+    await turn();assert.equal(diagnostics,1);assert.equal(settled,0);assert.equal(uncertain,1);assert.equal(state.finished,state.resources.length);
   });
 });
 
