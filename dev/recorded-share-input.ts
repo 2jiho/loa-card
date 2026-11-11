@@ -51,6 +51,8 @@ async function getJson<T>(request:typeof fetch,url:string,signal:AbortSignal):Pr
 
 export async function prepareRecordedShareInput(options:{
   recordingId:string;target:HTMLVideoElement;signal:AbortSignal;base?:string;request?:typeof fetch;
+  /** End the share after this recorded time (seconds). */
+  untilSeconds?:number;
 }&RecordedShareScheduleOptions):Promise<RecordedShareInput> {
   const {target,signal,recordingId}=options,base=options.base??'/__rec',request=options.request??fetch;
   signal.throwIfAborted();
@@ -89,7 +91,7 @@ export async function prepareRecordedShareInput(options:{
   worker.onerror=event=>{const error=Error(event.message||'재생 워커 오류');rejectReady(error);if(!closed){cleanup();rejectCompletion(error);}};
 
   target.pause();target.muted=true;target.playsInline=true;target.srcObject=new MediaStream([generator]);
-  const init:ShareWorkerRequest={type:'init',base,recordingId,writable:generator.writable};
+  const init:ShareWorkerRequest={type:'init',base,recordingId,writable:generator.writable,...(options.untilSeconds!==undefined?{untilSeconds:options.untilSeconds}:{})};
   worker.postMessage(init,[generator.writable as unknown as Transferable]);
   await ready;
   signal.throwIfAborted();

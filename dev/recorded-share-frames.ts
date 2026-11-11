@@ -1,4 +1,6 @@
 import type {ScannerInputFrame} from '../src/features/card-scanner/capture/scanner-input-frame';
+import {createFrameSkipper,lumaThumbnail,THUMBNAIL_HEIGHT,THUMBNAIL_WIDTH} from '../src/features/card-scanner/capture/frame-similarity';
+import type {FrameSkipPolicy} from '../src/features/card-scanner/capture/frame-similarity';
 
 /** Development input: the frames of a server-side recording (docs/dev-recording.md)
  * in order, one at a time, as the scanner's sequential replay input.
@@ -17,7 +19,7 @@ export interface RecordedShareStream {
   /** Frames delivered to the consumer so far. */
   delivered():number;
   timings():readonly RecordedFrameTiming[];
-  /** Frames left out by `skipSimilar`. */
+  /** Frames left out by the skip policy. */
   skipped():number;
   frames():AsyncGenerator<ScannerInputFrame<HTMLCanvasElement>>;
 }
@@ -29,19 +31,13 @@ export interface RecordedShareStreamMeta {
 }
 interface Line {readonly seq:number;readonly deliveredAtMs:number}
 
-const THUMB_W=64,THUMB_H=36;
 let thumbCanvas:HTMLCanvasElement|undefined;
-/** 64x36 luma thumbnail of a canvas. */
+/** 256x144 luma thumbnail of a canvas (the size frame-similarity.ts compares). */
 function thumbnail(source:HTMLCanvasElement):Uint8Array {
-  thumbCanvas??=Object.assign(document.createElement('canvas'),{width:THUMB_W,height:THUMB_H});
+  thumbCanvas??=Object.assign(document.createElement('canvas'),{width:THUMBNAIL_WIDTH,height:THUMBNAIL_HEIGHT});
   const context=thumbCanvas.getContext('2d',{willReadFrequently:true})!;
-  context.imageSmoothingQuality='high';context.drawImage(source,0,0,THUMB_W,THUMB_H);
-  const rgba=context.getImageData(0,0,THUMB_W,THUMB_H).data,luma=new Uint8Array(THUMB_W*THUMB_H);
-  for(let i=0;i<luma.length;i++)luma[i]=(rgba[i*4]*299+rgba[i*4+1]*587+rgba[i*4+2]*114)/1000;
-  return luma;
-}
-function meanAbsDiff(a:Uint8Array,b:Uint8Array):number {
-  let sum=0;for(let i=0;i<a.length;i++)sum+=Math.abs(a[i]-b[i]);return sum/a.length;
+  context.imageSmoothingQuality='high';context.drawImage(source,0,0,THUMBNAIL_WIDTH,THUMBNAIL_HEIGHT);
+  return lumaThumbnail(context.getImageData(0,0,THUMBNAIL_WIDTH,THUMBNAIL_HEIGHT).data);
 }
 
 async function getJson<T>(request:typeof fetch,url:string,signal:AbortSignal):Promise<T> {
@@ -53,9 +49,8 @@ async function getJson<T>(request:typeof fetch,url:string,signal:AbortSignal):Pr
 export async function openRecordedShareStream(options:{recordingId:string;signal:AbortSignal;base?:string;request?:typeof fetch;
   /** Experiment: deliver only frames whose capture time (seconds) is listed. */
   only?:ReadonlySet<number>;
-  /** Experiment: skip a frame whose 64x36 luma thumbnail differs from the last
-   * frame that was delivered by at most this mean absolute difference (0..255). */
-  skipSimilar?:number}):Promise<RecordedShareStream> {
+  /** Experiment: skip frames that add little over the last delivered one (frame-similarity.ts). */
+  skip?:FrameSkipPolicy}):Promise<RecordedShareStream> {
   const {recordingId,signal}=options,base=options.base??'/__rec',request=options.request??fetch;
   if(typeof VideoFrame==='undefined')throw Error('이 브라우저는 VideoFrame을 지원하지 않습니다.');
   const root=`${base}/${encodeURIComponent(recordingId)}`;
@@ -76,7 +71,8 @@ export async function openRecordedShareStream(options:{recordingId:string;signal
     if(!Number.isSafeInteger(frameBytes)||frameBytes<=0||(format!=='i420'&&format!=='rgba'))throw Error('기록 프레임 형식을 알 수 없습니다.');
     const colorSpace=meta.colorSpace&&typeof meta.colorSpace==='object'?meta.colorSpace as VideoColorSpaceInit:undefined;
     const reader=response.body.getReader();
-    let parts:Uint8Array[]=[],bytes=0,index=0,lastThumb:Uint8Array|undefined;
+    let parts:Uint8Array[]=[],bytes=0,index=0;
+    const skipper=options.skip?createFrameSkipper(options.skip):undefined;
     try{
       for(;;){
         const {value,done}=await reader.read();
@@ -107,10 +103,8 @@ export async function openRecordedShareStream(options:{recordingId:string;signal
           // The browser's own YUV-to-RGB conversion, as for a live share.
           context.drawImage(frame,0,0);
           frame.close();
-          if(options.skipSimilar!==undefined){
-            const thumb=thumbnail(canvas);
-            if(lastThumb&&meanAbsDiff(thumb,lastThumb)<=options.skipSimilar){skipped++;index++;canvas.width=0;canvas.height=0;continue;}
-            lastThumb=thumb;
+          if(skipper){
+            if(skipper.decide(thumbnail(canvas)).skip){skipped++;index++;canvas.width=0;canvas.height=0;continue;}
           }
           index++;delivered++;
           const timing:RecordedFrameTiming={time:line.deliveredAtMs/1000,prepMs:performance.now()-prepStart,consumeMs:0};

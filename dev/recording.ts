@@ -6,6 +6,7 @@ import {openRecordedShareStream} from './recorded-share-frames';
 import type {RecordedShareInput} from './recorded-share-input';
 import {comparabilityIssues,diffRuns,summarizeRun,summarizeUnresolved} from './recording-runs';
 import type {RunCard,RunDeliveryLike,RunReport,RunSummary} from './recording-runs';
+import {parsePolicy} from '../src/features/card-scanner/capture/frame-similarity';
 import type {LiveTimelinePoint} from '../src/features/card-scanner/reproduction/live-run-report';
 import type {ContinuousRecording} from '../src/features/card-scanner/capture/continuous-capture';
 
@@ -99,6 +100,15 @@ function stageMeans(rows:readonly {located:boolean;copyMs:number;acquireMs:numbe
   return {located:mean(rows.filter(row=>row.located)),other:mean(rows.filter(row=>!row.located))};
 }
 
+/** Compact summary of the recovery probe: the first frame where the skip proof held. */
+function summarizeProbe(rows:readonly {frame:number;time:number;idle:boolean;completeProof:boolean;read:number;unresolved:number;finalExpected:number|null;tailFresh:boolean}[]) {
+  const first=rows.find(row=>row.completeProof),last=rows[rows.length-1];
+  return {frames:rows.length,firstProofFrame:first?.frame??null,firstProofTime:first?.time??null,
+    idleFrames:rows.filter(row=>row.idle).length,finalExpected:last?.finalExpected??null,tailFresh:last?.tailFresh??null,
+    lastRead:last?.read??null,lastUnresolved:last?.unresolved??null,
+    samples:rows.filter((_row,index)=>index%20===0).map(row=>({frame:row.frame,idle:row.idle,proof:row.completeProof,read:row.read,unresolved:row.unresolved}))};
+}
+
 function busy(value:boolean):void {startButton.disabled=value||!picked;stopButton.disabled=!value;}
 
 async function run():Promise<void> {
@@ -121,6 +131,7 @@ async function run():Promise<void> {
   let continuousRecording:ContinuousRecording|undefined;
   let frameTiming:RunReport['frameTiming'];
   const loops:{time:number;collectMs:number;drainMs:number;drained:number}[]=[];
+  const recoveryProbe:{frame:number;time:number;idle:boolean;completeProof:boolean;read:number;unresolved:number;expected:number|null;finalExpected:number|null;tailFresh:boolean}[]=[];
   const profiles:{time:number;located:boolean;copyMs:number;acquireMs:number;detectMs:number;timing?:Record<string,number>}[]=[];
   const runStarted=performance.now();
   // ?peek=name1,name2 adds those cards (with preview and count diagnostics) to the report's countReview.
@@ -153,7 +164,8 @@ async function run():Promise<void> {
         lines.forEach((line,index)=>{if(index%step===0||index===lines.length-1)only!.add(line.deliveredAtMs/1000);});
         subsetOf={run:`every ${step}th frame`,frames:only.size,of:lines.length};
       }
-      const skipSimilar=modeValue.startsWith('similar')?Number(modeValue.slice(7)):undefined;
+      // `skip:mean=1,block=6,force=8`: sequential replay that leaves out frames similar to the last processed one.
+      const skip=modeValue.startsWith('skip:')?parsePolicy(modeValue.slice(5)):undefined;
       if(modeValue==='subset'||modeValue==='located'){
         // Frames a full run admitted crops from, plus each one's predecessor
         // (the scanner compares a frame with the one before it for stability).
@@ -170,7 +182,7 @@ async function run():Promise<void> {
         });
         subsetOf={run:source.name,frames:only.size,of:lines.length};
       }
-      const stream=await openRecordedShareStream({recordingId,signal,...(only?{only}:{}),...(skipSimilar!==undefined?{skipSimilar}:{})});
+      const stream=await openRecordedShareStream({recordingId,signal,...(only?{only}:{}),...(skip?{skip}:{})});
       statusLine.textContent=only?`사용 프레임만 재실행 중… (${only.size}/${stream.frameCount})`:'순차 재실행 중…';
       await runScanner(document.createElement('video'),'screen',signal,onState,[],undefined,'all',undefined,false,
         {nameConfiguration:NORMAL_SCANNER_NAME_CONFIGURATION,shareRecording:'off',
@@ -178,6 +190,7 @@ async function run():Promise<void> {
           onFrameAdmitted:(captureTime:number)=>{if(!usedSeen.has(captureTime)){usedSeen.add(captureTime);usedTimes.push(captureTime);}},
           onFrameProfile:profile=>{profiles.push(profile);},
           onFrameLoop:loop=>{loops.push(loop);},
+          onRecoveryProbe:probe=>{recoveryProbe.push(probe);},
           onFrameLocated:(captureTime:number)=>{if(!locatedSeen.has(captureTime)){locatedSeen.add(captureTime);locatedTimes.push(captureTime);}},
           replay:{kind:'loacard-capture',version:1,createdAt:startedAt,source:'screen',rowMode:'all',captureOnly:false,seed:[],frames:[],truncated:false},
           replayInputs:stream.frames()});
@@ -190,14 +203,16 @@ async function run():Promise<void> {
           stages:stageMeans(profiles),
           loop:{located:loopMeans(loops.filter(row=>locatedSeen.has(row.time))),other:loopMeans(loops.filter(row=>!locatedSeen.has(row.time)))}};
       }
-      if(skipSimilar!==undefined)subsetOf={run:`skip frames similar to the last processed one (mean luma diff <= ${skipSimilar})`,frames:stream.delivered(),of:stream.frameCount};
-      delivery={meanLateMs:0,maxLateMs:0,lateOver33Ms:0,frames:stream.delivered(),declaredFrames:only?only.size:skipSimilar!==undefined?stream.delivered():stream.frameCount,mode:'sequential',
+      if(skip)subsetOf={run:`skip similar frames: ${modeValue.slice(5)}`,frames:stream.delivered(),of:stream.frameCount};
+      delivery={meanLateMs:0,maxLateMs:0,lateOver33Ms:0,frames:stream.delivered(),declaredFrames:only?only.size:skip?stream.delivered():stream.frameCount,mode:'sequential',
         recordingId,recordingComplete:stream.meta.complete,recordingSha256:stream.meta.sha256};
     }else{
-      input=await prepareRecordedShareInput({recordingId,target:share,signal});
+      const until=Number(new URLSearchParams(location.search).get('until'));
+      input=await prepareRecordedShareInput({recordingId,target:share,signal,...(Number.isFinite(until)&&until>0?{untilSeconds:until}:{})});
       statusLine.textContent='실시간 재실행 중…';
       await runScanner(share,'screen',signal,onState,[],()=>{void input!.start().catch(()=>{});},'all',undefined,false,
         {nameConfiguration:NORMAL_SCANNER_NAME_CONFIGURATION,shareRecording:'off',
+          onRecoveryProbe:probe=>{recoveryProbe.push(probe);},
           ...(detailed?{recordingMode:'detailed' as const,
             // The scanner hands over its continuous recording and still decodes it for the recovery
             // phase, so it must stay alive until the scan ends (the app keeps it for its archive
@@ -212,7 +227,7 @@ async function run():Promise<void> {
     const report:RunReport={
       kind:'recording-replay',version:1,startedAt,finishedAt:new Date().toISOString(),
       recording:{id:recordingId,sha256:delivery.recordingSha256,complete:delivery.recordingComplete,frames:delivery.declaredFrames},
-      delivery,status:latest.status,cards,usedFrameTimes:usedTimes,locatedFrameTimes:locatedTimes,...(live?{liveReplay:{recordingMode:detailed?'detailed':'off',timeline}}:{}),...(frameTiming?{frameTiming}:{}),
+      delivery,status:latest.status,cards,usedFrameTimes:usedTimes,locatedFrameTimes:locatedTimes,...(live?{liveReplay:{recordingMode:detailed?'detailed':'off',timeline,recoveryProbe:summarizeProbe(recoveryProbe)}}:{}),...(frameTiming?{frameTiming}:{}),
       ...(calibration?{countCalibration:calibration}:{}),
       countReview:latest.cards.filter(card=>card.extraCopies===null||peek.has(card.name)).slice(0,12).map(card=>({name:card.name,awakening:card.awakening,
         review:card.review,countReliable:card.countReliable??null,time:card.time??null,observations:card.observations??null,diagnostics:card.countDiagnostics??null,
@@ -252,7 +267,12 @@ void loadRecordings();
   const params=new URLSearchParams(location.search),auto=params.get('autorun');
   if(auto){
     picked=auto;
-    const mode=params.get('mode');if(mode)$<HTMLSelectElement>('#mode').value=mode;
+    const mode=params.get('mode');
+    if(mode){
+      const select=$<HTMLSelectElement>('#mode');
+      if(![...select.options].some(option=>option.value===mode))select.append(new Option(mode,mode));
+      select.value=mode;
+    }
     startButton.disabled=false;void run();
   }
 }

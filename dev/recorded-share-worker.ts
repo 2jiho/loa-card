@@ -10,7 +10,7 @@ import type {RecordedShareDeliveryStats} from './recorded-share-schedule';
  * browser merged them). In a worker the recorded cadence holds while the scanner works,
  * and the browser still decides which frames the video presents, as for a real share. */
 export type ShareWorkerRequest=
-  |{type:'init';base:string;recordingId:string;writable:WritableStream<VideoFrame>}
+  |{type:'init';base:string;recordingId:string;writable:WritableStream<VideoFrame>;untilSeconds?:number}
   |{type:'start'}
   |{type:'stop'};
 export type ShareWorkerReply=
@@ -39,7 +39,9 @@ async function init(message:Extract<ShareWorkerRequest,{type:'init'}>) {
   const lifetime=new AbortController();
   const json=async<T>(url:string)=>{const response=await fetch(url,{cache:'no-store',signal:lifetime.signal});if(!response.ok)throw Error(`${url}: ${response.status}`);return await response.json() as T;};
   const meta=await json<{width:number;height:number;colorSpace:unknown}>(root);
-  const {lines}=await json<{lines:Line[]}>(`${root}/lines`);
+  const {lines:allLines}=await json<{lines:Line[]}>(`${root}/lines`);
+  // `untilSeconds` ends the share early (a share that stops while the card window is still shown).
+  const lines=message.untilSeconds===undefined?allLines:allLines.filter(line=>line.deliveredAtMs/1000<=message.untilSeconds!);
   if(!lines.length)throw Error('기록에 프레임이 없습니다.');
   const response=await fetch(`${root}/frames`,{cache:'no-store',signal:lifetime.signal});
   if(!response.ok||!response.body)throw Error('기록 프레임을 열 수 없습니다.');

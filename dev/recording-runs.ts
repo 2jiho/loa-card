@@ -79,7 +79,7 @@ export interface RunReport {
   /** Scanner time per fed frame, split by whether the card grid was located in it. */
   readonly frameTiming?:{readonly frames:number;readonly located:FrameTimingSummary;readonly other:FrameTimingSummary;readonly wallMs:number;readonly stages?:{readonly located:Readonly<Record<string,number>>;readonly other:Readonly<Record<string,number>>};readonly loop?:{readonly located:Readonly<Record<string,number>>;readonly other:Readonly<Record<string,number>>}};
   /** Present for a live-path replay: how the scanner was run and its progress over time. */
-  readonly liveReplay?:{readonly recordingMode:'off'|'detailed';readonly timeline:readonly unknown[]};
+  readonly liveReplay?:{readonly recordingMode:'off'|'detailed';readonly timeline:readonly unknown[];readonly recoveryProbe?:unknown};
   /** Set when only part of the recording was fed (subset experiment). */
   readonly subsetOf?:{readonly run:string;readonly frames:number;readonly of:number};
 }

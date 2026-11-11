@@ -8,8 +8,9 @@
 //
 // Usage:
 //   node scripts/run-recording-replay.mjs --id <recording-id> [--id <id2> ...] [--mode sequential|realtime|realtime-detailed]
-//        [--port 5199] [--timeout 600] [--browser <path to chrome or edge>] [--log <file>] [--json]
-// Modes: sequential (default, deterministic), realtime (live path, recording off = deployed app),
+//        [--port 5199] [--timeout 600] [--browser <path to chrome or edge>] [--log <file>] [--until <seconds>] [--json]
+// Modes: skip:mean=1,block=6,force=8 (sequential replay that leaves out frames similar to the last processed one; experiment),
+//        sequential (default, deterministic), realtime (live path, recording off = deployed app),
 //        realtime-detailed (live path with the detailed input recording on = development default).
 import {spawn,spawnSync} from 'node:child_process';
 import {closeSync,existsSync,mkdtempSync,openSync,rmSync} from 'node:fs';
@@ -21,9 +22,10 @@ const values=(name)=>args.flatMap((value,index)=>value===name&&args[index+1]?[ar
 const value=(name,fallback)=>values(name)[0]??fallback;
 const ids=values('--id'),mode=value('--mode','sequential'),port=Number(value('--port','5199')),timeoutSec=Number(value('--timeout','600'));
 const asJson=args.includes('--json');
+const until=value('--until',null); // end the share after this recorded time (seconds): a share that stops while the card window is still shown
 const logFile=value('--log',null); // browser console and error output, for diagnosing a failed run
 if(!ids.length){console.error('usage: node scripts/run-recording-replay.mjs --id <recording-id> [--mode sequential|realtime|realtime-detailed]');process.exit(2);}
-if(!['sequential','realtime','realtime-detailed'].includes(mode)){console.error(`unknown mode: ${mode}`);process.exit(2);}
+if(!['sequential','realtime','realtime-detailed'].includes(mode)&&!mode.startsWith('skip:')){console.error(`unknown mode: ${mode}`);process.exit(2);}
 
 function findBrowser() {
   const explicit=value('--browser',process.env.CHROME_PATH);
@@ -54,7 +56,7 @@ function killTree(child) {
 async function runOne(id) {
   const before=new Set(await runNames(id));
   const profile=mkdtempSync(join(tmpdir(),'loa-replay-'));
-  const url=`${base}/dev/recording.html?autorun=${encodeURIComponent(id)}&mode=${encodeURIComponent(mode)}`;
+  const url=`${base}/dev/recording.html?autorun=${encodeURIComponent(id)}&mode=${encodeURIComponent(mode)}${until?`&until=${encodeURIComponent(until)}`:''}`;
   const logFd=logFile?openSync(logFile,'w'):null;
   const child=spawn(browser,['--headless=new','--no-first-run','--no-default-browser-check',`--user-data-dir=${profile}`,
     '--autoplay-policy=no-user-gesture-required','--window-size=1600,1000','--disable-background-timer-throttling',
