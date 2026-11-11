@@ -7,13 +7,16 @@
 // live-path modes unfaithful; use this runner for those.
 //
 // Usage:
-//   node scripts/run-recording-replay.mjs --id <recording-id> [--id <id2> ...] [--mode sequential|realtime|realtime-detailed]
-//        [--port 5199] [--timeout 600] [--browser <path to chrome or edge>] [--log <file>] [--until <seconds>] [--json]
+//   node scripts/run-recording-replay.mjs --id <recording-id> [--id <id2> ...] [--mode sequential|realtime|realtime-detailed|realtime-batch]
+//        [--port 5199] [--timeout 600] [--browser <path to chrome or edge>] [--log <file>] [--until <seconds>] [--json] [--cpuprofile <file.cpuprofile>] [--query "name=value"]
+// --cpuprofile: main-thread CPU profile of the sharing phase (live-path modes, one --id). Open it in
+//        Chrome DevTools or summarize it with scripts/summarize-cpuprofile.mjs.
 // Modes: skip:mean=1,block=6,force=8 (sequential replay that leaves out frames similar to the last processed one; experiment),
 //        sequential (default, deterministic), realtime (live path, recording off = deployed app),
-//        realtime-detailed (live path with the detailed input recording on = development default).
+//        realtime-detailed (live path with the detailed input recording on = development default),
+//        lean (prototype measurement of the acquisition and visual workers alone; not a scan).
 import {spawn,spawnSync} from 'node:child_process';
-import {closeSync,existsSync,mkdtempSync,openSync,rmSync} from 'node:fs';
+import {closeSync,existsSync,mkdtempSync,openSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -23,9 +26,11 @@ const value=(name,fallback)=>values(name)[0]??fallback;
 const ids=values('--id'),mode=value('--mode','sequential'),port=Number(value('--port','5199')),timeoutSec=Number(value('--timeout','600'));
 const asJson=args.includes('--json');
 const until=value('--until',null); // end the share after this recorded time (seconds): a share that stops while the card window is still shown
+const extraQuery=value('--query',null); // extra page parameters for experiments, e.g. "rescue=direct"
+const cpuProfile=value('--cpuprofile',null),debugPort=Number(value('--debug-port','9339'));
 const logFile=value('--log',null); // browser console and error output, for diagnosing a failed run
-if(!ids.length){console.error('usage: node scripts/run-recording-replay.mjs --id <recording-id> [--mode sequential|realtime|realtime-detailed]');process.exit(2);}
-if(!['sequential','realtime','realtime-detailed'].includes(mode)&&!mode.startsWith('skip:')){console.error(`unknown mode: ${mode}`);process.exit(2);}
+if(!ids.length){console.error('usage: node scripts/run-recording-replay.mjs --id <recording-id> [--mode sequential|realtime|realtime-detailed|realtime-batch]');process.exit(2);}
+if(!['sequential','realtime','realtime-detailed','realtime-batch','lean'].includes(mode)&&!mode.startsWith('skip:')){console.error(`unknown mode: ${mode}`);process.exit(2);}
 
 function findBrowser() {
   const explicit=value('--browser',process.env.CHROME_PATH);
@@ -46,6 +51,28 @@ async function runNames(id) {
   if(!response.ok)throw Error(`recording ${id}: HTTP ${response.status}`);
   return ((await response.json()).runs).map(run=>run.name).filter(name=>/^run-2/.test(name));
 }
+/** Attach to the page over the DevTools protocol, enable the sampling profiler, let the page start,
+ * and save the profile the page brackets with console.profile('share') / console.profileEnd('share'). */
+async function collectProfile(file) {
+  let target;
+  for(let attempt=0;attempt<100&&!target;attempt++){
+    try{target=(await (await fetch(`http://127.0.0.1:${debugPort}/json`)).json()).find(item=>item.type==='page'&&item.url.includes('/dev/recording.html'));}catch{/* Browser still starting. */}
+    if(!target)await sleep(100);
+  }
+  if(!target)throw Error('could not attach to the replay page for profiling');
+  const socket=new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((resolve,reject)=>{socket.onopen=resolve;socket.onerror=()=>reject(Error('DevTools connection failed'));});
+  let next=0;const waiting=new Map();
+  const send=(method,params={})=>new Promise(resolve=>{const id=++next;waiting.set(id,resolve);socket.send(JSON.stringify({id,method,params}));});
+  socket.onmessage=event=>{
+    const message=JSON.parse(event.data);
+    if(message.id&&waiting.has(message.id)){waiting.get(message.id)(message.result);waiting.delete(message.id);}
+    if(message.method==='Profiler.consoleProfileFinished'){writeFileSync(file,JSON.stringify(message.params.profile));console.error(`cpu profile saved: ${file}`);}
+  };
+  await send('Profiler.enable');await send('Profiler.setSamplingInterval',{interval:500});
+  await send('Runtime.evaluate',{expression:'window.__profilerReady=true'});
+  return ()=>socket.close();
+}
 function killTree(child) {
   try{
     if(process.platform==='win32')spawnSync('taskkill',['/PID',String(child.pid),'/T','/F'],{stdio:'ignore'});
@@ -56,22 +83,23 @@ function killTree(child) {
 async function runOne(id) {
   const before=new Set(await runNames(id));
   const profile=mkdtempSync(join(tmpdir(),'loa-replay-'));
-  const url=`${base}/dev/recording.html?autorun=${encodeURIComponent(id)}&mode=${encodeURIComponent(mode)}${until?`&until=${encodeURIComponent(until)}`:''}`;
+  const url=`${base}/dev/recording.html?autorun=${encodeURIComponent(id)}&mode=${encodeURIComponent(mode)}${until?`&until=${encodeURIComponent(until)}`:''}${cpuProfile?'&profile=1':''}${extraQuery?`&${extraQuery}`:''}`;
   const logFd=logFile?openSync(logFile,'w'):null;
   const child=spawn(browser,['--headless=new','--no-first-run','--no-default-browser-check',`--user-data-dir=${profile}`,
     '--autoplay-policy=no-user-gesture-required','--window-size=1600,1000','--disable-background-timer-throttling',
     '--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows','--mute-audio',
-    ...(logFd!==null?['--enable-logging=stderr','--v=0']:[]),url],{stdio:logFd!==null?['ignore','ignore',logFd]:'ignore'});
+    ...(cpuProfile?[`--remote-debugging-port=${debugPort}`]:[]),...(logFd!==null?['--enable-logging=stderr','--v=0']:[]),url],{stdio:logFd!==null?['ignore','ignore',logFd]:'ignore'});
   const started=Date.now();
-  let name;
+  let name,closeProfile;
   try{
+    if(cpuProfile)closeProfile=await collectProfile(cpuProfile);
     while(Date.now()-started<timeoutSec*1000){
       await sleep(2000);
       const now=await runNames(id);
       name=now.find(entry=>!before.has(entry));
       if(name)break;
     }
-  }finally{killTree(child);await sleep(500);if(logFd!==null)closeSync(logFd);try{rmSync(profile,{recursive:true,force:true});}catch{/* Profile still in use. */}}
+  }finally{closeProfile?.();killTree(child);await sleep(500);if(logFd!==null)closeSync(logFd);try{rmSync(profile,{recursive:true,force:true});}catch{/* Profile still in use. */}}
   if(!name)throw Error(`no report appeared within ${timeoutSec}s (${id}, ${mode})`);
   const report=await (await fetch(`${base}/__rec/${encodeURIComponent(id)}/runs/${name}`)).json();
   if(report.kind==='recording-replay-failure')

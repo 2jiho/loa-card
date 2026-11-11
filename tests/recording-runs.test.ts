@@ -83,3 +83,35 @@ test('a sequential replay is faithful when every frame was fed; mixed modes are 
   assert.equal(comparabilityIssues(report(sequential),report(sequential)).length,0);
   assert.equal(summarizeRun({build:'b',read:0,expected:null,unidentified:0,delivery:realtimeGood}).mode,'realtime','older reports without a mode count as realtime');
 });
+
+test('read analysis counts passes by kind, the heaviest pass an identity needed, and work on already identified cards', async () => {
+  const {analyzeReads}=await import('../dev/recording-runs');
+  const analysis=analyzeReads([
+    {time:1,stage:'identified',cardId:'a',readings:[{kind:'visual',startedAt:1,endedAt:1.01}]},
+    // The same card again, read after it was already identified.
+    {time:2,stage:'identified',cardId:'a',readings:[{kind:'visual',startedAt:2,endedAt:2.01},{kind:'short',startedAt:2.1,endedAt:2.2}]},
+    {time:2,stage:'identified',cardId:'b',readings:[{kind:'visual',startedAt:2,endedAt:2.02},{kind:'short',startedAt:2.1,endedAt:2.3},{kind:'full',startedAt:3,endedAt:3.5}]},
+    {time:3,stage:'duplicate'},{time:3,stage:'rejected',reason:'empty'},{time:3,stage:'rejected',reason:'empty'},{time:3,stage:'rejected',reason:'moving'},
+    {time:3,stage:'unidentified',readings:[{kind:'full',startedAt:4}]},
+  ]);
+  assert.deepEqual(analysis.stages,{identified:3,duplicate:1,rejected:3,unidentified:1});
+  assert.deepEqual(analysis.rejected,[{reason:'empty',count:2},{reason:'moving',count:1}]);
+  assert.deepEqual(analysis.reads,{visual:{count:3,ms:40},short:{count:2,ms:300},full:{count:2,ms:500}});
+  assert.deepEqual(analysis.identifiedBy,{visual:1,short:1,full:1,unrecorded:0});
+  assert.equal(analysis.cards,2);
+  assert.deepEqual(analysis.identifiedCropsPerCard,{mean:1.5,max:2});
+  assert.deepEqual(analysis.afterFirstIdentity,{count:2,ms:110});
+});
+
+test('read profiles are averaged per span within each read kind and outcome', async () => {
+  const {summarizeReadProfiles}=await import('../dev/recording-runs');
+  const groups=summarizeReadProfiles([
+    {stage:'visual',identified:true,spans:{setup:1,visual:3,preview:20}},
+    {stage:'visual',identified:true,spans:{setup:3,visual:5,preview:40}},
+    {stage:'short',identified:false,spans:{setup:2,identity:100}},
+  ]);
+  assert.deepEqual(groups,[
+    {stage:'visual',identified:true,reads:2,meanMs:{setup:2,visual:4,preview:30},totalMeanMs:36},
+    {stage:'short',identified:false,reads:1,meanMs:{setup:2,identity:100},totalMeanMs:102},
+  ]);
+});

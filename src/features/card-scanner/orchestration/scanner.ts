@@ -44,6 +44,8 @@ import type {PreparedScanner} from '../session/scanner-preparation';
 import {parseScannerNameConfiguration,type ScannerNameConfiguration} from '../session/scanner-name-configuration';
 import {createScannerNameOperation} from '../session/scanner-name-operation';
 import { createVisualClient } from '../recognition/visual-client';
+import { createVisualBatchClient } from '../recognition/visual-batch';
+import type { VisualBatchStats } from '../recognition/visual-batch';
 import {CompletionWake} from '../session/completion-wake';
 import {ReaderDispatches,ReaderWorkWake} from '../session/reader-work-wake';
 import type { VisualResult } from '../recognition/visual-client';
@@ -97,6 +99,8 @@ import { appendFixedGridRescue, confirmFixedGridRescue, fixedGridCell, rescueFix
 import type { FixedGridRescueRecord } from '../acquisition/fixed-grid-rescue';
 import { emptyCounterProof, packCount, stablePreviewEmptyCandidate } from '../recognition/count-pattern';
 import { areaGray } from '../acquisition/area-gray';
+import { cutRescueArea, rescueAreaBounds } from '../acquisition/rescue-area';
+import type { RescueArea } from '../acquisition/rescue-area';
 import type { CardSort } from "../recognition/capture-metadata";
 import { createDetector } from "../acquisition/detector";
 import type {Box} from '../acquisition/detector';
@@ -447,6 +451,27 @@ async function runScannerInternal(
     /** Development measurement per recovery frame: whether the recovery-skip proof holds now. */
     onRecoveryProbe?: (probe:{frame:number;time:number;idle:boolean;completeProof:boolean;read:number;unresolved:number;
       expected:number|null;finalExpected:number|null;tailFresh:boolean}) => void;
+    /** Development measurement per card read: where the time of one read went, in order.
+     * setup (thumbnail hand-off, grid/activity marks, admission), visual (visual worker round trip),
+     * identity (name reading when the artwork did not decide, acceptance), fields (field reading,
+     * reliability, merge), publish (lists, counts, state publication), preview (waiting for the
+     * thumbnail), retry (queueing a follow-up read), cleanup. */
+    onReadProfile?: (profile:{stage:'visual'|'short'|'full';identified:boolean;spans:Readonly<Record<string,number>>}) => void;
+    /** Development experiment (docs/scanner-live-redesign.md 12.4, step 2), live screen input only.
+     * The visual reading of a frame's admitted crops is sent as one message per worker when the
+     * frame is admitted, and a successful read no longer waits in its lane for the thumbnail.
+     * Which crops are read, the reading itself, acceptance, merge and completion are unchanged;
+     * a crop without a batch result is read on the ordinary path. */
+    frameBatchVisual?: boolean;
+    /** Development measurement for `frameBatchVisual`: the batch counters after each frame. */
+    onVisualBatch?: (stats:VisualBatchStats) => void;
+    /** Development check of how the fixed-row rescue feature of an admitted crop is read. The
+     * scanner reads the area of all cells once per frame and cuts each cell out of that copy.
+     * 'tile' uses the earlier per-cell tile-canvas read instead (for comparison runs);
+     * 'verify' reads both ways and counts features that differ. */
+    rescueFeature?: 'tile'|'verify';
+    /** Development measurement with `rescueFeature: 'verify'`: calls, time and the comparison. */
+    onRescueFeature?: (stats:{calls:number;ms:number;compared:number;different:number}) => void;
     /** Development measurement per replayed frame: screen handling (collect), card reading (drain), cards read. */
     onFrameLoop?: (loop:{time:number;collectMs:number;drainMs:number;drained:number}) => void;
     /** Development measurement per input frame: canvas copy, the acquisition round trip
@@ -543,7 +568,9 @@ async function runScannerInternal(
     debug.feedbackProbe?(snapshot,entries,previous)=>debug.feedbackProbe!.grid(snapshot,entries,previous):undefined);
   const grid=observationRecorder?recordScanGrid(rawGrid,command=>trace('grid-command',command)):rawGrid;
   const previews=createCandidatePreviewEncoder({signal});
-  const previewPresentation=createPreviewPresentation(signal);
+  const frameBatch=import.meta.env.DEV&&debug.frameBatchVisual===true;
+  // The batch experiment lets more thumbnails encode behind the readers instead of holding a lane.
+  const previewPresentation=createPreviewPresentation(signal,frameBatch?256:16);
   const inventoryPosition=new InventoryPosition();
   const stationaryInventory=new StationaryInventoryView();
   const observedLayout=new ObservedInventoryLayout();
@@ -721,6 +748,7 @@ async function runScannerInternal(
   let countSourceProbe:CountSourceProbe|undefined;
   let obstructionTraceComplete=true,obstructionTraceErrorReported=false;
   const visuals: ReturnType<typeof createVisualClient>[] = [...(prepared?.visuals ?? [])];
+  let visualBatch: ReturnType<typeof createVisualBatchClient>;
   let usedOverflowWorkers:WeakSet<object>|undefined;
   const lanePlan=liveLanePlan(navigator.hardwareConcurrency);
   const extraRecognizers: Awaited<ReturnType<typeof createRecognizer>>[] = prepared?.readers.slice(1) ?? [];
@@ -807,6 +835,10 @@ async function runScannerInternal(
       }
     if (!prepared && recognizer && acquisition) for(let i=0;i<lanePlan.fast;i++) visuals.push(createVisualClient(signal));
     if (!prepared) await Promise.all([acquisition?.ready(),...visuals.map(worker=>worker?.ready())]);
+    if(frameBatch&&liveScreen&&recognizer&&acquisition){
+      visualBatch=createVisualBatchClient(signal);
+      await visualBatch?.ready();
+    }
     if(import.meta.env.DEV&&liveScreen&&recognizer&&acquisition) {
       const pageHeap=()=>{const value=(performance as Performance&{memory?:{usedJSHeapSize?:number}}).memory?.usedJSHeapSize;
         return typeof value==='number'&&Number.isFinite(value)&&value>=0?value:null;};
@@ -978,6 +1010,9 @@ async function runScannerInternal(
       verifiedRecoveryObservation?:SavedObservation;
       changedFields?:boolean;
       pixelKey:string;
+      /** `frameBatchVisual` only: this crop's visual reading, requested when its frame was
+       * admitted. Never rejects; null means "read it on the ordinary path". */
+      visualPrefetch?:Promise<VisualResult|null>;
       verifiedVisual?:object;
       needsIdentity?: boolean;
       fieldTarget?: {id:string;order:number};
@@ -1187,6 +1222,7 @@ async function runScannerInternal(
     rescueTile.width = 140;
     rescueTile.height = 210;
     const rescueTileContext = rescueTile.getContext('2d', { willReadFrequently: true })!;
+    const rescueFeatureStats={calls:0,ms:0,compared:0,different:0};
     /** Previous canonical-row gray for the same observation group/slot. The
      * second observation can arrive before the first rescue record is appended;
      * retaining the actual gray lets two distinct frames agree without a new
@@ -1417,15 +1453,39 @@ async function runScannerInternal(
       // Keep the fixed-row matcher input for this observation even after the
       // two-frame ring has moved on. This is a 24x32 gray feature, not an
       // identity; it is used only when a later read fails.
-      const fixedRowGrayFor=(cell: Box): Float32Array | null => {
-        const x=Math.round(cell.x),y=Math.round(cell.y);
-        const w=Math.round(cell.width),h=Math.round(cell.height);
-        if(x<0||y<0||w<24||h<32||x+w>frame.width||y+h>frame.height)return null;
+      const rescueMode=import.meta.env.DEV?debug.rescueFeature:undefined;
+      const tileRowGrayFor=(x:number,y:number,w:number,h:number)=>{
         if(rescueTile.width!==w)rescueTile.width=w;
         if(rescueTile.height!==h)rescueTile.height=h;
         rescueTileContext.clearRect(0,0,w,h);
         rescueTileContext.drawImage(frame,x,y,w,h,0,0,w,h);
         return areaGray(rescueTileContext.getImageData(0,0,w,h).data,w,h);
+      };
+      // One copy of the area that holds every cell of this frame, read on first use
+      // (acquisition/rescue-area.ts). A cell outside it is read on its own.
+      let rescueArea:RescueArea|null|undefined;
+      const areaRowGrayFor=(x:number,y:number,w:number,h:number,cells:readonly Box[])=>{
+        if(rescueArea===undefined){
+          const bounds=rescueAreaBounds(frame.width===2560&&frame.height===1440?
+            [...cells,...Array.from({length:40},(_,slot)=>fixedGridCell(slot)!)]:cells,frame.width,frame.height);
+          rescueArea=bounds?{...bounds,data:frameContext.getImageData(bounds.x,bounds.y,bounds.width,bounds.height).data}:null;
+        }
+        return areaGray((rescueArea&&cutRescueArea(rescueArea,x,y,w,h))??frameContext.getImageData(x,y,w,h).data,w,h);
+      };
+      const fixedRowGrayFor=(cell: Box,cells:readonly Box[]=[]): Float32Array | null => {
+        const x=Math.round(cell.x),y=Math.round(cell.y);
+        const w=Math.round(cell.width),h=Math.round(cell.height);
+        if(x<0||y<0||w<24||h<32||x+w>frame.width||y+h>frame.height)return null;
+        if(rescueMode==='tile')return tileRowGrayFor(x,y,w,h);
+        const started=rescueMode?performance.now():0;
+        const gray=areaRowGrayFor(x,y,w,h,cells);
+        if(rescueMode){
+          rescueFeatureStats.calls++;rescueFeatureStats.ms+=performance.now()-started;
+          const tile=tileRowGrayFor(x,y,w,h);
+          rescueFeatureStats.compared++;
+          if(tile.length!==gray.length||tile.some((value,index)=>value!==gray[index]))rescueFeatureStats.different++;
+        }
+        return gray;
       };
       const nativeFrame=frozen&&'displayWidth' in frozen.source?frozen.source:undefined;
       const nativeAcquisition=!!(debug.nativeAcquisition&&acquisition?.supportsNative&&continuous&&!recovering&&(!frozen||nativeFrame));
@@ -1725,6 +1785,7 @@ async function runScannerInternal(
       state.status = captureOnly ? "카드 획득·품질 검사 중 · OCR 실행 안 함" : "카드별 획득 · 품질 검사 · 판독 중";
       const diagnostics = state.captureDiagnostics!;
       let collectedThisFrame = 0;
+      const batchCandidates:Candidate[]=[];
       const record = (image: HTMLCanvasElement, slot: number, reason: string, accepted: boolean, sharpness: number) => {
         // Bounded representative examples; retain rejection reasons even after
         // releasing canvas memory. These are observations, not unique card IDs.
@@ -1963,16 +2024,17 @@ async function runScannerInternal(
             cells:layout?.cells.map(value=>({...value}))??[]});
           if(framePainted&&enqueued){
             if(layout)try{
-              candidate.fixedRowGray=fixedRowGrayFor(layout.cells[i])??undefined;
+              candidate.fixedRowGray=fixedRowGrayFor(layout.cells[i],layout.cells)??undefined;
               if(frame.width===2560&&frame.height===1440){
                 const cell=fixedGridCell(i);
-                candidate.canonicalRowGray=cell?fixedRowGrayFor(cell)??undefined:undefined;
+                candidate.canonicalRowGray=cell?fixedRowGrayFor(cell,layout.cells)??undefined:undefined;
               }
             }
             catch{/* A rescue feature cannot reject an accepted crop. */}
           }
           if(enqueued&&partialAdmission)admissionScope.transfer(image,preview);
           if(enqueued)readerWake.request();
+          if(enqueued&&visualBatch&&!recovering&&!candidate.verifiedVisual)batchCandidates.push(candidate);
           coverageSlots[i]=enqueued;
           if(enqueued){
             commit();
@@ -2053,6 +2115,15 @@ async function runScannerInternal(
         if(import.meta.env.DEV)state.scrollCoverageInfo=scrollCoverage.snapshot();
       }
       for(const cell of acquired)if(cell.previewImage)cell.previewImage.width=0;
+      if(visualBatch&&batchCandidates.length){
+        // One request for this frame's admitted crops. A crop a reader already took or a
+        // better crop replaced is left out; a refused batch leaves every crop to the readers.
+        const waiting=batchCandidates.filter(candidate=>candidate.image.width>0&&!candidate.visualPrefetch);
+        const reads=visualBatch.read(waiting.map(candidate=>candidate.image));
+        if(reads)waiting.forEach((candidate,index)=>{candidate.visualPrefetch=reads[index];});
+        try{debug.onVisualBatch?.(visualBatch.stats());}catch{/* Measurement only. */}
+      }
+      if(import.meta.env.DEV&&debug.rescueFeature)try{debug.onRescueFeature?.({...rescueFeatureStats});}catch{/* Measurement only. */}
       if (collectedThisFrame) {
         state.captureWindows = (state.captureWindows ?? 0) + 1;
         previousVectors = vectors;
@@ -2109,6 +2180,86 @@ async function runScannerInternal(
       }
     })().finally(() => { metadataRead = undefined; });
     const metadataWork={pending:()=>!!(metadata||metadataRead),settle:settleMetadata};
+    type ReadIdentity=NonNullable<Awaited<ReturnType<NonNullable<typeof recognizer>['identify']>>>;
+    /** Read the fields of ONE identified crop, judge the reliability of its count and merge the
+     * observation. This is the whole acceptance of a crop's values. Every path that accepts a
+     * crop goes through it, so the rules (unconfirmed zero stays unread, review flags, capture
+     * order, one observation per crop) cannot drift apart between paths.
+     * `visualResult` carries values the visual worker already read; otherwise `reader` reads them. */
+    const readAndRecordFields = async (input:{item:Candidate;identity:ReadIdentity;visualResult:VisualResult|undefined;
+      reader:typeof recognizer;visualOnly:boolean;budget:CardReadBudget}) => {
+      const {item,identity,visualResult,reader,visualOnly,budget}=input;
+      let values:Awaited<ReturnType<NonNullable<typeof reader>['read']>>;
+      try {values=visualResult?.values ?? await reader!.read(item.image, identity.id, false, !visualOnly,budget);}
+      catch(error){if(!(error instanceof CardReadTimeout)||item.verifiedVisual)throw error;values=await reader!.read(item.image,identity.id,false,false);}
+      const identified = item.feature;
+      if(countSourceProbe){
+        const fence=obstructionFence?.snapshot();
+        countSourceProbe.read(identity.id,item.countSource,identified,{borderAlignment:item.borderAlignment,
+          awakening:values.awakening,extraCopies:values.extraCopies,pattern:values.countDiagnostics?.pattern},
+          {sessionId:captureSession,captureOrder:fence?.order??initialCaptureOrder,
+           captureTime:obstructionLastCaptureTime??0});
+      }
+      const resolveCountReliability = () => countReliability({ stable: item.stable,
+        borderAlignment: item.borderAlignment, awakening: values.awakening,
+        maxAwakening: identity.maxAwakening, extraCopies: values.extraCopies,
+        pattern: values.countDiagnostics?.pattern,
+        iconPresent: values.countDiagnostics?.iconPresent,
+        patternOcrAgreed: values.countDiagnostics?.patternOcrAgreed,
+        ocrConfirmedValue: values.countDiagnostics?.ocrConfirmedValue });
+      let reliability = resolveCountReliability();
+      if (!visualOnly && reliability === "unconfirmed" && values.awakening !== null &&
+          values.countDiagnostics?.pattern?.value != null && !identity.review.length) {
+        try{values = await reader!.read(item.image, identity.id, true,true,budget);}
+        catch(error){if(!(error instanceof CardReadTimeout))throw error;}
+        reliability = resolveCountReliability();
+      }
+      if (values.extraCopies === 0 && reliability === "unconfirmed") {
+        values.extraCopies = null;
+        if (values.countDiagnostics)
+          values.countDiagnostics.reason = "추가 카드 표시 없음 · 온전한 카드 또는 안정된 장수 영역 확인 필요";
+      }
+      if (values.awakening === null) {
+        state.unreadable++;
+      }
+      state.stable++;
+      identifiedThisRun.add(identity.id);
+      // Native input can drain several queued frames after the track ends.
+      // Do not count that useful tail work as recognition during sharing.
+      const recognizedLive=liveScreen && capturing && !recovering &&
+          (video.srcObject as MediaStream | null)?.getVideoTracks().some(track => track.readyState === 'live');
+      if (recognizedLive) {
+        const elapsed = performance.now() - recordingStart;
+        state.livePerformance ??= { acquisitionMs: 0, recognized: 0, uniqueCards: 0, firstResultMs: null, lagMs: 0 };
+        state.livePerformance.recognized++;
+        liveIdentities.add(identity.id);
+        state.livePerformance.uniqueCards = liveIdentities.size;
+        state.livePerformance.firstResultMs ??= elapsed;
+        state.livePerformance.lagMs = Math.max(0, elapsed - item.time * 1000);
+      }
+      // Same as drainOne's prepareIdentity: a name under review is not confirmed here.
+      if(!identity.review.includes('이름 확인')) inventory!.confirmName(item.source,identity.id,identity.name);
+      const review = [...identity.review];
+      if (values.countDiagnostics) values.countDiagnostics.reliability = reliability;
+      if (values.awakening === null) review.push("각성 확인");
+      if (values.extraCopies === null) review.push("추가 장수 확인");
+      // Publish the observed fields before waiting for optional image work.
+      // The exact observation token below owns any later image attachment.
+      const observation:ScannedCard={
+        ...identity,
+        ...values,
+        nameEvidence: identity.nameEvidence.map(r => ({ ...r, stable: item.stable, frame: item.position.frame })),
+        review,
+        image: item.preview,
+        time: item.time,
+        captureOrder: item.order,
+        capturePosition: item.position,
+        countReliable: reliability !== "unconfirmed",
+        observations: 1,
+      };
+      const change=inventory!.recordObservation(item.source,observation,item.borderAlignment);
+      return {values,reliability,recognizedLive,observation,change};
+    };
     const drainOne = async (includeDeferred = false, reader = recognizer, fast = false, deferredOnly = false, visual: ReturnType<typeof createVisualClient> | null = visuals[0], fullOnly = false) => {
       const quick = deferredOnly;
       if (!fast && reader===recognizer) {
@@ -2259,6 +2410,10 @@ async function runScannerInternal(
         }
         return retained;
       };
+      // Development measurement only (onReadProfile): consecutive time spans of this read.
+      const readSpans:Record<string,number>|undefined=import.meta.env.DEV&&debug.onReadProfile?{}:undefined;
+      let readMark=readSpans?performance.now():0;
+      const span=readSpans?(name:string)=>{const now=performance.now();readSpans[name]=(readSpans[name]??0)+now-readMark;readMark=now;}:undefined;
       readingJobs++;
       const displayReading=displayReadings.begin();
       state.activeReadings=displayReadings.active;
@@ -2338,7 +2493,13 @@ async function runScannerInternal(
         }
         // Observer borrows the actual candidate immediately before the first reader can access it.
         inspection?.captureInput?.(item.image,item.readerCropClaim);
-        if (fast && visual) visualResult=await budget.wait(()=>{
+        span?.('setup');
+        if(fast&&item.visualPrefetch){
+          // The frame's batch already asked for this crop. No result (null) reads it below as usual.
+          const prefetch=item.visualPrefetch;item.visualPrefetch=undefined;
+          visualResult=await budget.wait(()=>prefetch)??undefined;
+        }
+        if (fast && visual && !visualResult) visualResult=await budget.wait(()=>{
           const stats=state.visualOverflow,index=visuals.indexOf(visual);
           if(stats&&usedOverflowWorkers&&index>=lanePlan.fast){
             stats.readsStarted++;
@@ -2348,6 +2509,7 @@ async function runScannerInternal(
         },()=>{
           visual.dispose();const index=visuals.indexOf(visual);if(index>=0)visuals[index]=createVisualClient(signal);
         });
+        span?.('visual');
         const retainedIdentity=fieldRetryIdentity(item);
         if(retainedIdentity){state.retryWork??={skippedFields:0,reusedIdentities:0};state.retryWork.reusedIdentities++;}
         identifyExecuted=!retainedIdentity&&!visualOnly;
@@ -2457,74 +2619,9 @@ async function runScannerInternal(
           grid.finish(item.trace,activityStatus,gridRead);item.execution?.finish(activityStatus,executionRead);emit();
           return;
         }
-        let values:Awaited<ReturnType<NonNullable<typeof reader>['read']>>;
-        try {values=visualResult?.values ?? await reader!.read(item.image, identity.id, false, !visualOnly,budget);}
-        catch(error){if(!(error instanceof CardReadTimeout)||item.verifiedVisual)throw error;values=await reader!.read(item.image,identity.id,false,false);}
-        const identified = item.feature;
-        if(countSourceProbe){
-          const fence=obstructionFence?.snapshot();
-          countSourceProbe.read(identity.id,item.countSource,identified,{borderAlignment:item.borderAlignment,
-            awakening:values.awakening,extraCopies:values.extraCopies,pattern:values.countDiagnostics?.pattern},
-            {sessionId:captureSession,captureOrder:fence?.order??initialCaptureOrder,
-             captureTime:obstructionLastCaptureTime??0});
-        }
-        const resolveCountReliability = () => countReliability({ stable: item.stable,
-          borderAlignment: item.borderAlignment, awakening: values.awakening,
-          maxAwakening: identity.maxAwakening, extraCopies: values.extraCopies,
-          pattern: values.countDiagnostics?.pattern,
-          iconPresent: values.countDiagnostics?.iconPresent,
-          patternOcrAgreed: values.countDiagnostics?.patternOcrAgreed,
-          ocrConfirmedValue: values.countDiagnostics?.ocrConfirmedValue });
-        let reliability = resolveCountReliability();
-        if (!visualOnly && reliability === "unconfirmed" && values.awakening !== null &&
-            values.countDiagnostics?.pattern?.value != null && !identity.review.length) {
-          try{values = await reader!.read(item.image, identity.id, true,true,budget);}
-          catch(error){if(!(error instanceof CardReadTimeout))throw error;}
-          reliability = resolveCountReliability();
-        }
-        if (values.extraCopies === 0 && reliability === "unconfirmed") {
-          values.extraCopies = null;
-          if (values.countDiagnostics)
-            values.countDiagnostics.reason = "추가 카드 표시 없음 · 온전한 카드 또는 안정된 장수 영역 확인 필요";
-        }
-        if (values.awakening === null) {
-          state.unreadable++;
-        }
-        state.stable++;
-        identifiedThisRun.add(identity.id);
-        // Native input can drain several queued frames after the track ends.
-        // Do not count that useful tail work as recognition during sharing.
-        const recognizedLive=liveScreen && capturing && !recovering &&
-            (video.srcObject as MediaStream | null)?.getVideoTracks().some(track => track.readyState === 'live');
-        if (recognizedLive) {
-          const elapsed = performance.now() - recordingStart;
-          state.livePerformance ??= { acquisitionMs: 0, recognized: 0, uniqueCards: 0, firstResultMs: null, lagMs: 0 };
-          state.livePerformance.recognized++;
-          liveIdentities.add(identity.id);
-          state.livePerformance.uniqueCards = liveIdentities.size;
-          state.livePerformance.firstResultMs ??= elapsed;
-          state.livePerformance.lagMs = Math.max(0, elapsed - item.time * 1000);
-        }
-        prepareIdentity(identity);
-        const review = [...identity.review];
-        if (values.countDiagnostics) values.countDiagnostics.reliability = reliability;
-        if (values.awakening === null) review.push("각성 확인");
-        if (values.extraCopies === null) review.push("추가 장수 확인");
-        // Publish the observed fields before waiting for optional image work.
-        // The exact observation token below owns any later image attachment.
-        const observation:ScannedCard={
-          ...identity,
-          ...values,
-          nameEvidence: identity.nameEvidence.map(r => ({ ...r, stable: item.stable, frame: item.position.frame })),
-          review,
-          image: item.preview,
-          time: item.time,
-          captureOrder: item.order,
-          capturePosition: item.position,
-          countReliable: reliability !== "unconfirmed",
-          observations: 1,
-        };
-        const change=inventory!.recordObservation(item.source,observation,item.borderAlignment);
+        span?.('identity');
+        const {values,reliability,recognizedLive,observation,change}=await readAndRecordFields({item,identity,visualResult,reader,visualOnly,budget});
+        span?.('fields');
         if(change.latestDiagnostic) {
           if(change.diagnosticResolved)fieldImages.resolved(identity.id,item.order);
           else failedFieldIdentity=identity.id;
@@ -2566,6 +2663,7 @@ async function runScannerInternal(
         activity.finish(item.trace,activityStatus,identity.name,activityRead);
         displayReading.pause();state.activeReadings=displayReadings.active;
         emit();
+        span?.('publish');
         // Successful previews have their own bounded native work. Attach only
         // to the originating observation, without holding the recognition lane.
         // If native credit or the bounded presentation set is full, wait in
@@ -2577,9 +2675,16 @@ async function runScannerInternal(
             cardsDirty=true;emit();
           }
         };
+        if(frameBatch&&!item.previewTask&&item.previewCanvas){
+          // The encoder had no room when this read began. Queue the thumbnail behind the
+          // readers (bounded by the presentation set) instead of waiting for it here.
+          const canvas=item.previewCanvas;item.previewCanvas=undefined;
+          item.previewTask=previews.encodeOwnedWhenAvailable(canvas);
+        }
         if(!item.previewTask||!previewPresentation.track(item.previewTask,attachPreview)){
           await finishPreview();attachPreview(item.preview);
         }
+        span?.('preview');
         if ((fast || quick) && (reliability === "unconfirmed" || values.awakening === null)) {
           // A retry inspection is real reading work, even though the optional
           // preview is not. The scheduler lane still gates completion while
@@ -2587,6 +2692,7 @@ async function runScannerInternal(
           displayReading.resume();state.activeReadings=displayReadings.active;
           activityRead=activity.start(item.trace,item.preview);emit();
           await defer(false,identity.id);
+          span?.('retry');
         }
       } catch (error) {
         inspectionTimedOut=error instanceof CardReadTimeout;
@@ -2652,6 +2758,11 @@ async function runScannerInternal(
           if(item.previewCanvas){item.previewCanvas.width=0;item.previewCanvas.height=0;item.previewCanvas=undefined;}
         }
         emit();
+        if(readSpans){
+          // Whatever a path that returned early left unmarked is counted with cleanup.
+          span!('cleanup');
+          try{debug.onReadProfile!({stage:readStage,identified:!!acceptedIdentity,spans:readSpans});}catch{/* Measurement only. */}
+        }
       }
     };
     if (debug.replay || stillImages || source === "video") {
@@ -3883,6 +3994,7 @@ async function runScannerInternal(
       try{await preparedSources?.finish();}catch(error){debug.exact?.incomplete(String(error));}
       preparedSources?.dispose();await sourcePreparation?.dispose();
       for(const visual of visuals) visual?.dispose();
+      visualBatch?.dispose();
       releasePending?.();
       auditComplete = true;
       const finalRecording = await continuous?.finish();

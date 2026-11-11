@@ -16,20 +16,30 @@ async function prepare() {
  const cards=catalog.cards as Reference[];
  return {match:createPortraitMatcher(cards,atlas,screen.cards,{competitors}),templates:[stars.gray[0],stars.gold[0]],patterns:(counts.patterns as CountPattern[]).map(prepareContrastPattern)};
 }
-self.onmessage=async(event:MessageEvent<{id:number;bitmap?:ImageBitmap}>)=>{
- const {id,bitmap}=event.data;
+/** One crop: the same reading whether it arrives alone or in a batch. */
+function readOne(engine:Awaited<ReturnType<typeof prepare>>,bitmap:ImageBitmap) {
+ // No await occurs between raster.read and the last use of image, so the
+ // worker cannot reuse the borrowed canvas while this observation is read.
+ const {image,pixels}=raster.read(bitmap);
+ const artwork=engine.match(areaGray(pixels,image.width,image.height));
+ const snapshot=reusableVisualPixels(pixels,image.width,image.height);
+ const fields=inspectVisual(image,context,engine.templates,snapshot);
+ const identity=artwork?portraitIdentity(artwork):null;
+ const values=identity?readVisual(image,context,fields,engine.patterns,identity.maxAwakening,snapshot):null;
+ return {identity,fields,values};
+}
+self.onmessage=async(event:MessageEvent<{id:number;bitmap?:ImageBitmap;bitmaps?:ImageBitmap[]}>)=>{
+ const {id,bitmap,bitmaps}=event.data;
  try {
   const engine=await(preparing??=prepare());
+  if(bitmaps){
+   // Several crops of one frame in one message (visual-batch.ts). A crop that cannot be
+   // read is null for that crop only; its caller reads it again on the single-crop path.
+   self.postMessage({id,results:bitmaps.map(item=>{try{return readOne(engine,item);}catch{return null;}})});
+   return;
+  }
   if(!bitmap){self.postMessage({id,result:null});return;}
-  // No await occurs between raster.read and the last use of image, so the
-  // worker cannot reuse the borrowed canvas while this observation is read.
-  const {image,pixels}=raster.read(bitmap);
-  const artwork=engine.match(areaGray(pixels,image.width,image.height));
-  const snapshot=reusableVisualPixels(pixels,image.width,image.height);
-  const fields=inspectVisual(image,context,engine.templates,snapshot);
-  const identity=artwork?portraitIdentity(artwork):null;
-  const values=identity?readVisual(image,context,fields,engine.patterns,identity.maxAwakening,snapshot):null;
-  self.postMessage({id,result:{identity,fields,values}});
+  self.postMessage({id,result:readOne(engine,bitmap)});
  }catch(error){self.postMessage({id,error:String(error)});}
- finally{bitmap?.close();}
+ finally{bitmap?.close();for(const item of bitmaps??[])item.close();}
 };

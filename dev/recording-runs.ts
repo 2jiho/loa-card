@@ -79,11 +79,24 @@ export interface RunReport {
   /** Scanner time per fed frame, split by whether the card grid was located in it. */
   readonly frameTiming?:{readonly frames:number;readonly located:FrameTimingSummary;readonly other:FrameTimingSummary;readonly wallMs:number;readonly stages?:{readonly located:Readonly<Record<string,number>>;readonly other:Readonly<Record<string,number>>};readonly loop?:{readonly located:Readonly<Record<string,number>>;readonly other:Readonly<Record<string,number>>}};
   /** Present for a live-path replay: how the scanner was run and its progress over time. */
-  readonly liveReplay?:{readonly recordingMode:'off'|'detailed';readonly timeline:readonly unknown[];readonly recoveryProbe?:unknown};
+  readonly liveReplay?:{readonly recordingMode:'off'|'detailed';readonly timeline:readonly unknown[];readonly recoveryProbe?:unknown;
+    /** The scanner's own input and acquisition statistics at the end of the run. */
+    readonly inputPipeline?:unknown;readonly performance?:unknown};
   /** Set when only part of the recording was fed (subset experiment). */
   readonly subsetOf?:{readonly run:string;readonly frames:number;readonly of:number};
   /** First 16 hex digits of the hash of the source and scanner data the dev server started with. */
   readonly sourceSignature?:string;
+  /** Where the reading work went (development measurement). */
+  readonly readAnalysis?:ReadAnalysis;
+  /** Where the time of a card read went, by read kind and outcome (development measurement). */
+  readonly readProfile?:readonly ReadProfileGroup[];
+  /** Present only with ?rescue=tile|verify: the rescue feature read check and its counters. */
+  readonly rescueFeature?:{readonly mode:string;readonly calls:number;readonly ms:number;readonly compared:number;readonly different:number};
+  /** Present only for a `realtime-batch` run: the frame-batch visual reading counters. */
+  readonly visualBatch?:{readonly batches:number;readonly crops:number;readonly declinedCrops:number;
+    readonly resolved:number;readonly failed:number;readonly meanRoundTripMs:number};
+  /** One example crop per rejection reason, as the scanner kept it. */
+  readonly rejectedSamples?:readonly {readonly image:string;readonly time:number;readonly slot:number;readonly reason:string;readonly sharpness:number}[];
 }
 
 export function summarizeRun(input:{build:string;read:number;expected:number|null;unidentified:number;delivery:RunDeliveryLike}):RunSummary {
@@ -134,4 +147,96 @@ export function comparabilityIssues(a:RunReport,b:RunReport):string[] {
   if(a.summary.mode!==b.summary.mode&&a.summary.mode!=='live'&&b.summary.mode!=='live')issues.push('두 실행의 재생 방식이 다릅니다(실시간 간격 대 순차).');
   if((a.summary.mode==='live'||b.summary.mode==='live')&&!(a.recording.complete&&b.recording.complete))issues.push('라이브 결과와 비교하려면 기록이 완전해야 합니다(프레임 누락 가능).');
   return issues;
+}
+
+/** A scan ledger trace, as far as the read analysis needs it. */
+export interface ReadTraceLike {
+  readonly time:number;readonly stage:string;readonly cardId?:string;readonly phase?:string;readonly reason?:string;readonly slot?:number;
+  readonly readings?:readonly {readonly kind:'visual'|'short'|'full';readonly startedAt:number;readonly endedAt?:number}[];
+}
+export interface ReadAnalysis {
+  /** Card crops the scanner looked at, by where each one ended. */
+  readonly stages:Readonly<Record<string,number>>;
+  /** Why crops were rejected before reading, most frequent first. */
+  readonly rejected:readonly {readonly reason:string;readonly count:number}[];
+  /** Per whole second of capture time: crops seen, and crops rejected in each of the four rows. */
+  readonly bySecond:readonly {readonly second:number;readonly crops:number;readonly rejectedByRow:readonly number[]}[];
+  /** Read passes by kind (recorded only on the live path; at most three per crop). */
+  readonly reads:Readonly<Record<'visual'|'short'|'full',{readonly count:number;readonly ms:number}>>;
+  /** Identified crops by the heaviest pass they needed. */
+  readonly identifiedBy:Readonly<Record<'visual'|'short'|'full'|'unrecorded',number>>;
+  readonly cards:number;
+  /** Identified crops per card: how often the same card was read to an identity. */
+  readonly identifiedCropsPerCard:{readonly mean:number;readonly max:number};
+  /** Read passes that started after their card had already been identified from an earlier crop. */
+  readonly afterFirstIdentity:{readonly count:number;readonly ms:number};
+}
+
+/** Where the reading work of a scan went. Observation of one run, not a fact about the input. */
+export function analyzeReads(traces:readonly ReadTraceLike[]):ReadAnalysis {
+  const stages:Record<string,number>={};
+  const reads={visual:{count:0,ms:0},short:{count:0,ms:0},full:{count:0,ms:0}};
+  const identifiedBy={visual:0,short:0,full:0,unrecorded:0};
+  const perCard=new Map<string,number>(),firstIdentity=new Map<string,number>();
+  const rank={visual:0,short:1,full:2} as const,rejectedReasons=new Map<string,number>(),seconds=new Map<number,{second:number;crops:number;rejectedByRow:number[]}>();
+  for(const trace of traces){
+    stages[trace.stage]=(stages[trace.stage]??0)+1;
+    {
+      const second=Math.floor(trace.time);let row=seconds.get(second);
+      if(!row){row={second,crops:0,rejectedByRow:[0,0,0,0]};seconds.set(second,row);}
+      row.crops++;
+      if(trace.stage==='rejected'&&trace.slot!==undefined&&trace.reason!=='미보유 카드 뒷면 · 빈 슬롯')row.rejectedByRow[Math.min(3,Math.floor(trace.slot/10))]++;
+    }
+    if(trace.stage==='rejected')rejectedReasons.set(trace.reason??'',(rejectedReasons.get(trace.reason??'')??0)+1);
+    const readings=trace.readings??[];
+    for(const reading of readings){
+      reads[reading.kind].count++;
+      if(reading.endedAt!==undefined)reads[reading.kind].ms+=Math.max(0,reading.endedAt-reading.startedAt)*1000;
+    }
+    if(trace.stage!=='identified'||!trace.cardId)continue;
+    perCard.set(trace.cardId,(perCard.get(trace.cardId)??0)+1);
+    if(!readings.length)identifiedBy.unrecorded++;
+    else identifiedBy[readings.reduce((a,b)=>rank[b.kind]>rank[a.kind]?b:a).kind]++;
+    const ended=readings.reduce((latest,reading)=>Math.max(latest,reading.endedAt??reading.startedAt),-Infinity);
+    if(Number.isFinite(ended)&&ended<(firstIdentity.get(trace.cardId)??Infinity))firstIdentity.set(trace.cardId,ended);
+  }
+  const after={count:0,ms:0};
+  for(const trace of traces){
+    if(!trace.cardId)continue;
+    const known=firstIdentity.get(trace.cardId);
+    if(known===undefined)continue;
+    for(const reading of trace.readings??[])if(reading.startedAt>known){
+      after.count++;if(reading.endedAt!==undefined)after.ms+=Math.max(0,reading.endedAt-reading.startedAt)*1000;
+    }
+  }
+  const counts=[...perCard.values()];
+  const round=(value:number)=>Math.round(value*10)/10;
+  for(const kind of ['visual','short','full'] as const)reads[kind].ms=Math.round(reads[kind].ms);
+  return {stages,rejected:[...rejectedReasons].map(([reason,count])=>({reason,count})).sort((a,b)=>b.count-a.count),bySecond:[...seconds.values()].sort((a,b)=>a.second-b.second),reads,identifiedBy,cards:perCard.size,
+    identifiedCropsPerCard:{mean:counts.length?round(counts.reduce((a,b)=>a+b,0)/counts.length):0,max:counts.length?Math.max(...counts):0},
+    afterFirstIdentity:{count:after.count,ms:Math.round(after.ms)}};
+}
+
+export interface ReadProfileLike {readonly stage:string;readonly identified:boolean;readonly spans:Readonly<Record<string,number>>}
+export interface ReadProfileGroup {
+  readonly stage:string;readonly identified:boolean;readonly reads:number;
+  /** Mean milliseconds per read, by span, and their sum. */
+  readonly meanMs:Readonly<Record<string,number>>;readonly totalMeanMs:number;
+}
+/** Mean time of each part of a card read, grouped by read kind and outcome. */
+export function summarizeReadProfiles(profiles:readonly ReadProfileLike[]):readonly ReadProfileGroup[] {
+  const groups=new Map<string,{stage:string;identified:boolean;reads:number;sums:Record<string,number>}>();
+  for(const profile of profiles){
+    const key=profile.stage+'/'+profile.identified;
+    let group=groups.get(key);
+    if(!group){group={stage:profile.stage,identified:profile.identified,reads:0,sums:{}};groups.set(key,group);}
+    group.reads++;
+    for(const [name,ms] of Object.entries(profile.spans))group.sums[name]=(group.sums[name]??0)+ms;
+  }
+  const round=(value:number)=>Math.round(value*10)/10;
+  return [...groups.values()].sort((a,b)=>b.reads-a.reads).map(group=>{
+    const meanMs=Object.fromEntries(Object.entries(group.sums).map(([name,sum])=>[name,round(sum/group.reads)]));
+    return {stage:group.stage,identified:group.identified,reads:group.reads,meanMs,
+      totalMeanMs:round(Object.values(group.sums).reduce((a,b)=>a+b,0)/group.reads)};
+  });
 }
