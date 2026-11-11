@@ -52,6 +52,10 @@ export function loadCv(): Promise<CV> {
     }).catch(error => { runtime = undefined; throw error; });
   return runtime;
 }
+/** Coarse search scales, in the order they are tried when nothing is remembered. */
+export const COARSE_SCALES = [1, 0.85, 1.15, 0.7, 1.3, 0.55, 1.5] as const;
+/** Frames without a window that use only the remembered scale before one full search. */
+export const FULL_SEARCH_AFTER = 5;
 export interface DetectorPlatform {
   cv: CV;
   canvas: () => Raster;
@@ -95,6 +99,15 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
   // repeatedly uploading the full source to the GPU stalls live delivery.
   rasterContext(canvas);
   let previous: { x: number; y: number; scale: number; width:number; height:number } | null = null;
+  // The UI scale of a share does not change while it runs, so once the card
+  // window was found at one of the search scales, a frame that has no tracked
+  // window is first looked up at that scale only. Seven scales cost about 245 ms
+  // for a frame without a window (measured, 2560x1440), one scale about a seventh.
+  // The full search still runs after FULL_SEARCH_AFTER misses (a changed UI scale
+  // or window size is found within that many frames) and whenever the source size
+  // changes. A window at the remembered scale is found exactly as before.
+  let knownScale: {scale:number;width:number;height:number} | null = null;
+  let restrictedMisses = 0;
   const dimension=(value:number)=>Number.isSafeInteger(value)&&value>0&&value<=0xffffffff;
   const located=(value:{x:number;y:number;scale:number},width:number,height:number)=>
     Number.isFinite(value.x)&&value.x>=0&&value.x<width&&Number.isFinite(value.y)&&value.y>=0&&value.y<height&&
@@ -118,6 +131,9 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
       if(!dimension(mediaWidth)||!dimension(mediaHeight)){previous=null;return null;}
       if(previous&&(previous.width!==mediaWidth||previous.height!==mediaHeight||!located(previous,mediaWidth,mediaHeight)))previous=null;
       const tracked = previous;
+      if(knownScale&&(knownScale.width!==mediaWidth||knownScale.height!==mediaHeight))knownScale=null;
+      const restricted=!tracked&&!!knownScale&&restrictedMisses<FULL_SEARCH_AFTER;
+      const coarseScales:readonly number[]=restricted?[knownScale!.scale]:COARSE_SCALES;
       const ratio = tracked ? 1 : Math.min(1, 1280 / mediaWidth);
       const offsetX = tracked ? Math.max(0, tracked.x - 32) : 0;
       const offsetY = tracked ? Math.max(0, tracked.y - 32) : 0;
@@ -147,7 +163,9 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
           canvas.height,
         );
       const trackedPixels = rasterContext(canvas).getImageData(0,0,canvas.width,canvas.height);
-      const trackedKey = JSON.stringify([tracked?.x,tracked?.y,tracked?.scale,mediaWidth,mediaHeight,offsetX,offsetY,width,height,canvas.width,canvas.height]);
+      // The scale list is part of the key: a result found at one remembered scale must
+      // not answer a later full search of the same pixels.
+      const trackedKey = JSON.stringify([tracked?.x,tracked?.y,tracked?.scale,mediaWidth,mediaHeight,offsetX,offsetY,width,height,canvas.width,canvas.height,restricted?knownScale!.scale:0]);
       const proposalCache = tracked ? trackedCache : globalCache;
       const cacheable = reuseExact && (!!tracked || trackedPixels.data.byteLength <= globalCacheBytes);
       const cached = cacheable ? proposalCache.get(0,trackedKey,trackedPixels.data) : undefined;
@@ -158,9 +176,7 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
         src.delete();
         try {
-          for (const scale of tracked
-            ? [tracked.scale]
-            : [1, 0.85, 1.15, 0.7, 1.3, 0.55, 1.5]) {
+          for (const scale of tracked ? [tracked.scale] : coarseScales) {
             const lease=templates.acquire(Math.round(grayAnchor.cols*scale*ratio),Math.round(grayAnchor.rows*scale*ratio));
             const template=lease.value,result=new cv.Mat();
             try {
@@ -191,15 +207,18 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
       if(cacheable&&!tracked&&!cached&&Number.isFinite(best.score)&&located(best,mediaWidth,mediaHeight))
         globalCache.setOwned(0,trackedKey,trackedPixels.data,{...best});
       if(!Number.isFinite(best.score)||!located(best,mediaWidth,mediaHeight)){
+        if(!tracked)restrictedMisses=restricted?restrictedMisses+1:0;
         previous=null;return tracked?this.detect(video):null;
       }
       // Half-resolution glyphs change phase after odd-pixel window movement.
       // A coarse candidate is only a location proposal; validate at native
       // resolution before accepting it, with the original final threshold.
       if (best.score < (tracked ? 0.75 : 0.6)) {
+        if(!tracked)restrictedMisses=restricted?restrictedMisses+1:0;
         previous = null;
         return tracked ? this.detect(video) : null;
       }
+      const coarseScale=best.scale;
       // Cache the tracked proposal, not the refined/final decision. A weaker
       // proposal still enters native refinement below, whose different pixels
       // and geometry are checked independently on every input.
@@ -341,6 +360,9 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
       trace?.({stage:'growth',cached:!!cachedGrowth,elapsedMs:performance.now()-growthStarted,growthScore,gold:gold/(256*48),gx,gy});
       if (growthScore < 0.8 || gold / (256 * 48) < 0.2) return null;
       previous = {x:best.x,y:best.y,scale:best.scale,width:mediaWidth,height:mediaHeight};
+      // The coarse scale (one of the search scales) is what a later search reuses.
+      if(!tracked)knownScale={scale:coarseScale,width:mediaWidth,height:mediaHeight};
+      restrictedMisses=0;
       const { x, y, scale: s } = best;
       const layout = normalizeLayoutGeometry({x, y, scale: s}, mediaWidth, mediaHeight);
       // Preserve logical slot indices even when the window is partially offscreen.
@@ -354,7 +376,7 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
       growthAnchor.delete();
       growthCanvas.width = 0;
       growthCanvas.height = 0;
-      canvas.width=canvas.height=0;previous=null;
+      canvas.width=canvas.height=0;previous=null;knownScale=null;restrictedMisses=0;
       globalCache = new ExactPixelCache(1);
     },
   };
