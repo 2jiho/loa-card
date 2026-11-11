@@ -134,6 +134,10 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
       if(knownScale&&(knownScale.width!==mediaWidth||knownScale.height!==mediaHeight))knownScale=null;
       const restricted=!tracked&&!!knownScale&&restrictedMisses<FULL_SEARCH_AFTER;
       const coarseScales:readonly number[]=restricted?[knownScale!.scale]:COARSE_SCALES;
+      // Every untracked search that ends without a window counts, whichever check rejected
+      // it: a weak match at the remembered scale that a later check refuses must still lead
+      // back to the full search.
+      const missed=()=>{if(!tracked)restrictedMisses=restricted?restrictedMisses+1:0;};
       const ratio = tracked ? 1 : Math.min(1, 1280 / mediaWidth);
       const offsetX = tracked ? Math.max(0, tracked.x - 32) : 0;
       const offsetY = tracked ? Math.max(0, tracked.y - 32) : 0;
@@ -207,14 +211,14 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
       if(cacheable&&!tracked&&!cached&&Number.isFinite(best.score)&&located(best,mediaWidth,mediaHeight))
         globalCache.setOwned(0,trackedKey,trackedPixels.data,{...best});
       if(!Number.isFinite(best.score)||!located(best,mediaWidth,mediaHeight)){
-        if(!tracked)restrictedMisses=restricted?restrictedMisses+1:0;
+        missed();
         previous=null;return tracked?this.detect(video):null;
       }
       // Half-resolution glyphs change phase after odd-pixel window movement.
       // A coarse candidate is only a location proposal; validate at native
       // resolution before accepting it, with the original final threshold.
       if (best.score < (tracked ? 0.75 : 0.6)) {
-        if(!tracked)restrictedMisses=restricted?restrictedMisses+1:0;
+        missed();
         previous = null;
         return tracked ? this.detect(video) : null;
       }
@@ -238,7 +242,7 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
           mediaHeight - top,
           Math.ceil(grayAnchor.rows * (best.scale + 0.09) + 32),
         );
-        if(!dimension(refineWidth)||!dimension(refineHeight)){previous=null;return null;}
+        if(!dimension(refineWidth)||!dimension(refineHeight)){missed();previous=null;return null;}
         if(canvas.width!==refineWidth)canvas.width=refineWidth;
         if(canvas.height!==refineHeight)canvas.height=refineHeight;
         const nativeContext=rasterContext(canvas);
@@ -298,7 +302,7 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
         }
         trace?.({stage:'refinement-work',cached:!!cachedRefinement,elapsedMs:performance.now()-refinementStarted});
       }
-      if (!Number.isFinite(best.score)||!located(best,mediaWidth,mediaHeight)||best.score < 0.75){previous=null;return null;}
+      if (!Number.isFinite(best.score)||!located(best,mediaWidth,mediaHeight)||best.score < 0.75){missed();previous=null;return null;}
       // The inventory title also appears outside Growth. Validate the selected tab.
       trace?.({stage:'refined',...best});
       const gx = best.x - 150 * best.scale,
@@ -308,8 +312,7 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
         gy < 0 ||
         gx + 256 * best.scale > mediaWidth ||
         gy + 48 * best.scale > mediaHeight
-      )
-        return null;
+      ){missed();return null;}
       const growthStarted=trace?performance.now():0;
       if(growthCanvas.width!==256)growthCanvas.width=256;
       if(growthCanvas.height!==48)growthCanvas.height=48;
@@ -358,7 +361,7 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
         if(reuseExact)growthCache.set(0,growthKey,gp,{score:growthScore,gold});
       }
       trace?.({stage:'growth',cached:!!cachedGrowth,elapsedMs:performance.now()-growthStarted,growthScore,gold:gold/(256*48),gx,gy});
-      if (growthScore < 0.8 || gold / (256 * 48) < 0.2) return null;
+      if (growthScore < 0.8 || gold / (256 * 48) < 0.2){missed();return null;}
       previous = {x:best.x,y:best.y,scale:best.scale,width:mediaWidth,height:mediaHeight};
       // The coarse scale (one of the search scales) is what a later search reuses.
       if(!tracked)knownScale={scale:coarseScale,width:mediaWidth,height:mediaHeight};

@@ -8,7 +8,7 @@ import type {DetectorPlatform} from '../src/features/card-scanner/acquisition/de
  * one scale tried, which is exactly what the scale memory saves. */
 function fake(initial:number|null) {
   class Mat {cols=0;rows=0;score=0;x=0;y=0;delete(){}}
-  const state={windowScale:initial as number|null,coarseCalls:0,sizes:[] as number[]};
+  const state={windowScale:initial as number|null,coarseCalls:0,sizes:[] as number[],wrongScaleScore:.3,strictRefinement:false};
   const ANCHOR_COLS=100,ANCHOR_ROWS=20;
   const cv={
     Mat,Size:class{width:number;height:number;constructor(w:number,h:number){this.width=w;this.height=h;}},
@@ -21,9 +21,10 @@ function fake(initial:number|null) {
       if(a.cols>500){                                                   // coarse global/tracked search
         state.coarseCalls++;state.sizes.push(t.cols);
         const ratio=0.5,wanted=state.windowScale===null?-1:Math.round(ANCHOR_COLS*state.windowScale*ratio);
-        r.score=t.cols===wanted?.99:.3;r.x=384;r.y=128;return;
+        r.score=t.cols===wanted?.99:state.wrongScaleScore;r.x=384;r.y=128;return;
       }
-      r.score=.96;r.x=r.y=16;                                           // native refinement
+      // native refinement; strict: only a template of the window's real size matches
+      r.score=!state.strictRefinement||(state.windowScale!==null&&Math.abs(t.cols-ANCHOR_COLS*state.windowScale)<=1)?.96:.5;r.x=r.y=16;
     },
     minMaxLoc(r:Mat){return {maxVal:r.score,maxLoc:{x:r.x,y:r.y}};},
   };
@@ -97,5 +98,18 @@ test('a window shown while tracking is unaffected by the memory', async()=>{
     // so it is not a global search at all (here: no coarse call over a wide source).
     const globalSearches=calls(f,()=>assert.ok(d.detect(SOURCE),'the tracked window is still found'));
     assert.equal(globalSearches,0);
+  }finally{d.dispose();}
+});
+
+test('a weak match at the remembered scale that refinement rejects still leads back to the full search', async()=>{
+  const f=fake(1),d=await createDetector(f.platform);
+  try{
+    assert.ok(d.detect(SOURCE));
+    // The UI scale changes while the window is closed; the header still matches weakly at the old scale.
+    f.state.windowScale=null;reset(d);
+    f.state.windowScale=1.3;f.state.wrongScaleScore=.65;f.state.strictRefinement=true;
+    let found=0;
+    for(let i=0;i<=FULL_SEARCH_AFTER;i++)if(d.detect(SOURCE)){found=i+1;break;}
+    assert.ok(found>0,'the window at the new scale is found within '+(FULL_SEARCH_AFTER+1)+' frames');
   }finally{d.dispose();}
 });

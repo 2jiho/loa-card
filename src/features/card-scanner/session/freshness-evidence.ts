@@ -310,6 +310,10 @@ export class FreshnessEvidence {
     if(count===this.pending.size+Number(this.lostChange))return count;
     this.apply({version:1,kind:'settle'});return this.pending.size+Number(this.lostChange);
   }
+  /** What guard() would claim now, without settling, recording a fact or an event. */
+  peek():{unresolved:number;settled:boolean} {
+    const unresolved=this.countAfterSettle();return {unresolved,settled:unresolved===0};
+  }
   guard(guard:FreshnessGuardKind):{unresolved:number;settled:boolean} {
     // Compute a claim without mutating. apply() performs the one recorded
     // settlement, so live execution and ordered replay have the same command.

@@ -323,3 +323,14 @@ test('100000 no-op UI queries keep the fact budget and only real lazy retirement
   for(let i=0;i<50_000;i++)assert.equal(evidence.settle(),0);
   assert.equal(evidence.snapshot().facts,before+1);assert.equal(events.length,before+1);
 });
+
+test('peek reports what a guard would claim without settling, recording a fact or emitting an event',()=>{
+  const {evidence,proofs,events}=tracker();
+  evidence.apply(accepted(1));evidence.apply(identity(1));
+  proofs.set('card-1',100);
+  const before=evidence.snapshot(),emitted=events.length;
+  assert.deepEqual(evidence.peek(),{unresolved:0,settled:true});
+  assert.deepEqual(evidence.snapshot(),before,'pending entries, guards and the fact count are unchanged');
+  assert.equal(events.length,emitted);
+  assert.deepEqual(evidence.guard('capture'),{unresolved:0,settled:true});
+});

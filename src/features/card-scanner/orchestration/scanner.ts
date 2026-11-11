@@ -149,6 +149,7 @@ import type {LiveInventorySnapshot} from '../session/live-inventory';
 import { runJoinedWorkers } from '../capture/joined-workers';
 import { runRecoveryPipeline } from '../session/recovery-pipeline';
 import { coveredFieldRetry, fieldRetryIdentity, pruneFieldRetries, retryNeedsIdentity } from '../session/field-retry';
+import { selectZeroPreview } from '../session/preview-zero';
 import { canSkipRecovery, canFinishVerifiedCapture, confirmedReadingCount, freshCaptureTail } from '../session/recovery-completion';
 import {issuePositiveCompletionReceipt,type PositiveCompletionReceipt} from '../session/positive-completion';
 import { pendingScanFields, projectCurrentScanFields } from '../session/current-scan-fields';
@@ -3512,7 +3513,7 @@ async function runScannerInternal(
             debug.onRecoveryProbe({frame:state.recoveryFrames,time:frameTime,idle,
               completeProof:idle&&!!recognizer&&canSkipRecovery({expected:state.expected,finalExpected:verifiedFinalExpected,
                 cards:confirmSortedNames([...cards.values()],[...evidence.values()].flat(),recognizer.catalog),
-                fieldChangesSettled:freshness!.guard('recovery').settled&&obstructionPending()===0&&!state.drainInputLoss,
+                fieldChangesSettled:freshness!.peek().settled&&obstructionPending()===0&&!state.drainInputLoss,
                 latest:latestIdentityOrder,confirmed:confirmedFieldOrder,agreed:inventory!.agreedFieldOrder,
                 pending:0,unresolved:unresolvedObservations(),dropped:state.droppedFrames,inputSettled:true,tailFresh:completionInput.tailFresh}),
               read:confirmedReadingCount({cards:[...cards.values()],latest:latestIdentityOrder,confirmed:confirmedFieldOrder,agreed:inventory!.agreedFieldOrder}),
@@ -3608,13 +3609,16 @@ async function runScannerInternal(
           .sort((a,b) => Number(b.capturePosition?.stable === true) - Number(a.capturePosition?.stable === true) ||
             (b.captureOrder ?? 0) - (a.captureOrder ?? 0))
           .slice(0, 8);
+        // Read every candidate before deciding: an empty counter is accepted only when no
+        // later capture of this card showed a positive count (selectZeroPreview).
+        const readings:{preview:typeof previews[number];order:number;zero:boolean;positive:boolean;diagnostics:NonNullable<ScannedCard['countDiagnostics']>|undefined}[]=[];
         for (const preview of previews) {
           try {
             const {values,pixels}=await readPreview(preview.image,card.id);
             let diagnostics = values.countDiagnostics;
-            let resolvedZero = values.extraCopies === 0 && diagnostics?.iconPresent === false &&
+            let zero = values.extraCopies === 0 && diagnostics?.iconPresent === false &&
               values.awakening === card.awakening;
-            if (!resolvedZero) {
+            if (!zero) {
               const proof = emptyCounterProof(packCount(pixels, 140, 0, true), card.observations, !!stillImages);
               if (proof) {
                 const maximum = 15 - card.awakening * (card.awakening + 1) / 2;
@@ -3624,19 +3628,22 @@ async function runScannerInternal(
                       ? '저장 이미지 재확인 · 다중 관측 빈 장수 배경 확인'
                       : `저장 이미지 재확인 · 관측 ${card.observations}회 빈 장수 배경 확인 · 이후 관측으로 갱신`,
                   readings: [], iconPresent: false };
-                resolvedZero = true;
+                zero = true;
               }
             }
-            if (!resolvedZero) continue;
-            const review = card.review.filter(reason => !reason.includes('장수') && !reason.includes('각성'));
-            const resolvedDiagnostics = diagnostics ?? { maximum: 15, reason: '', readings: [] };
-            state.cards[index] = { ...card, image: preview.image, extraCopies: 0, countReliable: true, review,
-              countDiagnostics: { ...resolvedDiagnostics,
-                reason: '저장 이미지 재확인 · 추가 카드 표시 없음 · 0장 후보' } };
-            inventory!.confirmPreviewField(card.id, latestIdentityOrder.get(card.id) ?? card.captureOrder ?? 0);
-            resolved.add(card.id);
-            break;
+            readings.push({preview,order:preview.captureOrder??0,zero,diagnostics,
+              positive:!zero&&typeof values.extraCopies==='number'&&values.extraCopies>0&&values.countDiagnostics?.iconPresent!==false});
           } catch { /* Try another captured preview before keeping the review. */ }
+        }
+        const chosen=readings[selectZeroPreview(readings)];
+        if(chosen){
+          const review = card.review.filter(reason => !reason.includes('장수') && !reason.includes('각성'));
+          const resolvedDiagnostics = chosen.diagnostics ?? { maximum: 15, reason: '', readings: [] };
+          state.cards[index] = { ...card, image: chosen.preview.image, extraCopies: 0, countReliable: true, review,
+            countDiagnostics: { ...resolvedDiagnostics,
+              reason: resolvedDiagnostics.reason || '저장 이미지 재확인 · 추가 카드 표시 없음 · 0장 후보' } };
+          inventory!.confirmPreviewField(card.id, latestIdentityOrder.get(card.id) ?? card.captureOrder ?? 0);
+          resolved.add(card.id);
         }
       }
       if (resolved.size) state.pendingFields = (state.pendingFields ?? []).filter(field => !resolved.has(field.id));
@@ -3798,20 +3805,10 @@ async function runScannerInternal(
     syncUnresolvedObservations();
     const currentRunNames=confirmedCaptureCount({cards:state.cards,latest:latestIdentityOrder,confirmedNames:confirmedNameOrder});
     const currentRunRead=confirmedReadingCount({cards:state.cards,latest:latestIdentityOrder,confirmed:confirmedFieldOrder,agreed:inventory!.agreedFieldOrder});
-    // A full, unique inventory with every name/field confirmed cannot have a
-    // missing card. Remaining screen observations are extra equipped/tooltip
-    // observations (often already-in-list cards); keep them as diagnostics, not
-    // as completion blockers or "recognition needed" cards in the UI.
-    if(state.expected!==null&&currentRunNames===state.expected&&currentRunRead===state.expected&&
-      state.cards.length===state.expected&&new Set(state.cards.map(card=>card.id)).size===state.expected){
-      const extras=state.unidentified.length+(state.discardedObservations?.length??0)+(state.recognitionNeeded?.length??0);
-      const resolvedExtra=Math.max(extras,ledger.unresolvedGroups,unknownSourceSession?.unresolved()??0);
-      if(resolvedExtra>0){
-        state.resolvedUnidentifiedObservations=(state.resolvedUnidentifiedObservations??0)+resolvedExtra;
-        state.duplicateUnidentifiedObservations=(state.duplicateUnidentifiedObservations??0)+extras;
-      }
-      state.unidentified=[];state.discardedObservations=[];state.recognitionNeeded=[];state.unresolvedObservations=0;
-    }
+    // Matching counts are not evidence about the observations that stayed unidentified:
+    // they are kept and reported as they are, never cleared because the totals agree
+    // (docs/scanner-pipeline.md). Only resolveFinalRescue, which checks each observation
+    // against the list, may classify one as a duplicate.
     const lossFinal=drainLossFinal({unresolved:freshness!.guard('final').unresolved+obstructionPending(),status:'',warning:state.captureWarning},state.drainInputLoss);
     const identifiedAfterSharing=liveScreen?state.cards.filter(card=>identifiedThisRun.has(card.id)&&!liveIdentities.has(card.id)).map(({id,name})=>({id,name})):undefined;
     refreshGrid=undefined;

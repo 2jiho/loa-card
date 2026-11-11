@@ -178,7 +178,12 @@ async function seal():Promise<void> {
   await loop;
   try{
     // Whatever is still waiting to upload belongs to a card-window span.
-    while(pending.length||uploads.size){pump();await Promise.all([...uploads]);}
+    // After a failed upload nothing more is sent (pump() stops), so the frames still
+    // waiting are counted as dropped instead of being waited for forever.
+    while(pending.length||uploads.size){
+      if(failed)for(;pending.length;pending.pop())drop('recording failed earlier');
+      pump();await Promise.all([...uploads]);
+    }
     reportStats();
     if(!startPromise){post({type:'sealed',meta:null});return;}
     const note=`read ${read} frames, scanner located the card window ${located} times; recorded ${recorded}, dropped ${dropped}${dropped?` (${Object.entries(dropReasons).map(([k,v])=>`${k} ${v}`).join(', ')})`:''}; convert ${recorded?(convertTotal/recorded).toFixed(1):0}ms send ${recorded?(sendTotal/recorded).toFixed(1):0}ms per frame${failure?`; ${failure}`:''}`;
