@@ -82,6 +82,8 @@ export interface RunReport {
   readonly liveReplay?:{readonly recordingMode:'off'|'detailed';readonly timeline:readonly unknown[];readonly recoveryProbe?:unknown};
   /** Set when only part of the recording was fed (subset experiment). */
   readonly subsetOf?:{readonly run:string;readonly frames:number;readonly of:number};
+  /** First 16 hex digits of the hash of the source and scanner data the dev server started with. */
+  readonly sourceSignature?:string;
 }
 
 export function summarizeRun(input:{build:string;read:number;expected:number|null;unidentified:number;delivery:RunDeliveryLike}):RunSummary {

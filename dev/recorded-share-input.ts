@@ -38,6 +38,8 @@ export interface RecordedShareInput extends LiveVideoInput {
   readonly meta:RecordedShareMeta;
   /** Delivery faithfulness; meaningful once the input has ended. */
   delivery():RecordedShareDelivery;
+  /** Frames in the recording, before any early end (`untilSeconds`). */
+  readonly recordedFrames:number;
 }
 
 type Generator=MediaStreamTrack&{writable:WritableStream<VideoFrame>;stop():void};
@@ -68,7 +70,7 @@ export async function prepareRecordedShareInput(options:{
   let resolveCompletion!:()=>void,rejectCompletion!:(reason:unknown)=>void;
   const completion=new Promise<void>((resolve,reject)=>{resolveCompletion=resolve;rejectCompletion=reject;});
   void completion.catch(()=>{});
-  let closed=false,ended=false,started=false,declaredFrames=0,duration=0;
+  let closed=false,ended=false,started=false,declaredFrames=0,recordedFrames=0,duration=0;
   let workerDelivery:(RecordedShareDeliveryStats&{frames:number})|undefined,inputSeconds=0;
 
   const cleanup=()=>{
@@ -82,7 +84,7 @@ export async function prepareRecordedShareInput(options:{
   signal.addEventListener('abort',abortFromOwner,{once:true});
   worker.onmessage=(event:MessageEvent<ShareWorkerReply>)=>{
     const reply=event.data;
-    if(reply.type==='ready'){declaredFrames=reply.lines;duration=reply.durationSeconds;resolveReady({lines:reply.lines,durationSeconds:reply.durationSeconds});return;}
+    if(reply.type==='ready'){declaredFrames=reply.lines;recordedFrames=reply.recordedLines;duration=reply.durationSeconds;resolveReady({lines:reply.lines,durationSeconds:reply.durationSeconds});return;}
     if(reply.type==='error'){const error=Error(reply.message);rejectReady(error);if(!closed){cleanup();rejectCompletion(error);}return;}
     // done: give the last frame a callback turn, then end the share like a user pressing stop.
     workerDelivery=reply.delivery;inputSeconds=reply.inputSeconds;
@@ -119,6 +121,7 @@ export async function prepareRecordedShareInput(options:{
     get inputSeconds() {return inputSeconds;},
     get durationSeconds() {return duration;},
     get ended() {return ended;},
+    get recordedFrames() {return recordedFrames;},
     completion,
     delivery() {
       const delivery=workerDelivery??{delivered:0,meanLateMs:0,maxLateMs:0,lateOver33Ms:0,frames:0};

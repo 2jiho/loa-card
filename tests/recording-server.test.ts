@@ -180,3 +180,18 @@ test('the live scan result is overwritten in place next to the recording and lis
     assert.equal((await fetch(`${base}/live1/seal`,{method:'POST',body:'{}'})).status,200,'an open recording would keep the server alive');
   });
 });
+
+test('a frame waiting for an earlier sequence number that never arrives is refused after the wait', async()=>{
+  const root=await mkdtemp(join(tmpdir(),'recording-gap-'));const state=createRecordingServerState(10*60_000,200);
+  const server:Server=createServer((request,response)=>{void serveRecording(request,response,state,root).then(handled=>{if(!handled){response.statusCode=404;response.end();}});});
+  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const base=`http://127.0.0.1:${(server.address() as {port:number}).port}/__rec`;
+  try{
+    await fetch(`${base}/g/start`,{method:'PUT',body:JSON.stringify({width:W,height:H})});
+    const send=(seq:number)=>fetch(`${base}/g/frame`,{method:'POST',body:frame(seq),headers:{'x-delivered-at-ms':'0','x-seq':String(seq)}});
+    assert.equal((await send(0)).status,200);
+    assert.equal((await send(2)).status,409,'frame 1 never arrives');
+    const sealed=await (await fetch(`${base}/g/seal`,{method:'POST'})).json() as {status:string;frames:number};
+    assert.deepEqual({status:sealed.status,frames:sealed.frames},{status:'sealed',frames:1});
+  }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));await rm(root,{recursive:true,force:true});}
+});

@@ -153,7 +153,9 @@ export class RecordingWriter {
     const seq=this.frames++;
     const line:RecordedFrameLine={seq,mediaTimeMs:info.mediaTimeMs,deliveredAtMs:info.deliveredAtMs,receivedAtMs:Date.now()-this.startedAt};
     this.lines!.write(`${JSON.stringify(line)}\n`);
-    if(!stdin.write(data))await new Promise<void>(resolve=>stdin.once('drain',resolve));
+    // An encoder that dies while its input is full never drains: fail instead of waiting forever.
+    if(!stdin.write(data))await Promise.race([new Promise<void>(resolve=>stdin.once('drain',resolve)),
+      this.exited!.then(()=>{throw Error(this.broken??'ffmpeg exited while a frame was being written.');})]);
     return seq;
   }
 

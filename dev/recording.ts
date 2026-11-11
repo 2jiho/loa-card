@@ -220,7 +220,10 @@ async function run():Promise<void> {
             // ("network error").
             continuous:(recording:ContinuousRecording)=>{continuousRecording=recording;}}:{})});
       delivery={...input.delivery(),mode:'realtime'};
+      // A share ended early is a different input from the whole recording; say so in the report.
+      if(input.recordedFrames>delivery.declaredFrames)subsetOf={run:`share ended at ${until}s`,frames:delivery.declaredFrames,of:input.recordedFrames};
     }
+    if(!live&&new URLSearchParams(location.search).has('until'))throw Error('until은 실시간 재실행(realtime) 모드에서만 쓸 수 있습니다.');
     if(!latest)throw Error('결과가 없습니다.');
     const cards:RunCard[]=latest.cards.map(card=>({id:card.id,name:card.name,awakening:card.awakening,extraCopies:card.extraCopies,observations:card.observations}));
     if(!delivery)throw Error('전달 정보가 없습니다.');
@@ -234,6 +237,9 @@ async function run():Promise<void> {
         ...(card.image?{image:card.image}:{})})),
       unresolved:{unidentified:summarizeUnresolved(latest.unidentified),discarded:summarizeUnresolved(latest.discardedObservations),
         recognitionNeeded:(latest.recognitionNeeded??[]).map(item=>({slot:item.slot,captureTime:item.captureTime,reason:item.reason}))},...(subsetOf?{subsetOf}:{}),
+      // The build label is the commit at server start; the source signature also tells
+      // uncommitted versions apart.
+      sourceSignature:String(import.meta.env.VITE_REPLAY_SIGNATURE??'').slice(0,16),
       summary:summarizeRun({build:import.meta.env.VITE_BUILD_REVISION??'local',read:latest.currentRunRead??0,expected:latest.expected,
         unidentified:latest.unidentified?.length??0,delivery}),
     };

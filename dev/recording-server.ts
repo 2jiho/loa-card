@@ -16,10 +16,12 @@ export interface RecordingServerState {
   readonly writers:Map<string,{writer:RecordingWriter;queue:Promise<unknown>;next:number;waiting:Map<number,()=>void>;idle?:ReturnType<typeof setTimeout>}>;
   /** Seal a recording that received no frame for this long (page closed or crashed). */
   idleSealMs:number;
+  /** How long a frame waits for the earlier sequence numbers before it is refused. */
+  sequenceWaitMs:number;
 }
 /** Frames arrive only while the scanner sees the card window, so a quiet spell
  * of a few minutes is normal; the idle seal is only for pages that vanished. */
-export function createRecordingServerState(idleSealMs=10*60_000):RecordingServerState {return {writers:new Map(),idleSealMs};}
+export function createRecordingServerState(idleSealMs=10*60_000,sequenceWaitMs=15_000):RecordingServerState {return {writers:new Map(),idleSealMs,sequenceWaitMs};}
 
 function touch(state:RecordingServerState,id:string):void {
   const open=state.writers.get(id);if(!open)return;
@@ -95,7 +97,13 @@ export async function serveRecording(request:IncomingMessage,response:ServerResp
       const claimed=number(header(request,'x-seq'));
       if(claimed!==null&&(!Number.isSafeInteger(claimed)||claimed<open.next)){json(response,400,{error:'Invalid or repeated frame sequence.'});return true;}
       if(claimed!==null&&claimed>open.next){
-        await new Promise<void>(resolve=>open.waiting.set(claimed,resolve));
+        // An earlier frame that never arrives (its upload failed) must not hold later frames,
+        // and their bodies, forever.
+        const arrived=await new Promise<boolean>(resolve=>{
+          const timer=setTimeout(()=>{open.waiting.delete(claimed);resolve(false);},state.sequenceWaitMs);
+          open.waiting.set(claimed,()=>{clearTimeout(timer);resolve(true);});
+        });
+        if(!arrived){json(response,409,{error:'An earlier frame never arrived.'});return true;}
       }
       const task=open.queue.then(()=>open.writer.writeFrame(data,{mediaTimeMs,deliveredAtMs}));
       open.queue=task.catch(()=>undefined);

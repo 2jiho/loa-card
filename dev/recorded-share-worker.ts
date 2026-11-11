@@ -14,7 +14,7 @@ export type ShareWorkerRequest=
   |{type:'start'}
   |{type:'stop'};
 export type ShareWorkerReply=
-  |{type:'ready';meta:unknown;lines:number;durationSeconds:number}
+  |{type:'ready';meta:unknown;lines:number;recordedLines:number;durationSeconds:number}
   |{type:'done';delivery:RecordedShareDeliveryStats&{frames:number};inputSeconds:number}
   |{type:'error';message:string};
 
@@ -74,6 +74,9 @@ async function init(message:Extract<ShareWorkerRequest,{type:'init'}>) {
         parts.push(value);partsBytes+=value.length;
         while(partsBytes>=frameBytes&&decoded<lines.length)queue.push({data:takeFrame(),line:lines[decoded++]});
         notify();
+        // Every wanted frame is queued: stop reading, so an early end (`untilSeconds`)
+        // neither buffers the rest of the recording nor delays the end of the share.
+        if(decoded>=lines.length){parts=[];partsBytes=0;void reader.cancel().catch(()=>undefined);return;}
       }
     }catch(error){if(!lifetime.signal.aborted)producerError=error;}
     finally{producerDone=true;notify();}
@@ -126,7 +129,7 @@ async function init(message:Extract<ShareWorkerRequest,{type:'init'}>) {
     },
     stop(){lifetime.abort(new DOMException('Stopped','AbortError'));void reader.cancel().catch(()=>undefined);notify();},
   };
-  post({type:'ready',meta,lines:lines.length,durationSeconds:(lines[lines.length-1].deliveredAtMs-lines[0].deliveredAtMs)/1000});
+  post({type:'ready',meta,lines:lines.length,recordedLines:allLines.length,durationSeconds:(lines[lines.length-1].deliveredAtMs-lines[0].deliveredAtMs)/1000});
 }
 
 self.onmessage=(event:MessageEvent<ShareWorkerRequest>)=>{
