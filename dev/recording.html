@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>기록 재실행</title>
+    <style>
+      :root { color-scheme: light dark; --gap: 12px; }
+      body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 16px; max-width: 1100px; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      p.note { margin: 0 0 var(--gap); opacity: .75; }
+      section { margin: 0 0 20px; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent); padding: 4px 8px; text-align: left; vertical-align: top; }
+      th { font-weight: 600; }
+      tr.picked { background: color-mix(in srgb, currentColor 8%, transparent); }
+      button { font: inherit; padding: 4px 12px; }
+      #share { width: 320px; max-width: 100%; background: #000; display: block; margin-top: 8px; }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 0; }
+      .bad { color: #c0392b; }
+      .ok { color: #1e8e4e; }
+      @media (prefers-color-scheme: dark) { .bad { color: #ff7b6b; } .ok { color: #5fd08b; } }
+    </style>
+  </head>
+  <body>
+    <h1>기록 재실행</h1>
+    <p class="note">서버에 저장된 화면 공유 기록을 실시간 처리 경로로 다시 실행하고, 같은 입력에서 코드 버전별 결과를 비교합니다. 개발 전용. <a href="./scanner.html">코퍼스 검사 페이지</a></p>
+    <section>
+      <button id="refresh" type="button">목록 새로 읽기</button>
+      <table id="recordings"><thead><tr><th></th><th>기록</th><th>프레임</th><th>크기·형식</th><th>상태</th><th>메모</th></tr></thead><tbody></tbody></table>
+    </section>
+    <section>
+      <label>방식 <select id="mode"><option value="sequential">순차(모든 프레임, 결정적)</option><option value="realtime">실시간 간격(부하에 민감)</option><option value="subset">인식 큐에 들어간 프레임만(실험)</option><option value="located">카드 창이 잡힌 프레임만(실험)</option></select></label>
+      <button id="start" type="button" disabled>선택한 기록 재실행</button>
+      <button id="stop" type="button" disabled>중지</button>
+      <span id="status" role="status"></span>
+      <video id="share" muted playsinline></video>
+      <pre id="progress"></pre>
+    </section>
+    <section>
+      <h2 style="font-size:15px">같은 기록의 실행 이력</h2>
+      <table id="runs"><thead><tr><th>비교</th><th>실행</th><th>빌드</th><th>읽음/기대</th><th>미식별</th><th>지연 평균·최대(ms)</th><th>충실도</th></tr></thead><tbody></tbody></table>
+      <pre id="diff"></pre>
+    </section>
+    <script type="module" src="./recording.ts"></script>
+  </body>
+</html>
