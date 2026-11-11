@@ -9,12 +9,16 @@
 // Usage:
 //   node scripts/run-recording-replay.mjs --id <recording-id> [--id <id2> ...] [--mode sequential|realtime|realtime-detailed|realtime-batch]
 //        [--port 5199] [--timeout 600] [--browser <path to chrome or edge>] [--log <file>] [--until <seconds>] [--json] [--cpuprofile <file.cpuprofile>] [--query "name=value"]
-// --cpuprofile: main-thread CPU profile of the sharing phase (live-path modes, one --id). Open it in
+// --cpuprofile: CPU profiles of the sharing phase (live-path modes, one --id): the main thread in <file>, and
+//        each worker in <file minus .cpuprofile>.<worker script>-<n>.cpuprofile. Open them in
 //        Chrome DevTools or summarize it with scripts/summarize-cpuprofile.mjs.
 // Modes: skip:mean=1,block=6,force=8 (sequential replay that leaves out frames similar to the last processed one; experiment),
 //        sequential (default, deterministic), realtime (live path, recording off = deployed app),
 //        realtime-detailed (live path with the detailed input recording on = development default),
-//        lean (prototype measurement of the acquisition and visual workers alone; not a scan).
+//        lean (prototype measurement of the acquisition and visual workers alone; not a scan),
+//        rows (per-frame row observations for the row-centred design feasibility measurement; not a scan),
+//        rowread (row-centred reading prototype: reads only the rows the list table lacks; not a scan),
+//        rowlight (rowread with a light per-frame check that skips frames needing nothing; not a scan).
 import {spawn,spawnSync} from 'node:child_process';
 import {closeSync,existsSync,mkdtempSync,openSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -30,7 +34,7 @@ const extraQuery=value('--query',null); // extra page parameters for experiments
 const cpuProfile=value('--cpuprofile',null),debugPort=Number(value('--debug-port','9339'));
 const logFile=value('--log',null); // browser console and error output, for diagnosing a failed run
 if(!ids.length){console.error('usage: node scripts/run-recording-replay.mjs --id <recording-id> [--mode sequential|realtime|realtime-detailed|realtime-batch]');process.exit(2);}
-if(!['sequential','realtime','realtime-detailed','realtime-batch','lean'].includes(mode)&&!mode.startsWith('skip:')){console.error(`unknown mode: ${mode}`);process.exit(2);}
+if(!['sequential','realtime','realtime-detailed','realtime-batch','lean','rows','rowread','rowlight'].includes(mode)&&!mode.startsWith('skip:')){console.error(`unknown mode: ${mode}`);process.exit(2);}
 
 function findBrowser() {
   const explicit=value('--browser',process.env.CHROME_PATH);
@@ -63,12 +67,34 @@ async function collectProfile(file) {
   const socket=new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve,reject)=>{socket.onopen=resolve;socket.onerror=()=>reject(Error('DevTools connection failed'));});
   let next=0;const waiting=new Map();
-  const send=(method,params={})=>new Promise(resolve=>{const id=++next;waiting.set(id,resolve);socket.send(JSON.stringify({id,method,params}));});
+  const send=(method,params={},sessionId)=>new Promise(resolve=>{const id=++next;waiting.set(id,resolve);socket.send(JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})}));});
+  // Workers are separate targets. Each one is profiled over the same span as the page:
+  // from the page's console.profile('share') to its console.profileEnd('share').
+  const workers=new Map();let sharing=false;
+  const workerName=url=>(url.split('/').pop()??'worker').split('?')[0].replace(/\.[a-z]+$/,'');
+  const startWorker=async sessionId=>{await send('Profiler.enable',{},sessionId);await send('Profiler.setSamplingInterval',{interval:500},sessionId);await send('Profiler.start',{},sessionId);};
   socket.onmessage=event=>{
     const message=JSON.parse(event.data);
     if(message.id&&waiting.has(message.id)){waiting.get(message.id)(message.result);waiting.delete(message.id);}
-    if(message.method==='Profiler.consoleProfileFinished'){writeFileSync(file,JSON.stringify(message.params.profile));console.error(`cpu profile saved: ${file}`);}
+    if(message.method==='Target.attachedToTarget'&&message.params.targetInfo.type==='worker'){
+      workers.set(message.params.sessionId,message.params.targetInfo.url);
+      if(sharing)void startWorker(message.params.sessionId);
+    }
+    if(message.method==='Target.detachedFromTarget')workers.delete(message.params.sessionId);
+    if(message.method==='Profiler.consoleProfileStarted'&&!message.sessionId){sharing=true;for(const sessionId of workers.keys())void startWorker(sessionId);}
+    if(message.method==='Profiler.consoleProfileFinished'&&!message.sessionId){
+      sharing=false;
+      writeFileSync(file,JSON.stringify(message.params.profile));console.error(`cpu profile saved: ${file}`);
+      const counts=new Map();
+      for(const [sessionId,url] of workers)void send('Profiler.stop',{},sessionId).then(result=>{
+        if(!result?.profile)return;
+        const name=workerName(url),index=(counts.get(name)??0)+1;counts.set(name,index);
+        const out=`${file.endsWith('.cpuprofile')?file.slice(0,-11):file}.${name}-${index}.cpuprofile`;
+        writeFileSync(out,JSON.stringify(result.profile));console.error(`cpu profile saved: ${out}`);
+      });
+    }
   };
+  await send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:false,flatten:true});
   await send('Profiler.enable');await send('Profiler.setSamplingInterval',{interval:500});
   await send('Runtime.evaluate',{expression:'window.__profilerReady=true'});
   return ()=>socket.close();

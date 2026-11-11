@@ -472,6 +472,13 @@ async function runScannerInternal(
     rescueFeature?: 'tile'|'verify';
     /** Development measurement with `rescueFeature: 'verify'`: calls, time and the comparison. */
     onRescueFeature?: (stats:{calls:number;ms:number;compared:number;different:number}) => void;
+    /** Development measurement of the live input flow, updated as frames arrive: video frame
+     * callbacks and the presented frames they skipped, admission skips by reason, frames
+     * frozen and offered, and how long the offered frames spent being collected (consume)
+     * against how long the pipeline had nothing in hand (idle between consumes). */
+    onFrameFlow?: (flow:Readonly<{callbacks:number;missedPresented:number;firstCallbackMs:number|null;lastCallbackMs:number|null;
+      maxCallbackGapMs:number;callbackGapsOver100Ms:number;skips:Readonly<Record<string,number>>;offered:number;consumed:number;
+      consumeMs:number;maxConsumeMs:number;idleMs:number}>) => void;
     /** Development measurement per replayed frame: screen handling (collect), card reading (drain), cards read. */
     onFrameLoop?: (loop:{time:number;collectMs:number;drainMs:number;drained:number}) => void;
     /** Development measurement per input frame: canvas copy, the acquisition round trip
@@ -3199,6 +3206,7 @@ async function runScannerInternal(
           signal.throwIfAborted();
           const started=performance.now();
           inputStats.processed++;
+          if(frameFlow&&flowLastConsumeEnd!==null)frameFlow.idleMs+=Math.max(0,started-flowLastConsumeEnd);
           const delay=Math.max(0,started-input.at);
           inputStats.queueWaitMs+=(delay-inputStats.queueWaitMs)/inputStats.processed;
           inputStats.maxQueueWaitMs=Math.max(inputStats.maxQueueWaitMs,delay);
@@ -3222,7 +3230,14 @@ async function runScannerInternal(
           }
           lastCoverageSlots=undefined;
           try{await collect(true,time,input.frame,input.at,originalId,input.stamp,!!input.drainRecovery,!!input.sourceUnrecorded);}
-          finally{if(coverageSelector){coverageSelector.outcome(lastCoverageSlots??[]);inputStats.coverage=coverageSelector.snapshot();}}
+          finally{
+            if(coverageSelector){coverageSelector.outcome(lastCoverageSlots??[]);inputStats.coverage=coverageSelector.snapshot();}
+            if(frameFlow){
+              const ended=performance.now(),took=ended-started;
+              frameFlow.consumed++;frameFlow.consumeMs+=took;frameFlow.maxConsumeMs=Math.max(frameFlow.maxConsumeMs,took);
+              flowLastConsumeEnd=ended;reportFlow();
+            }
+          }
           const completion={kind:'completed' as const,startedAtMs:started-recordingStart,endedAtMs:performance.now()-recordingStart};
           inputAdmission.completed(completion.startedAtMs,completion.endedAtMs);
           recordInput('input-admission',completion);
@@ -3240,8 +3255,22 @@ async function runScannerInternal(
       });
       disposeLiveCapture=()=>capturePipeline.dispose();
       signal.addEventListener('abort',disposeLiveCapture,{once:true});
+      // Development measurement only (debug.onFrameFlow); never read by the scanner.
+      const frameFlow=import.meta.env.DEV&&debug.onFrameFlow?{callbacks:0,missedPresented:0,firstCallbackMs:null as number|null,lastCallbackMs:null as number|null,
+        maxCallbackGapMs:0,callbackGapsOver100Ms:0,skips:{} as Record<string,number>,offered:0,consumed:0,consumeMs:0,maxConsumeMs:0,idleMs:0}:undefined;
+      let flowLastConsumeEnd:number|null=null;
+      const reportFlow=()=>{if(frameFlow)try{debug.onFrameFlow!({...frameFlow,skips:{...frameFlow.skips}});}catch{/* Measurement only. */}};
       const acquireLiveFrame = (time: number, nativeFrame?: VideoFrame, delivered?:Readonly<{mediaTime:number;presentedFrames:number;missedFrames:number}>) => {
         const at=performance.now();
+        if(frameFlow){
+          const now=at-recordingStart;
+          if(frameFlow.lastCallbackMs!==null){
+            const gap=now-frameFlow.lastCallbackMs;
+            frameFlow.maxCallbackGapMs=Math.max(frameFlow.maxCallbackGapMs,gap);if(gap>100)frameFlow.callbackGapsOver100Ms++;
+          }
+          frameFlow.firstCallbackMs??=now;frameFlow.lastCallbackMs=now;
+          frameFlow.callbacks++;frameFlow.missedPresented+=delivered?.missedFrames??0;
+        }
         // Limit source snapshots, independently of the lightweight scrollbar.
         // Slow CPU fallback must not recopy a 60 Hz full screen while busy.
         const stamp=inputAdmission.stamp(time,at-recordingStart);
@@ -3294,6 +3323,7 @@ async function runScannerInternal(
         if(admission.kind==='skip') {
           if(drainRecoveryActive&&admission.reason!=='ended'){markDrainInputLoss('buffer-unverified');emit(true);}
           if(admission.reason==='source-capacity')inputStats.sourceCapacityDeferred++;
+          if(frameFlow){frameFlow.skips[admission.reason]=(frameFlow.skips[admission.reason]??0)+1;reportFlow();}
           trace('input-skip',{inputId:stamp.inputId,time,reason:admission.reason});return liveCollection;
         }
         // Freeze before yielding. A later read of video would give old capture
@@ -3333,6 +3363,7 @@ async function runScannerInternal(
           if(frozen.width*frozen.height*4>maxRetainedRasterBytes){
             state.captureWarning='공유 화면의 해상도가 입력 보관 한도를 초과했습니다. 화면 공유를 다시 시작해 주세요.';
           }
+          if(frameFlow)frameFlow.offered++;
           inputStats.offered++;inputStats.freezeMs+=(freezeMs-inputStats.freezeMs)/inputStats.offered;
           inputStats.maxFreezeMs=Math.max(inputStats.maxFreezeMs,freezeMs);
           const selectionStarted=performance.now();

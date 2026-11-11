@@ -90,6 +90,12 @@ export interface RunReport {
   readonly readAnalysis?:ReadAnalysis;
   /** Where the time of a card read went, by read kind and outcome (development measurement). */
   readonly readProfile?:readonly ReadProfileGroup[];
+  /** Live-path runs: the input flow counters (scanner debug.onFrameFlow). Times in ms. */
+  readonly frameFlow?:{readonly callbacks:number;readonly missedPresented:number;readonly firstCallbackMs:number|null;readonly lastCallbackMs:number|null;
+    readonly maxCallbackGapMs:number;readonly callbackGapsOver100Ms:number;readonly skips:Readonly<Record<string,number>>;readonly offered:number;
+    readonly consumed:number;readonly consumeMs:number;readonly maxConsumeMs:number;readonly idleMs:number};
+  /** Present only with ?native=1: the experimental native acquisition was requested. */
+  readonly nativeAcquisition?:true;
   /** Present only with ?rescue=tile|verify: the rescue feature read check and its counters. */
   readonly rescueFeature?:{readonly mode:string;readonly calls:number;readonly ms:number;readonly compared:number;readonly different:number};
   /** Present only for a `realtime-batch` run: the frame-batch visual reading counters. */

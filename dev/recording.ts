@@ -7,6 +7,10 @@ import type {RecordedShareInput} from './recorded-share-input';
 import {analyzeReads,summarizeReadProfiles,comparabilityIssues,diffRuns,summarizeRun,summarizeUnresolved} from './recording-runs';
 import type {RunCard,RunDeliveryLike,RunReport,RunSummary} from './recording-runs';
 import {compareLean,runLeanScan} from './lean-scan';
+import {runRowScan} from './row-scan';
+import {runRowRead} from './row-read';
+import {runRowLight} from './row-light';
+import {analyzeRows} from './row-analysis';
 import type {LeanCard} from './lean-scan';
 import {parsePolicy} from '../src/features/card-scanner/capture/frame-similarity';
 import type {LiveTimelinePoint} from '../src/features/card-scanner/reproduction/live-run-report';
@@ -130,6 +134,10 @@ async function run():Promise<void> {
   const rescueParam=new URLSearchParams(location.search).get('rescue');
   const rescue=rescueParam==='tile'||rescueParam==='verify'?rescueParam:undefined;
   let rescueFeature:RunReport['rescueFeature'];
+  let frameFlow:RunReport['frameFlow'];
+  // ?native=1 (live-path modes with the detailed recording): the scanner's experimental native
+  // acquisition, which hands the worker the video frame itself instead of a canvas copy.
+  const nativeAcquisition=new URLSearchParams(location.search).get('native')==='1';
   const live=modeValue==='realtime'||modeValue==='realtime-detailed'||batch;
   const detailed=modeValue==='realtime-detailed';
   const sequential=!live;
@@ -170,6 +178,48 @@ async function run():Promise<void> {
     progress.textContent=`${state.status}\n읽음 ${state.currentRunRead??0} / ${state.expected??'?'} · 카드 ${state.cards.length}`;
   };
   try{
+    if(modeValue==='rowread'||modeValue==='rowlight'){
+      // Prototype measurements of the row-centred reading, not scans (dev/row-read.ts, dev/row-light.ts).
+      const result=modeValue==='rowlight'?await runRowLight({recordingId,signal,...(Number(new URLSearchParams(location.search).get('handover'))>0?{handOverAfter:Number(new URLSearchParams(location.search).get('handover'))}:{}),onProgress:text=>{progress.textContent=text;}})
+        :await runRowRead({recordingId,signal,onProgress:text=>{progress.textContent=text;}});
+      const listed=await (await fetch(`${BASE}/${encodeURIComponent(recordingId)}/runs`)).json() as {runs:{name:string;summary:RunSummary|null}[]};
+      // Compare with the newest full sequential scanner run of this recording, if there is one.
+      let baseline:{name:string;report:RunReport}|undefined;
+      for(const run of listed.runs.filter(item=>item.summary?.mode==='sequential'&&!String(item.summary.build).startsWith('HEAD')).sort((a,b)=>b.name.localeCompare(a.name)).slice(0,8)){
+        const report=await (await fetch(`${BASE}/${encodeURIComponent(recordingId)}/runs/${run.name}`)).json() as RunReport;
+        if(report.kind==='recording-replay'&&!report.subsetOf){baseline={name:run.name,report};break;}
+      }
+      const latestRead=(card:LeanCard,key:'awakening'|'extraCopies')=>[...card.observations].reverse().find(observation=>observation[key]!==null)?.[key]??null;
+      const {cards:readCards,...measurement}=result;
+      const reads=measurement.probeReads+measurement.neededReads;
+      const status=`줄 중심 판독 · 카드 ${readCards.length} · 읽은 크롭 ${reads}/${measurement.usableCrops}`;
+      const saved=await (await fetch(`${BASE}/${encodeURIComponent(recordingId)}/runs`,{method:'POST',body:JSON.stringify({
+        kind:modeValue==='rowlight'?'row-light':'row-read',version:1,startedAt,finishedAt:new Date().toISOString(),recording:{id:recordingId},status,
+        cards:readCards.map(card=>({id:card.id,name:card.name,awakening:latestRead(card,'awakening'),extraCopies:latestRead(card,'extraCopies'),observations:card.observations.length})),
+        measurement,observations:readCards,
+        comparison:baseline?{run:baseline.name,...compareLean(readCards,baseline.report.cards)}:null,
+        sourceSignature:String(import.meta.env.VITE_REPLAY_SIGNATURE??'').slice(0,16),
+        summary:{build:import.meta.env.VITE_BUILD_REVISION??'local',read:readCards.length,expected:null,unidentified:0,meanLateMs:0,maxLateMs:0,lateOver33Ms:0,deliveredRatio:1,mode:modeValue,faithful:true}})})).json() as {name:string};
+      statusLine.textContent=`완료 · 저장됨 ${saved.name}`;
+      await loadRuns();
+      return;
+    }
+    if(modeValue==='rows'){
+      // Feasibility measurement for a row-centred design, not a scan (dev/row-scan.ts, dev/row-analysis.ts).
+      const scan=await runRowScan({recordingId,signal,onProgress:text=>{progress.textContent=text;}});
+      // 55 list rows (52 scroll positions): confirmed in the game by the user on 2026-11-12; it follows the game's card catalog.
+      const analysis=analyzeRows(scan.observations,55);
+      const status=`줄 관측 · 줄 ${analysis.listRows} · 한 번도 온전히 안 보인 줄 ${analysis.rowSummary.neverClean.length} · 스크롤바 정확 ${Math.round(analysis.scrollbar.exact*100)}%`;
+      const saved=await (await fetch(`${BASE}/${encodeURIComponent(recordingId)}/runs`,{method:'POST',body:JSON.stringify({
+        kind:'row-scan',version:1,startedAt,finishedAt:new Date().toISOString(),recording:{id:recordingId},status,
+        cards:scan.cards.map(card=>({id:card.id,name:card.name,awakening:null,extraCopies:null})),
+        measurement:{frames:scan.frames,locatedFrames:scan.locatedFrames,wallMs:scan.wallMs},analysis,observations:scan.observations,
+        sourceSignature:String(import.meta.env.VITE_REPLAY_SIGNATURE??'').slice(0,16),
+        summary:{build:import.meta.env.VITE_BUILD_REVISION??'local',read:scan.cards.length,expected:null,unidentified:0,meanLateMs:0,maxLateMs:0,lateOver33Ms:0,deliveredRatio:1,mode:'rows',faithful:true}})})).json() as {name:string};
+      statusLine.textContent=`완료 · 저장됨 ${saved.name}`;
+      await loadRuns();
+      return;
+    }
     if(modeValue==='lean'){
       // Prototype measurement, not a scan (dev/lean-scan.ts).
       const lanes=Number(new URLSearchParams(location.search).get('lanes'))||2;
@@ -259,6 +309,8 @@ async function run():Promise<void> {
           onRecoveryProbe:probe=>{recoveryProbe.push(probe);},
           onReadProfile:profile=>{readProfiles.push(profile);},
           ...(rescue?{rescueFeature:rescue,onRescueFeature:(stats:{calls:number;ms:number;compared:number;different:number})=>{rescueFeature={mode:rescue,...stats,ms:Math.round(stats.ms)};}}:{}),
+          ...(nativeAcquisition?{nativeAcquisition:true}:{}),
+          onFrameFlow:flow=>{frameFlow=flow;},
           ...(batch?{frameBatchVisual:true,onVisualBatch:(stats:NonNullable<RunReport['visualBatch']>)=>{visualBatch=stats;}}:{}),
           ...(detailed?{recordingMode:'detailed' as const,
             // The scanner hands over its continuous recording and still decodes it for the recovery
@@ -292,6 +344,10 @@ async function run():Promise<void> {
       ...(readProfiles.length?{readProfile:summarizeReadProfiles(readProfiles)}:{}),
       ...(visualBatch?{visualBatch}:{}),
       ...(rescueFeature?{rescueFeature}:{}),
+      ...(frameFlow?{frameFlow:{...frameFlow,consumeMs:Math.round(frameFlow.consumeMs),idleMs:Math.round(frameFlow.idleMs),maxConsumeMs:Math.round(frameFlow.maxConsumeMs),
+        maxCallbackGapMs:Math.round(frameFlow.maxCallbackGapMs),firstCallbackMs:frameFlow.firstCallbackMs===null?null:Math.round(frameFlow.firstCallbackMs),
+        lastCallbackMs:frameFlow.lastCallbackMs===null?null:Math.round(frameFlow.lastCallbackMs)}}:{}),
+      ...(nativeAcquisition?{nativeAcquisition:true}:{}),
       sourceSignature:String(import.meta.env.VITE_REPLAY_SIGNATURE??'').slice(0,16),
       summary:summarizeRun({build:import.meta.env.VITE_BUILD_REVISION??'local',read:latest.currentRunRead??0,expected:latest.expected,
         unidentified:latest.unidentified?.length??0,delivery}),
