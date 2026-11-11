@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>격자 감지 저해상도 측정</title>
+    <style>body{font:14px system-ui;margin:16px;max-width:980px}pre{background:#8881;padding:8px;overflow:auto}</style>
+  </head>
+  <body>
+    <h1>격자 감지 저해상도 측정</h1>
+    <p>개발 전용. 서버에 저장된 기록의 프레임마다 현재 전체 탐색의 점수·시간과 더 작은 해상도로 훑은 점수·시간을 비교합니다. 주소: <code>?ids=기록1,기록2&amp;stride=8</code>. docs/dev-recording.md</p>
+    <pre id="out">대기 중</pre>
+    <script type="module" src="./detector-lowres.ts"></script>
+  </body>
+</html>

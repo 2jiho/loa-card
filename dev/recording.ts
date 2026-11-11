@@ -6,6 +6,8 @@ import {openRecordedShareStream} from './recorded-share-frames';
 import type {RecordedShareInput} from './recorded-share-input';
 import {comparabilityIssues,diffRuns,summarizeRun,summarizeUnresolved} from './recording-runs';
 import type {RunCard,RunDeliveryLike,RunReport,RunSummary} from './recording-runs';
+import type {LiveTimelinePoint} from '../src/features/card-scanner/reproduction/live-run-report';
+import type {ContinuousRecording} from '../src/features/card-scanner/capture/continuous-capture';
 
 /** Development page: re-run a server-side recording through the live scanner
  * and compare runs on the same input. See docs/dev-recording.md. */
@@ -80,6 +82,23 @@ async function showDiff():Promise<void> {
     ...diff.changed.map(item=>`  다름: ${item.a.name} 각성 ${item.a.awakening}→${item.b.awakening}, 장수 ${item.a.extraCopies}→${item.b.extraCopies}`)].join('\n');
 }
 
+function loopMeans(rows:readonly {collectMs:number;drainMs:number;drained:number}[]) {
+  const total=(pick:(row:(typeof rows)[number])=>number)=>rows.reduce((sum,row)=>sum+pick(row),0);
+  return {frames:rows.length,collectMs:Math.round(total(row=>row.collectMs)),drainMs:Math.round(total(row=>row.drainMs)),cardsDrained:total(row=>row.drained)};
+}
+
+/** Mean per-frame cost of each stage, for frames with and without the card grid. */
+function stageMeans(rows:readonly {located:boolean;copyMs:number;acquireMs:number;detectMs:number;timing?:Record<string,number>}[]) {
+  const mean=(group:typeof rows)=>{
+    const keys=new Set<string>();for(const row of group)for(const key of Object.keys(row.timing??{}))keys.add(key);
+    const out:Record<string,number>={frames:group.length,copyMs:0,acquireMs:0,detectMs:0};
+    for(const row of group){out.copyMs+=row.copyMs;out.acquireMs+=row.acquireMs;out.detectMs+=row.detectMs;for(const key of keys)out[key]=(out[key]??0)+(row.timing?.[key]??0);}
+    if(group.length)for(const key of Object.keys(out))if(key!=='frames')out[key]=Math.round(out[key]/group.length*10)/10;
+    return out;
+  };
+  return {located:mean(rows.filter(row=>row.located)),other:mean(rows.filter(row=>!row.located))};
+}
+
 function busy(value:boolean):void {startButton.disabled=value||!picked;stopButton.disabled=!value;}
 
 async function run():Promise<void> {
@@ -89,8 +108,21 @@ async function run():Promise<void> {
   const signal=controller.signal;
   let input:RecordedShareInput|undefined,latest:ScannerState|undefined;
   const modeValue=$<HTMLSelectElement>('#mode').value;
-  const sequential=modeValue!=='realtime';
+  // `realtime`: the live path with recording off (what the deployed app runs).
+  // `realtime-detailed`: the live path with the detailed input recording on (the
+  // development default), which adds the post-share recovery phase.
+  const live=modeValue==='realtime'||modeValue==='realtime-detailed';
+  const detailed=modeValue==='realtime-detailed';
+  const sequential=!live;
+  const timeline:LiveTimelinePoint[]=[];
+  const timelineStarted=performance.now();
+  let lastTimelineAt=-Infinity;
   let calibration:readonly unknown[]|undefined;
+  let continuousRecording:ContinuousRecording|undefined;
+  let frameTiming:RunReport['frameTiming'];
+  const loops:{time:number;collectMs:number;drainMs:number;drained:number}[]=[];
+  const profiles:{time:number;located:boolean;copyMs:number;acquireMs:number;detectMs:number;timing?:Record<string,number>}[]=[];
+  const runStarted=performance.now();
   // ?peek=name1,name2 adds those cards (with preview and count diagnostics) to the report's countReview.
   const peek=new Set((new URLSearchParams(location.search).get('peek')??'').split(',').map(name=>name.trim()).filter(Boolean));
   const usedTimes:number[]=[],usedSeen=new Set<number>(),locatedTimes:number[]=[],locatedSeen=new Set<number>();
@@ -99,12 +131,29 @@ async function run():Promise<void> {
   const startedAt=new Date().toISOString();
   const onState=(state:ScannerState)=>{
     latest=state;
+    {
+      const now=performance.now();
+      if(now-lastTimelineAt>=1000||state.interrupted){
+        lastTimelineAt=now;
+        timeline.push({t:Math.round((now-timelineStarted)/100)/10,read:state.currentRunRead??0,cards:state.cards.length,queued:state.queued??0,
+          status:(state.status??'').slice(0,60),active:state.activeReadings??0,sampled:state.sampled??0,phase:state.workPhase??'',interrupted:state.interrupted??null});
+      }
+    }
     progress.textContent=`${state.status}\n읽음 ${state.currentRunRead??0} / ${state.expected??'?'} · 카드 ${state.cards.length}`;
   };
   try{
     if(sequential){
       // Deterministic: the scanner's own sequential input, fed from the server recording.
       let only:Set<number>|undefined;
+      if(modeValue.startsWith('stride')){
+        // Experiment: feed only every k-th recorded frame (always the last one).
+        const step=Math.max(2,Number(modeValue.slice(6))||2);
+        const {lines}=await (await fetch(`${BASE}/${encodeURIComponent(recordingId)}/lines`)).json() as {lines:{deliveredAtMs:number}[]};
+        only=new Set<number>();
+        lines.forEach((line,index)=>{if(index%step===0||index===lines.length-1)only!.add(line.deliveredAtMs/1000);});
+        subsetOf={run:`every ${step}th frame`,frames:only.size,of:lines.length};
+      }
+      const skipSimilar=modeValue.startsWith('similar')?Number(modeValue.slice(7)):undefined;
       if(modeValue==='subset'||modeValue==='located'){
         // Frames a full run admitted crops from, plus each one's predecessor
         // (the scanner compares a frame with the one before it for stability).
@@ -121,22 +170,40 @@ async function run():Promise<void> {
         });
         subsetOf={run:source.name,frames:only.size,of:lines.length};
       }
-      const stream=await openRecordedShareStream({recordingId,signal,...(only?{only}:{})});
+      const stream=await openRecordedShareStream({recordingId,signal,...(only?{only}:{}),...(skipSimilar!==undefined?{skipSimilar}:{})});
       statusLine.textContent=only?`사용 프레임만 재실행 중… (${only.size}/${stream.frameCount})`:'순차 재실행 중…';
       await runScanner(document.createElement('video'),'screen',signal,onState,[],undefined,'all',undefined,false,
         {nameConfiguration:NORMAL_SCANNER_NAME_CONFIGURATION,shareRecording:'off',
           onCountCalibration:rows=>{calibration=rows;},
           onFrameAdmitted:(captureTime:number)=>{if(!usedSeen.has(captureTime)){usedSeen.add(captureTime);usedTimes.push(captureTime);}},
+          onFrameProfile:profile=>{profiles.push(profile);},
+          onFrameLoop:loop=>{loops.push(loop);},
           onFrameLocated:(captureTime:number)=>{if(!locatedSeen.has(captureTime)){locatedSeen.add(captureTime);locatedTimes.push(captureTime);}},
           replay:{kind:'loacard-capture',version:1,createdAt:startedAt,source:'screen',rowMode:'all',captureOnly:false,seed:[],frames:[],truncated:false},
           replayInputs:stream.frames()});
-      delivery={meanLateMs:0,maxLateMs:0,lateOver33Ms:0,frames:stream.delivered(),declaredFrames:only?only.size:stream.frameCount,mode:'sequential',
+      {
+        const summary=(rows:readonly {consumeMs:number;prepMs:number}[])=>({frames:rows.length,
+          consumeMs:Math.round(rows.reduce((total,row)=>total+row.consumeMs,0)),prepMs:Math.round(rows.reduce((total,row)=>total+row.prepMs,0))});
+        const all=stream.timings();
+        frameTiming={frames:all.length,located:summary(all.filter(row=>locatedSeen.has(row.time))),
+          other:summary(all.filter(row=>!locatedSeen.has(row.time))),wallMs:Math.round(performance.now()-runStarted),
+          stages:stageMeans(profiles),
+          loop:{located:loopMeans(loops.filter(row=>locatedSeen.has(row.time))),other:loopMeans(loops.filter(row=>!locatedSeen.has(row.time)))}};
+      }
+      if(skipSimilar!==undefined)subsetOf={run:`skip frames similar to the last processed one (mean luma diff <= ${skipSimilar})`,frames:stream.delivered(),of:stream.frameCount};
+      delivery={meanLateMs:0,maxLateMs:0,lateOver33Ms:0,frames:stream.delivered(),declaredFrames:only?only.size:skipSimilar!==undefined?stream.delivered():stream.frameCount,mode:'sequential',
         recordingId,recordingComplete:stream.meta.complete,recordingSha256:stream.meta.sha256};
     }else{
       input=await prepareRecordedShareInput({recordingId,target:share,signal});
       statusLine.textContent='실시간 재실행 중…';
       await runScanner(share,'screen',signal,onState,[],()=>{void input!.start().catch(()=>{});},'all',undefined,false,
-        {nameConfiguration:NORMAL_SCANNER_NAME_CONFIGURATION,shareRecording:'off'});
+        {nameConfiguration:NORMAL_SCANNER_NAME_CONFIGURATION,shareRecording:'off',
+          ...(detailed?{recordingMode:'detailed' as const,
+            // The scanner hands over its continuous recording and still decodes it for the recovery
+            // phase, so it must stay alive until the scan ends (the app keeps it for its archive
+            // and releases it afterwards). Releasing it here made the recovery read a revoked blob
+            // ("network error").
+            continuous:(recording:ContinuousRecording)=>{continuousRecording=recording;}}:{})});
       delivery={...input.delivery(),mode:'realtime'};
     }
     if(!latest)throw Error('결과가 없습니다.');
@@ -145,7 +212,7 @@ async function run():Promise<void> {
     const report:RunReport={
       kind:'recording-replay',version:1,startedAt,finishedAt:new Date().toISOString(),
       recording:{id:recordingId,sha256:delivery.recordingSha256,complete:delivery.recordingComplete,frames:delivery.declaredFrames},
-      delivery,status:latest.status,cards,usedFrameTimes:usedTimes,locatedFrameTimes:locatedTimes,
+      delivery,status:latest.status,cards,usedFrameTimes:usedTimes,locatedFrameTimes:locatedTimes,...(live?{liveReplay:{recordingMode:detailed?'detailed':'off',timeline}}:{}),...(frameTiming?{frameTiming}:{}),
       ...(calibration?{countCalibration:calibration}:{}),
       countReview:latest.cards.filter(card=>card.extraCopies===null||peek.has(card.name)).slice(0,12).map(card=>({name:card.name,awakening:card.awakening,
         review:card.review,countReliable:card.countReliable??null,time:card.time??null,observations:card.observations??null,diagnostics:card.countDiagnostics??null,
@@ -160,8 +227,18 @@ async function run():Promise<void> {
     await loadRuns();
   }catch(error){
     statusLine.textContent=signal.aborted?'중지됨':`실패: ${error instanceof Error?error.message:String(error)}`;
+    if(!signal.aborted){
+      // Save why it failed next to the recording, so an unattended run (headless runner)
+      // reports the reason instead of timing out.
+      try{
+        await fetch(`${BASE}/${encodeURIComponent(recordingId)}/runs`,{method:'POST',body:JSON.stringify({
+          kind:'recording-replay-failure',version:1,startedAt,finishedAt:new Date().toISOString(),recording:{id:recordingId},
+          mode:modeValue,error:error instanceof Error?`${error.name}: ${error.message}`:String(error),stack:error instanceof Error?String(error.stack).slice(0,3000):null,status:statusLine.textContent,
+          lastProgress:progress.textContent.slice(0,400),interrupted:latest?.interrupted??null,timeline,summary:null})});
+      }catch{/* The failure is still shown on the page. */}
+    }
   }finally{
-    input?.dispose();controller=undefined;busy(false);
+    input?.dispose();void continuousRecording?.dispose?.().catch(()=>undefined);controller=undefined;busy(false);
   }
 }
 
@@ -169,3 +246,13 @@ $('#refresh').addEventListener('click',()=>{void loadRecordings();void loadRuns(
 startButton.addEventListener('click',()=>{void run();});
 stopButton.addEventListener('click',()=>controller?.abort());
 void loadRecordings();
+// ?autorun=<recording id>&mode=<mode>: run at once (used by scripts/run-recording-replay.mjs,
+// which opens this page in a headless browser and waits for the saved report).
+{
+  const params=new URLSearchParams(location.search),auto=params.get('autorun');
+  if(auto){
+    picked=auto;
+    const mode=params.get('mode');if(mode)$<HTMLSelectElement>('#mode').value=mode;
+    startButton.disabled=false;void run();
+  }
+}

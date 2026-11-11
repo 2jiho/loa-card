@@ -50,6 +50,7 @@ export function summarizeUnresolved(items:readonly UnresolvedSource[]|undefined)
     ...(item.portraitDiagnostics?{portrait:item.portraitDiagnostics}:{}),
     ...(index<IMAGES_KEPT&&item.image?{image:item.image}:{})}));
 }
+export interface FrameTimingSummary {readonly frames:number;readonly consumeMs:number;readonly prepMs:number}
 export interface RunReport {
   readonly kind:'recording-replay';readonly version:1;readonly startedAt:string;readonly finishedAt:string;
   readonly recording:{readonly id:string;readonly sha256:string|null;readonly complete:boolean;readonly frames:number};
@@ -75,6 +76,10 @@ export interface RunReport {
   }[];
   /** Per-card empty-counter evidence of every stored observation (development measurement). */
   readonly countCalibration?:readonly unknown[];
+  /** Scanner time per fed frame, split by whether the card grid was located in it. */
+  readonly frameTiming?:{readonly frames:number;readonly located:FrameTimingSummary;readonly other:FrameTimingSummary;readonly wallMs:number;readonly stages?:{readonly located:Readonly<Record<string,number>>;readonly other:Readonly<Record<string,number>>};readonly loop?:{readonly located:Readonly<Record<string,number>>;readonly other:Readonly<Record<string,number>>}};
+  /** Present for a live-path replay: how the scanner was run and its progress over time. */
+  readonly liveReplay?:{readonly recordingMode:'off'|'detailed';readonly timeline:readonly unknown[]};
   /** Set when only part of the recording was fed (subset experiment). */
   readonly subsetOf?:{readonly run:string;readonly frames:number;readonly of:number};
 }

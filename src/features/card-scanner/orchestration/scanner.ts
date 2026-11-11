@@ -443,6 +443,11 @@ async function runScannerInternal(
     onCountCalibration?: (rows:CountCalibrationRow[]) => void;
     /** Development observation: a frame whose card grid was located. */
     onFrameLocated?: (captureTime:number) => void;
+    /** Development measurement per input frame: canvas copy, the acquisition round trip
+     * (transfer + worker detection and crops) and the worker's own stage timings. */
+    /** Development measurement per replayed frame: screen handling (collect), card reading (drain), cards read. */
+    onFrameLoop?: (loop:{time:number;collectMs:number;drainMs:number;drained:number}) => void;
+    onFrameProfile?: (profile:{time:number;located:boolean;copyMs:number;acquireMs:number;detectMs:number;timing?:Record<string,number>}) => void;
     /** Advisory live display only; never recognition or completion evidence. */
     onLiveObstructionHint?: (hint:LiveObstructionHint) => void;
     onInternalSettled?:()=>void;onInternalCleanupUncertain?:()=>void;onCleanupFailure?:()=>void } = {},
@@ -1470,8 +1475,9 @@ async function runScannerInternal(
        * recording uses it to decide which spans to keep; it can never alter scanning. */
       const offerLocated=()=>{
         if(recovering)return;
-        try{debug.onFrameLocated?.(frameTime);locatedFrameSink?.();}catch{/* Development recording is optional. */}
+        if(import.meta.env.DEV)try{debug.onFrameLocated?.(frameTime);locatedFrameSink?.();}catch{/* Development recording is optional. */}
       };
+      const acquireStarted=performance.now();
       try {
         // Reuse binds to a measured origin for this exact physical source.
         // Painting restored bytes preserves every main-thread metadata consumer.
@@ -1490,6 +1496,7 @@ async function runScannerInternal(
           : await acquisition.detectAndAcquire(currentFrame,frameTime,recovering?'recovery':'input') : undefined;
         if(remote?.layout)offerLocated();
       } finally {ownedNative?.close();}
+      const acquireMs=performance.now()-acquireStarted;
       if(reducedTransport&&!recovering){
         if(!remote||!('rejectedTransport' in remote))throw Error('거절 이미지 전송 실험 결과 누락');
         const summary=state.rejectedTransport??={frames:0,omitted:0,kept:0,omittedRgbaBytes:0};
@@ -1519,7 +1526,11 @@ async function runScannerInternal(
         // Diagnostic worker claim and delivery comparison only; no pixels or completion authority.
         try{trace('prepared-crop-proof',remote.experimentalCropProof);}catch{/* Optional diagnostics cannot change collection. */}
       }
+      const detectStarted=performance.now();
       const layout = remote ? remote.layout : detector.detect(frame);
+      // Development measurement of where a frame's time goes (see onFrameProfile).
+      if(import.meta.env.DEV)try{debug.onFrameProfile?.({time:frameTime,located:!!layout,copyMs,acquireMs,detectMs:performance.now()-detectStarted,
+        timing:remote&&'timing' in remote?remote.timing as unknown as Record<string,number>|undefined:undefined});}catch{/* Measurement only. */}
       if(!remote&&layout)offerLocated();
       if(liveScreen&&!recovering){
         const source=preparedSources?currentFrame:frozen?.source??currentFrame,at=capturedAt??copyStarted;
@@ -1983,7 +1994,7 @@ async function runScannerInternal(
             // feedback publisher coalesces this to its 33ms lane, so the map
             // does not wait for all forty slots in this acquisition frame.
             if(feedback)feedbackPublisher.request();
-            try{if(!recovering)debug.onFrameAdmitted?.(frameTime);}catch{/* Observation only; it cannot reject a crop. */}
+            if(import.meta.env.DEV)try{if(!recovering)debug.onFrameAdmitted?.(frameTime);}catch{/* Observation only; it cannot reject a crop. */}
             try{debug.feedbackProbe?.queued({sessionId:captureSession,frameId:sourceFrameId,observationId:String(trace),
               captureOrder:order,captureTime:frameTime,phase:recovering?'recovery':'input',slot:i},state.sampled);
             }catch{/* A diagnostic failure cannot reject an accepted crop. */}
@@ -2653,10 +2664,16 @@ async function runScannerInternal(
         if ("time" in input) frameTime = input.time;
         if (debug.replay && "image" in input && input.image) debug.preview?.(input.image);
         state.percent = input.percent;
+        let collectMs=0,drainMs=0,drained=0;
         try {
+          const collectStarted=performance.now();
           await collect();
-          while (queue.length) await drainOne();
+          const drainStarted=performance.now();collectMs=drainStarted-collectStarted;
+          while (queue.length) {await drainOne();drained++;}
+          drainMs=performance.now()-drainStarted;
         } finally {recovering=false;replayProvenance=undefined;decoderLineage=undefined;}
+        // Development measurement: screen handling (collect) against card reading (drain).
+        if(import.meta.env.DEV)try{debug.onFrameLoop?.({time:frameTime,collectMs,drainMs,drained});}catch{/* Measurement only. */}
         emit();
       }
     } else {
