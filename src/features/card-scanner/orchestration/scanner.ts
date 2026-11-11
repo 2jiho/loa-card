@@ -443,10 +443,13 @@ async function runScannerInternal(
     onCountCalibration?: (rows:CountCalibrationRow[]) => void;
     /** Development observation: a frame whose card grid was located. */
     onFrameLocated?: (captureTime:number) => void;
-    /** Development measurement per input frame: canvas copy, the acquisition round trip
-     * (transfer + worker detection and crops) and the worker's own stage timings. */
+    /** Development measurement per recovery frame: whether the recovery-skip proof holds now. */
+    onRecoveryProbe?: (probe:{frame:number;time:number;idle:boolean;completeProof:boolean;read:number;unresolved:number;
+      expected:number|null;finalExpected:number|null;tailFresh:boolean}) => void;
     /** Development measurement per replayed frame: screen handling (collect), card reading (drain), cards read. */
     onFrameLoop?: (loop:{time:number;collectMs:number;drainMs:number;drained:number}) => void;
+    /** Development measurement per input frame: canvas copy, the acquisition round trip
+     * (transfer + worker detection and crops) and the worker's own stage timings. */
     onFrameProfile?: (profile:{time:number;located:boolean;copyMs:number;acquireMs:number;detectMs:number;timing?:Record<string,number>}) => void;
     /** Advisory live display only; never recognition or completion evidence. */
     onLiveObstructionHint?: (hint:LiveObstructionHint) => void;
@@ -3502,6 +3505,19 @@ async function runScannerInternal(
           state.percent = input.percent;
           try{await collect();}finally{decodedInput=undefined;decoderLineage=undefined;replayRgba=undefined;replayNative=undefined;replaySourceHash=undefined;replayPreparedInput=undefined;replayPreparedSourceId=undefined;replayRawSourceFrameId=undefined;}
           state.recoveryFrames=(state.recoveryFrames??0)+1;
+          // Development measurement: would the proof that lets recovery be skipped at the end of
+          // sharing hold right now? Observation only; it never ends or changes recovery.
+          if(import.meta.env.DEV&&debug.onRecoveryProbe)try{
+            const idle=queue.length+deferred.length+fullRetries.length===0;
+            debug.onRecoveryProbe({frame:state.recoveryFrames,time:frameTime,idle,
+              completeProof:idle&&!!recognizer&&canSkipRecovery({expected:state.expected,finalExpected:verifiedFinalExpected,
+                cards:confirmSortedNames([...cards.values()],[...evidence.values()].flat(),recognizer.catalog),
+                fieldChangesSettled:freshness!.guard('recovery').settled&&obstructionPending()===0&&!state.drainInputLoss,
+                latest:latestIdentityOrder,confirmed:confirmedFieldOrder,agreed:inventory!.agreedFieldOrder,
+                pending:0,unresolved:unresolvedObservations(),dropped:state.droppedFrames,inputSettled:true,tailFresh:completionInput.tailFresh}),
+              read:confirmedReadingCount({cards:[...cards.values()],latest:latestIdentityOrder,confirmed:confirmedFieldOrder,agreed:inventory!.agreedFieldOrder}),
+              unresolved:unresolvedObservations(),expected:state.expected,finalExpected:verifiedFinalExpected,tailFresh:completionInput.tailFresh});
+          }catch{/* Measurement only. */}
           // Merged sources have different frame totals. Use their common capture
           // timeline, and reserve 100% until both iterators have been exhausted.
           state.recoveryPercent = state.sharingEndedAt && state.sharingEndedAt > 0
