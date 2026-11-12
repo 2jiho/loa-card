@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>줄 중심 경로 · 실제 화면 공유</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 16px; max-width: 900px; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      p.note { margin: 0 0 12px; opacity: .75; }
+      button { font: inherit; padding: 6px 14px; margin-right: 8px; }
+      #share { width: 320px; max-width: 100%; background: #000; display: block; margin-top: 8px; }
+      #counts { font-size: 22px; font-weight: 600; margin: 12px 0 4px; }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 0; }
+      table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+      th, td { border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent); padding: 4px 8px; text-align: left; vertical-align: top; }
+    </style>
+  </head>
+  <body>
+    <h1>줄 중심 경로 · 실제 화면 공유</h1>
+    <p class="note">개발 전용 시제품입니다. 스캔을 완료하지 않습니다(표시 수량·최신성·완료 판정 없음). 결과는 내 카드 목록에 반영되지 않고, 공유는 개발 서버에 기록됩니다. <a href="./recording.html">기록 재실행</a></p>
+    <button id="start" type="button">화면 공유 시작</button>
+    <button id="stop" type="button" disabled>공유 끝내기</button>
+    <span id="status" role="status" aria-live="polite"></span>
+    <video id="share" muted playsinline></video>
+    <div id="counts" aria-live="polite"></div>
+    <pre id="progress"></pre>
+    <section id="result" aria-label="결과"></section>
+    <script type="module" src="./row-share.ts"></script>
+  </body>
+</html>

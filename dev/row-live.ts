@@ -78,7 +78,15 @@ export interface RowLiveResult extends RowReadResult {
 
 type FrameCallbackVideo=HTMLVideoElement&{requestVideoFrameCallback(callback:(now:number,metadata:{mediaTime:number;presentedFrames:number})=>void):number};
 
-export async function runRowLive(options:{recordingId:string;target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** After the share, run the scanner's zero check on kept crops (default; needs evidence). */zeroCheck?:boolean|'diagnose';/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
+export async function runRowLive(options:{/** The recording to replay; or `input` for a live share. */recordingId?:string;
+  /** A live input instead of a recording: the caller has already put its stream on `target`.
+   * `start` resolves when the share ends. */
+  input?:{start():Promise<void>;dispose():void};
+  /** Live input: called once the readers are loaded and frames are being taken. */onReady?:()=>void;
+  /** Called for each frame the card window was found in (the development recorder keeps those spans). */onLocated?:()=>void;
+  /** Called about once a second with the cards named and confirmed so far. */onCounts?:(counts:{cards:number;complete:number;confirmed?:number})=>void;
+  /** Frame times count from the first frame taken (a live track's timestamps start anywhere). */relativeTime?:boolean;
+  target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** After the share, run the scanner's zero check on kept crops (default; needs evidence). */zeroCheck?:boolean|'diagnose';/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
   onProgress?:(text:string)=>void}):Promise<RowLiveResult> {
   const {recordingId,signal}=options,scrollSteps=options.scrollSteps??51,video=options.target as FrameCallbackVideo;
   if(typeof video.requestVideoFrameCallback!=='function')throw Error('이 브라우저는 requestVideoFrameCallback을 지원하지 않습니다.');
@@ -91,7 +99,8 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
   // frame into main memory first.
   const frame=document.createElement('canvas'),frameContext=frame.getContext('2d',options.softwareFrame?{willReadFrequently:true}:{})!;
   let recognizer:Awaited<ReturnType<typeof createRecognizer>>|undefined,closeWaiting=()=>{};
-  const input=await prepareRecordedShareInput({recordingId,target:video,signal});
+  if(!options.input&&!recordingId)throw Error('기록 또는 실시간 입력이 필요합니다.');
+  const input=options.input??await prepareRecordedShareInput({recordingId:recordingId!,target:video,signal});
   try{
     await Promise.all([acquisition.ready(),...visuals.map(visual=>visual!.ready())]);
     if(options.names!==false)recognizer=await createRecognizer(()=>{},signal);
@@ -144,7 +153,7 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
     const Processor=(globalThis as {MediaStreamTrackProcessor?:new(init:{track:MediaStreamTrack;maxBufferSize:number})=>{readable:ReadableStream<VideoFrame>;discardedFrames?:number}}).MediaStreamTrackProcessor;
     const processor=!options.videoSource&&track&&Processor?new Processor({track,maxBufferSize:limit}):undefined;
     if(!options.videoSource&&!processor)throw Error('이 브라우저는 MediaStreamTrackProcessor를 지원하지 않습니다.');
-    let sourceDone=!processor,trackFrames=0;
+    let sourceDone=!processor,trackFrames=0,firstStamp:number|null=null;
     const trackReader=processor?.readable.getReader();
     stopSource=()=>{void trackReader?.cancel().catch(()=>{});};
     if(trackReader)void (async()=>{
@@ -154,13 +163,15 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
           if(next.done)break;
           trackFrames++;
           // Frames the track still held when the share ended were captured before the end: they are read.
-          if(closedLine)next.value.close();else enqueue(next.value,next.value.timestamp/1e6);
+          firstStamp??=next.value.timestamp;
+          if(closedLine)next.value.close();else enqueue(next.value,(next.value.timestamp-(options.relativeTime?firstStamp:0))/1e6);
         }
       }catch{/* The track ended or the run was aborted. */}
       finally{sourceDone=true;wake?.();}
     })();
     else watch();
     let shareEnd:{at:number;cards:number;complete:number;confirmed?:number}|null=null;
+    options.onReady?.();
     const completion=input.start().finally(()=>{ended=true;shareEnd={at:performance.now(),...counts()};wake?.();});
     const counts=()=>{const cards=session.cards();return {cards:cards.length,complete:cards.filter(card=>card.observations.some(observation=>observation.awakening!==null&&observation.extraCopies!==null)).length,
       ...(evidence?{confirmed:evidence.summary().confirmed}:{})};};
@@ -199,6 +210,7 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
       let read:(()=>Promise<void>)|undefined,thumbRow:number|null=null;
       if(acquired.layout&&acquired.cells.length===COLUMNS*GRID_ROWS){
         located++;
+        try{options.onLocated?.();}catch{/* Development recording is optional. */}
         const thumbStarted=performance.now();
         const bar=acquired.layout.scrollbar;
         stripContext.drawImage(frame,bar.x,bar.y,bar.width,bar.height,0,0,16,942);
@@ -218,7 +230,7 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
       if(options.serial)await reading;
       const now=performance.now();frameMs.push(now-began);
       if(frameLog.length<800)frameLog.push([Math.round(time*1000)/1000,Math.round(now-began),read?1:0,acquired.cells.filter(cell=>cell.quality.usable).length,thumbRow]);
-      while((now-started)/1000>=nextTick){timeline.push({t:nextTick,...counts()});nextTick++;}
+      while((now-started)/1000>=nextTick){const tick=counts();timeline.push({t:nextTick,...tick});nextTick++;options.onCounts?.(tick);}
       if(frames%10===0)options.onProgress?.(`줄 중심 실시간 · 읽은 프레임 ${frames} · 카드 ${session.cards().length}`);
     }
     await completion.catch(()=>{});
