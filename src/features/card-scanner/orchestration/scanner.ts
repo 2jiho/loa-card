@@ -154,7 +154,7 @@ import type {LiveInventorySnapshot} from '../session/live-inventory';
 import { runJoinedWorkers } from '../capture/joined-workers';
 import { runRecoveryPipeline } from '../session/recovery-pipeline';
 import { coveredFieldRetry, fieldRetryIdentity, pruneFieldRetries, retryNeedsIdentity } from '../session/field-retry';
-import { PREVIEW_ZERO_REASON, needsPreviewZeroProof, previewZeroReading, selectZeroPreview } from '../session/preview-zero';
+import { PREVIEW_ZERO_REASON, needsPreviewZeroProof, previewFieldRegion, previewZeroReading, selectZeroPreview } from '../session/preview-zero';
 import { canSkipRecovery, canFinishVerifiedCapture, confirmedReadingCount, freshCaptureTail } from '../session/recovery-completion';
 import {issuePositiveCompletionReceipt,type PositiveCompletionReceipt} from '../session/positive-completion';
 import { pendingScanFields, projectCurrentScanFields } from '../session/current-scan-fields';
@@ -3696,7 +3696,9 @@ async function runScannerInternal(
         canvas.width=140;canvas.height=210;
         const context=canvas.getContext('2d',{willReadFrequently:true});
         if(!context)throw Error('preview context unavailable');
-        context.drawImage(bitmap,0,0,140,210);
+        // The stored picture is wider than the field area (crest margin): read the field area.
+        const region=previewFieldRegion(bitmap.width,bitmap.height);
+        context.drawImage(bitmap,region.x,region.y,region.width,region.height,0,0,140,210);
         const pixels=context.getImageData(0,0,140,210).data;
         const values=await recognizer!.read(canvas,id,true,false);
         return {values,pixels};
@@ -3890,7 +3892,8 @@ async function runScannerInternal(
             try{
               const canvas=document.createElement('canvas');canvas.width=140;canvas.height=210;
               const context=canvas.getContext('2d',{willReadFrequently:true})!;
-              context.drawImage(bitmap,0,0,140,210);
+              const region=previewFieldRegion(bitmap.width,bitmap.height);
+              context.drawImage(bitmap,region.x,region.y,region.width,region.height,0,0,140,210);
               const packed=packCount(context.getImageData(0,0,140,210).data,140,0,true),d=packed.diagnostic;
               samples.push({stable:item.stable,hasIcon:packed.hasIcon,candidate:stablePreviewEmptyCandidate(packed),
                 iconColor:!!d?.iconColor,numericEvidence:!!d?.numericEvidence,iconRemnant:!!d?.iconRemnant,emptyFields:!!d?.emptyFields,

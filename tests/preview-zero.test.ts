@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {needsPreviewZeroProof,previewZeroReading,selectZeroPreview} from '../src/features/card-scanner/session/preview-zero';
+import {needsPreviewZeroProof,previewFieldRegion,previewZeroReading,selectZeroPreview} from '../src/features/card-scanner/session/preview-zero';
 
 test('the first preferred preview that shows an empty counter is accepted', () => {
   assert.equal(selectZeroPreview([{order:5,zero:false,positive:false},{order:9,zero:true,positive:false},{order:7,zero:true,positive:false}]),1);
@@ -57,4 +57,28 @@ test('a counter icon with a positive count is positive, never zero', () => {
   assert.equal(reading.zero,false);assert.equal(reading.positive,true);
   // A positive number read with the icon explicitly absent is neither.
   assert.equal(previewZeroReading({values:{awakening:2,extraCopies:4,countDiagnostics:diagnostics(false)},packed:noProof,card:{awakening:2,observations:2},stillImage:false}).positive,false);
+});
+
+test('a stored preview with the crest margin is read at the field area, not stretched', () => {
+  // Whole-pixel card at scale 1: the picture is 142×214 and the fields start at (1,3).
+  assert.deepEqual(previewFieldRegion(142,214),{x:1,y:3,width:140,height:210});
+  // Scale 2.
+  assert.deepEqual(previewFieldRegion(284,428),{x:2,y:6,width:280,height:420});
+});
+
+test('a picture that already has the field proportions is used whole', () => {
+  assert.deepEqual(previewFieldRegion(140,210),{x:0,y:0,width:140,height:210});
+  assert.deepEqual(previewFieldRegion(280,420),{x:0,y:0,width:280,height:420});
+  assert.deepEqual(previewFieldRegion(0,0),{x:0,y:0,width:0,height:0});
+});
+
+test('rounding the preview box to whole pixels keeps the field area inside the picture', () => {
+  // A card at scale 1.12 on fractional pixels: the box is rounded outwards by up to a pixel per axis.
+  for(const [width,height] of [[159,240],[160,241],[161,241]] as const){
+    const region=previewFieldRegion(width,height);
+    assert.ok(region.x>=0&&region.y>=0&&region.x+region.width<=width+1e-9&&region.y+region.height<=height+1e-9);
+    assert.ok(Math.abs(region.width/region.height-140/210)<1e-9);
+    // Within a pixel of the unrounded geometry (margin 1 and 3 units).
+    assert.ok(Math.abs(region.x-1.12)<1&&Math.abs(region.y-3.36)<1);
+  }
 });

@@ -65,3 +65,21 @@ export function previewZeroReading(input:{
 
 /** The reason recorded when the chosen preview's own reading gave none. */
 export const PREVIEW_ZERO_REASON='저장 이미지 재확인 · 추가 카드 표시 없음 · 0장 후보';
+
+/** Where the 140×210 field area lies inside a stored picture of a card.
+ *
+ * A stored preview is not the crop the reader read: it is the card with its crest, one field
+ * unit wider on the left, right and bottom and three taller on top (`card-borders.ts`), at the
+ * capture's own scale, so 142×214 units. Stretching the whole picture onto 140×210 moves the
+ * count and awakening fields off their coordinates. A picture with exactly the field
+ * proportions (a read crop kept as the picture, 140×210) is used whole; a preview has them
+ * only by coincidence of rounding at some scales (never at scale 1).
+ *
+ * The scale is taken from the picture's size; the up-to-one-pixel widening that rounding the
+ * box to whole pixels adds on each axis is split evenly between both sides, so the region is
+ * exact when the card lies on whole pixels and within half a source pixel otherwise. */
+export function previewFieldRegion(width:number,height:number):{x:number;y:number;width:number;height:number} {
+  if(!(width>0&&height>0)||width*3===height*2)return {x:0,y:0,width,height};
+  const scale=Math.min(width/142,height/214);
+  return {x:scale+(width-142*scale)/2,y:3*scale+(height-214*scale)/2,width:140*scale,height:210*scale};
+}
