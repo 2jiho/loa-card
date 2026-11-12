@@ -1,3 +1,4 @@
+import type {TrackLineReply,TrackLineRequest,TrackLineStats} from './track-line-worker';
 import {createAcquisitionClient} from '../src/features/card-scanner/acquisition/acquisition-client';
 import {createVisualClient} from '../src/features/card-scanner/recognition/visual-client';
 import {createRecognizer} from '../src/features/card-scanner/recognition/recognizer';
@@ -35,7 +36,13 @@ export interface RowLiveResult extends RowReadResult {
     readonly presentedFrames:number;readonly readFrames:number;
     /** Where the frames came from, and with the track source the frames the browser discarded
      * before this loop took them (absent when the browser does not count them). */
-    readonly source:'track'|'video';readonly sourceDiscarded?:number;
+    /** The browser's own counts for the track reader (Chrome): frames it saw in all. */
+    readonly sourceTotal?:number;
+    /** The share track's frame rate setting and the browser's delivered/discarded/total counts for it. */
+    readonly track?:{readonly frameRate:number|null;readonly stats:{readonly deliveredFrames:number;readonly discardedFrames:number;readonly totalFrames:number}|null};
+    readonly source:'track'|'video';/** Where the track is read: a worker that keeps the line, or the main thread. */readonly reader?:'worker'|'main';
+    /** The longest the main thread went without a turn, and how often for more than 100 ms. */
+    readonly mainThread:{readonly maxGapMs:number;readonly gapsOver100Ms:number};readonly sourceDiscarded?:number;
     /** Per frame read: milliseconds from taking the frame to the end of its reading. */
     readonly frameMs:{readonly median:number;readonly p95:number;readonly max:number};
     /** Where a frame's time goes, median and 95th percentile ms per frame read: drawing the video
@@ -76,6 +83,11 @@ export interface RowLiveResult extends RowReadResult {
   };
 }
 
+function trackStats(track:MediaStreamTrack):{deliveredFrames:number;discardedFrames:number;totalFrames:number}|null {
+  const stats=(track as MediaStreamTrack&{stats?:{deliveredFrames?:number;discardedFrames?:number;totalFrames?:number}}).stats;
+  return stats&&typeof stats.totalFrames==='number'?{deliveredFrames:stats.deliveredFrames??0,discardedFrames:stats.discardedFrames??0,totalFrames:stats.totalFrames}:null;
+}
+
 type FrameCallbackVideo=HTMLVideoElement&{requestVideoFrameCallback(callback:(now:number,metadata:{mediaTime:number;presentedFrames:number})=>void):number};
 
 export async function runRowLive(options:{/** The recording to replay; or `input` for a live share. */recordingId?:string;
@@ -85,6 +97,7 @@ export async function runRowLive(options:{/** The recording to replay; or `input
   /** Live input: called once the readers are loaded and frames are being taken. */onReady?:()=>void;
   /** Called for each frame the card window was found in (the development recorder keeps those spans). */onLocated?:()=>void;
   /** Called about once a second with the cards named and confirmed so far. */onCounts?:(counts:{cards:number;complete:number;confirmed?:number})=>void;
+  /** Read the track on the main thread instead of in the worker that keeps the line (as before); for comparison. */mainReader?:boolean;
   /** Frame times count from the first frame taken (a live track's timestamps start anywhere). */relativeTime?:boolean;
   target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** After the share, run the scanner's zero check on kept crops (default; needs evidence). */zeroCheck?:boolean|'diagnose';/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
   onProgress?:(text:string)=>void}):Promise<RowLiveResult> {
@@ -98,7 +111,7 @@ export async function runRowLive(options:{/** The recording to replay; or `input
   // strip, so it stays graphics-backed: a canvas marked for frequent reading copies every video
   // frame into main memory first.
   const frame=document.createElement('canvas'),frameContext=frame.getContext('2d',options.softwareFrame?{willReadFrequently:true}:{})!;
-  let recognizer:Awaited<ReturnType<typeof createRecognizer>>|undefined,closeWaiting=()=>{};
+  let recognizer:Awaited<ReturnType<typeof createRecognizer>>|undefined,closeWaiting=()=>{},stopLag=()=>{},endWorker=()=>{};
   if(!options.input&&!recordingId)throw Error('기록 또는 실시간 입력이 필요합니다.');
   const input=options.input??await prepareRecordedShareInput({recordingId:recordingId!,target:video,signal});
   try{
@@ -132,6 +145,12 @@ export async function runRowLive(options:{/** The recording to replay; or `input
     const waiting:{snapshot:VideoFrame;mediaTime:number;at:number}[]=[];
     closeWaiting=()=>{ended=true;closedLine=true;stopSource();for(const item of waiting.splice(0))item.snapshot.close();};
     let closedLine=false,stopSource=()=>{};
+    let lineWorker:Worker|undefined,workerLine:TrackLineStats|undefined,askNext=()=>{},skipToNewest=()=>{};
+    // How long the main thread went without a turn (a 20 ms timer's lateness): a busy main thread
+    // is what makes a track read here lose frames.
+    let lagLast=performance.now(),lagMax=0,lagOver100=0;
+    const lagTimer=setInterval(()=>{const now=performance.now(),late=now-lagLast-20;lagLast=now;if(late>lagMax)lagMax=late;if(late>100)lagOver100++;},20);
+    stopLag=()=>clearInterval(lagTimer);
     let ended=false,wake:(()=>void)|undefined,dropped=0,passed=0,longestLine=0;
     let firstPresented:number|null=null,lastPresented=0;
     const enqueue=(snapshot:VideoFrame,mediaTime:number)=>{
@@ -150,12 +169,34 @@ export async function runRowLive(options:{/** The recording to replay; or `input
     // The track's own frames, every one of them, with the time the replay gave each (its recorded
     // delivery time). The video element keeps playing the same track; it is only not read.
     const track=(video.srcObject as MediaStream|null)?.getVideoTracks()[0];
-    const Processor=(globalThis as {MediaStreamTrackProcessor?:new(init:{track:MediaStreamTrack;maxBufferSize:number})=>{readable:ReadableStream<VideoFrame>;discardedFrames?:number}}).MediaStreamTrackProcessor;
+    const Processor=(globalThis as {MediaStreamTrackProcessor?:new(init:{track:MediaStreamTrack;maxBufferSize:number})=>{readable:ReadableStream<VideoFrame>;discardedFrames?:number;totalFrames?:number}}).MediaStreamTrackProcessor;
     const processor=!options.videoSource&&track&&Processor?new Processor({track,maxBufferSize:limit}):undefined;
     if(!options.videoSource&&!processor)throw Error('이 브라우저는 MediaStreamTrackProcessor를 지원하지 않습니다.');
     let sourceDone=!processor,trackFrames=0,firstStamp:number|null=null;
-    const trackReader=processor?.readable.getReader();
-    stopSource=()=>{void trackReader?.cancel().catch(()=>{});};
+    // The track is read in a worker (dev/track-line-worker.ts), which keeps the line of waiting
+    // frames; the main thread holds at most the one it asked for. `mainReader`: read the track
+    // here instead, as before, for comparison.
+    if(processor&&!options.mainReader){
+      const worker=new Worker(new URL('./track-line-worker.ts',import.meta.url),{type:'module'});
+      lineWorker=worker;endWorker=()=>worker.terminate();
+      const ask=()=>worker.postMessage({type:'take'} satisfies TrackLineRequest);
+      worker.onmessage=(event:MessageEvent<TrackLineReply>)=>{
+        const reply=event.data;workerLine=reply.stats;trackFrames=reply.stats.received;
+        if(reply.type==='done'){sourceDone=true;wake?.();return;}
+        firstStamp??=reply.frame.timestamp;
+        // Frames the track still held when the share ended were captured before the end: they are read.
+        if(closedLine){reply.frame.close();return;}
+        waiting.push({snapshot:reply.frame,mediaTime:(reply.frame.timestamp-(options.relativeTime?firstStamp:0))/1e6,at:reply.arrivedAt-performance.timeOrigin});
+        wake?.();
+      };
+      worker.onerror=()=>{sourceDone=true;wake?.();};
+      worker.postMessage({type:'start',readable:processor.readable,limit} satisfies TrackLineRequest,[processor.readable as unknown as Transferable]);
+      stopSource=()=>worker.postMessage({type:'stop'} satisfies TrackLineRequest);
+      askNext=ask;skipToNewest=()=>worker.postMessage({type:'newest'} satisfies TrackLineRequest);
+      ask();
+    }
+    const trackReader=lineWorker?undefined:processor?.readable.getReader();
+    if(trackReader)stopSource=()=>{void trackReader.cancel().catch(()=>{});};
     if(trackReader)void (async()=>{
       try{
         for(;;){
@@ -169,7 +210,7 @@ export async function runRowLive(options:{/** The recording to replay; or `input
       }catch{/* The track ended or the run was aborted. */}
       finally{sourceDone=true;wake?.();}
     })();
-    else watch();
+    else if(!lineWorker)watch();
     let shareEnd:{at:number;cards:number;complete:number;confirmed?:number}|null=null;
     options.onReady?.();
     const completion=input.start().finally(()=>{ended=true;shareEnd={at:performance.now(),...counts()};wake?.();});
@@ -190,6 +231,7 @@ export async function runRowLive(options:{/** The recording to replay; or `input
         await new Promise<void>(resolve=>{wake=resolve;});wake=undefined;
         continue;
       }
+      askNext();
       const began=performance.now();started??=current.at;waitMs.push(began-current.at);
       const {snapshot}=current;
       if(frame.width!==snapshot.displayWidth||frame.height!==snapshot.displayHeight){frame.width=snapshot.displayWidth;frame.height=snapshot.displayHeight;}
@@ -205,7 +247,7 @@ export async function runRowLive(options:{/** The recording to replay; or `input
       if(timing){stage.freeze.push(timing.freezeMs);stage.detect.push(timing.detectMs);stage.crop.push(timing.cropMs);stage.transfer.push(timing.roundTripMs-timing.workerMs);stage.materialize.push(timing.materializeMs);}
       // No card window in this frame: looking for it is slow, and frames without it hold no cards.
       // Only the newest waiting frame is kept, so the line is empty when the window appears.
-      if(!acquired.layout)while(waiting.length>1){waiting.shift()!.snapshot.close();passed++;}
+      if(!acquired.layout){skipToNewest();while(waiting.length>1){waiting.shift()!.snapshot.close();passed++;}}
       const release=()=>{for(const cell of acquired.cells)if(cell.image)cell.image.width=0;};
       let read:(()=>Promise<void>)|undefined,thumbRow:number|null=null;
       if(acquired.layout&&acquired.cells.length===COLUMNS*GRID_ROWS){
@@ -259,17 +301,20 @@ export async function runRowLive(options:{/** The recording to replay; or `input
     return {frames,locatedFrames:located,wallMs:Math.round(shareSeconds*1000),...session.stats,scrollSteps,table:session.summary(),cards:session.cards(),
       ...(namesSummary?{names:namesSummary}:{}),
       live:{shareSeconds,presentedFrames:processor?trackFrames:firstPresented===null?0:lastPresented-firstPresented+1,readFrames:frames,
-        source:processor?'track':'video',...(typeof processor?.discardedFrames==='number'?{sourceDiscarded:processor.discardedFrames}:{}),
+        source:processor?'track':'video',...(processor?{reader:lineWorker?'worker' as const:'main' as const}:{}),
+        mainThread:{maxGapMs:Math.round(lagMax),gapsOver100Ms:lagOver100},
+        ...(typeof processor?.totalFrames==='number'?{sourceTotal:processor.totalFrames}:{}),
+        ...(track?{track:{frameRate:track.getSettings().frameRate??null,stats:trackStats(track)}}:{}),...(typeof processor?.discardedFrames==='number'?{sourceDiscarded:processor.discardedFrames}:{}),
         frameMs:{median:at(.5),p95:at(.95),max:at(1)},timeline,
         slots:{exact:Math.round(slotSum.exact/Math.max(1,slotSum.frames)*10)/10,moved:Math.round(slotSum.moved/Math.max(1,slotSum.frames)*10)/10,inspected:Math.round(slotSum.inspected/Math.max(1,slotSum.frames)*10)/10},
         detection:{stages:Object.fromEntries(Object.entries(detectorTotals??{}).map(([name,row])=>[name,{calls:row.calls,cached:row.cached,ms:Math.round(row.elapsedMs)}])),
           slowFrames:slow.frames,slowLocated:slow.located,slowTimes:slow.times,unlocatedFrames:frames-located},
-        line:{limit,longest:longestLine,dropped,passedWithoutWindow:passed,waitMs:(()=>{const ordered=[...waitMs].sort((a,b)=>a-b),pick=(part:number)=>ordered.length?Math.round(ordered[Math.min(ordered.length-1,Math.floor(part*ordered.length))]):0;return {median:pick(.5),p95:pick(.95),max:pick(1)};})(),catchUpMs,afterFrames},
+        line:{limit,longest:Math.max(longestLine,workerLine?.longest??0),dropped:dropped+(workerLine?.dropped??0),passedWithoutWindow:passed+(workerLine?.passed??0),waitMs:(()=>{const ordered=[...waitMs].sort((a,b)=>a-b),pick=(part:number)=>ordered.length?Math.round(ordered[Math.min(ordered.length-1,Math.floor(part*ordered.length))]):0;return {median:pick(.5),p95:pick(.95),max:pick(1)};})(),catchUpMs,afterFrames},
         ...(evidence?{evidence:evidence.summary(true)}:{}),
         frameLog,
         stages:{draw:share(stage.draw),freeze:share(stage.freeze),detect:share(stage.detect),crop:share(stage.crop),transfer:share(stage.transfer),materialize:share(stage.materialize),thumb:share(stage.thumb),read:share(stage.read)},atShareEnd,afterNames,...(afterZeroCheck?{afterZeroCheck}:{})}};
   }finally{
-    closeWaiting();input.dispose();acquisition.dispose();for(const visual of visuals)visual?.dispose();await recognizer?.dispose();
+    closeWaiting();stopLag();endWorker();input.dispose();acquisition.dispose();for(const visual of visuals)visual?.dispose();await recognizer?.dispose();
     frame.width=0;strip.width=0;
   }
 }

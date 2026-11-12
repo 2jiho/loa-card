@@ -1,0 +1,60 @@
+/** Reads every frame of a share track off the main thread and keeps the newest few waiting.
+ *
+ * A `MediaStreamTrackProcessor` read on the main thread only hands over a frame when the main
+ * thread gets a turn; while it is busy the processor's own buffer fills and the browser discards
+ * frames there, unseen. Here the worker takes each frame as it arrives, keeps at most `limit` of
+ * them (the oldest is dropped and counted) and gives the oldest waiting one to the main thread
+ * when it asks. Which frames are lost is then this line's counted choice.
+ *
+ * Messages in: `start` (the track's readable and the limit), `take` (send the next frame; answered
+ * when one is there or the track has ended), `newest` (drop all waiting frames but the newest and
+ * count them as passed), `stop`. Messages out: `frame`, `done`. */
+export type TrackLineRequest=
+  |{type:'start';readable:ReadableStream<VideoFrame>;limit:number}
+  |{type:'take'}|{type:'newest'}|{type:'stop'};
+export interface TrackLineStats {received:number;dropped:number;passed:number;longest:number}
+export type TrackLineReply=
+  |{type:'frame';frame:VideoFrame;/** Arrival, ms since the epoch. */arrivedAt:number;stats:TrackLineStats}
+  |{type:'done';stats:TrackLineStats};
+
+const scope=self as unknown as {onmessage:((event:MessageEvent<TrackLineRequest>)=>void)|null;postMessage(message:TrackLineReply,transfer?:Transferable[]):void};
+const waiting:{frame:VideoFrame;arrivedAt:number}[]=[];
+const stats:TrackLineStats={received:0,dropped:0,passed:0,longest:0};
+let limit=12,asked=false,ended=false,stopped=false,reader:ReadableStreamDefaultReader<VideoFrame>|undefined;
+
+function answer():void {
+  if(!asked||stopped)return;
+  const next=waiting.shift();
+  if(next){asked=false;scope.postMessage({type:'frame',frame:next.frame,arrivedAt:next.arrivedAt,stats:{...stats}},[next.frame as unknown as Transferable]);}
+  else if(ended){asked=false;scope.postMessage({type:'done',stats:{...stats}});}
+}
+
+scope.onmessage=event=>{
+  const message=event.data;
+  if(message.type==='start'){
+    limit=Math.max(1,Math.round(message.limit));
+    reader=message.readable.getReader();
+    void (async()=>{
+      try{
+        for(;;){
+          const next=await reader!.read();
+          if(next.done)break;
+          if(stopped){next.value.close();continue;}
+          stats.received++;
+          waiting.push({frame:next.value,arrivedAt:performance.timeOrigin+performance.now()});
+          while(waiting.length>limit){waiting.shift()!.frame.close();stats.dropped++;}
+          stats.longest=Math.max(stats.longest,waiting.length);
+          answer();
+        }
+      }catch{/* The track ended or reading was cancelled. */}
+      finally{ended=true;answer();}
+    })();
+  }else if(message.type==='take'){asked=true;answer();}
+  else if(message.type==='newest'){
+    while(waiting.length>1){waiting.shift()!.frame.close();stats.passed++;}
+  }else if(message.type==='stop'){
+    stopped=true;
+    for(const item of waiting.splice(0))item.frame.close();
+    void reader?.cancel().catch(()=>{});
+  }
+};

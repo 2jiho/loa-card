@@ -27,7 +27,8 @@ async function run():Promise<void> {
     const shared=stream,track=shared.getVideoTracks()[0];
     video.srcObject=shared;await video.play().catch(()=>{});
     let recorderFailure:string|null=null;
-    const recorder=startShareRecorder(shared,{environment:{userAgent:navigator.userAgent,build:import.meta.env.VITE_BUILD_REVISION,path:'row-share'},
+    // ?rec=0: do not record this share (to see whether the recorder changes what the track delivers).
+    const recorder=new URLSearchParams(location.search).get('rec')==='0'?null:startShareRecorder(shared,{environment:{userAgent:navigator.userAgent,build:import.meta.env.VITE_BUILD_REVISION,path:'row-share'},
       onFailure:message=>{recorderFailure=message;}});
     let finish!:()=>void;
     const ended=new Promise<void>(resolve=>{finish=resolve;});
@@ -36,11 +37,13 @@ async function run():Promise<void> {
     statusLine.textContent='판독기를 준비하는 중… (준비가 끝난 뒤 카드 목록을 넘겨 주세요)';
     const shareStarted=performance.now();
     const result=await runRowLive({target:video,signal:controller.signal,relativeTime:true,
+      // ?source=main: read the track on the main thread (as the first version did), for comparison.
+      mainReader:new URLSearchParams(location.search).get('source')==='main',
       // Stopping the tracks ends the frame source, so the frames taken before the end are read and the run finishes.
       input:{start:()=>ended.then(()=>{stopShareStream(shared);}),dispose:()=>{}},
       onReady:()=>{
         stopButton.disabled=false;
-        statusLine.textContent='읽는 중 · 준비 '+((performance.now()-shareStarted)/1000).toFixed(1)+'초'+(recorder?' · 기록 '+recorder.id:' · 기록 없음(이 브라우저는 트랙 기록을 지원하지 않음)');
+        statusLine.textContent='읽는 중 · 준비 '+((performance.now()-shareStarted)/1000).toFixed(1)+'초'+(recorder?' · 기록 '+recorder.id:' · 기록 없음');
       },
       onLocated:()=>recorder?.located(),
       onCounts:counts=>{countsLine.textContent='이름 붙인 카드 '+counts.cards+' · 확정 '+(counts.confirmed??counts.complete);},
@@ -53,7 +56,9 @@ async function run():Promise<void> {
     const live=result.live,evidence=live.evidence,left=(evidence?.cards??[]).filter(card=>!card.confirmed);
     countsLine.textContent='이름 붙인 카드 '+result.cards.length+' · 공유 종료 시 확정 '+(live.atShareEnd.confirmed??live.atShareEnd.complete)+' · 0장 확인 뒤 확정 '+(live.afterZeroCheck?.confirmed??'-');
     progress.textContent=[
-      '공유 '+live.shareSeconds+'초 · 받은 프레임 '+live.presentedFrames+' · 읽은 프레임 '+live.readFrames+' · 줄에서 버린 프레임 '+live.line.dropped,
+      '공유 '+live.shareSeconds+'초 · 받은 프레임 '+live.presentedFrames+' · 읽은 프레임 '+live.readFrames+' · 줄에서 버린 프레임 '+live.line.dropped+' · 트랙이 먼저 버린 프레임 '+(live.sourceDiscarded??'-')+' / 트랙이 본 프레임 '+(live.sourceTotal??'-'),
+      '트랙 설정 '+(live.track?.frameRate??'-')+'fps · 브라우저 집계(전달/버림/전체) '+(live.track?.stats?live.track.stats.deliveredFrames+'/'+live.track.stats.discardedFrames+'/'+live.track.stats.totalFrames:'-'),
+      '트랙 읽기 '+(live.reader==='worker'?'워커':'메인 스레드')+' · 메인 스레드가 멈춘 가장 긴 시간 '+live.mainThread.maxGapMs+'ms (100ms 넘은 횟수 '+live.mainThread.gapsOver100Ms+')',
       '공유 종료 뒤 남은 프레임 처리 '+live.line.catchUpMs+'ms · 0장 확인 '+(live.afterZeroCheck?live.afterZeroCheck.ms+'ms ('+(live.afterZeroCheck.resolved.join(', ')||'확정 없음')+')':'안 함'),
     ].join('\n');
     if(left.length){
