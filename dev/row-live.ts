@@ -84,6 +84,10 @@ export interface RowLiveResult extends RowReadResult {
      * readings finished: cards that needed it, cards it confirmed as zero, crops re-read, the
      * time it took and the confirmed cards then. It is not part of the share-end count. */
     readonly afterZeroCheck?:{readonly checked:number;readonly resolved:readonly string[];readonly previewReads:number;readonly withoutPreview:number;readonly ms:number;readonly confirmed:number};
+    /** With evidence: the zero check's runs while the share went on (about one a second): runs,
+     * their time in all, crops re-read and the cards confirmed as zero (a card may appear again
+     * when a later crop cancelled its result). Their cards are part of the share-end count. */
+    readonly zeroDuringShare?:{readonly runs:number;readonly ms:number;readonly previewReads:number;readonly resolved:readonly string[]};
     /** With evidence: the merged cards after everything was read. */
     readonly evidence?:ReturnType<RowEvidence['summary']>;
   };
@@ -106,7 +110,7 @@ export async function runRowLive(options:{/** The recording to replay; or `input
   /** Keep the captured frames in the line as they are instead of copying them out of the capture pool (as before); for comparison. */heldFrames?:boolean;
   /** Read the track on the main thread instead of in the worker that keeps the line (as before); for comparison. */mainReader?:boolean;
   /** Frame times count from the first frame taken (a live track's timestamps start anywhere). */relativeTime?:boolean;
-  target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** After the share, run the scanner's zero check on kept crops (default; needs evidence). */zeroCheck?:boolean|'diagnose';/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
+  target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** After the share, run the scanner's zero check on kept crops (default; needs evidence). */zeroCheck?:boolean|'diagnose'|'end';/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
   onProgress?:(text:string)=>void}):Promise<RowLiveResult> {
   const {recordingId,signal}=options,scrollSteps=options.scrollSteps??51,video=options.target as FrameCallbackVideo;
   if(typeof video.requestVideoFrameCallback!=='function')throw Error('이 브라우저는 requestVideoFrameCallback을 지원하지 않습니다.');
@@ -226,6 +230,8 @@ export async function runRowLive(options:{/** The recording to replay; or `input
     const timeline:{t:number;cards:number;complete:number}[]=[],frameMs:number[]=[],waitMs:number[]=[];
     let frames=0,located=0,started:number|null=null,nextTick=1;
     let reading:Promise<void>=Promise.resolve();
+    let zeroRun:Promise<void>|null=null;
+    const zeroLive={runs:0,ms:0,previewReads:0,resolved:[] as string[]};
     const frameLog:[number,number,0|1,number,number|null][]=[];
     let detectorTotals:ReturnType<typeof addDetectorProfile>;const slow={frames:0,located:0,times:[] as number[]};
     const slotSum={exact:0,moved:0,inspected:0,frames:0};
@@ -280,6 +286,14 @@ export async function runRowLive(options:{/** The recording to replay; or `input
       const now=performance.now();frameMs.push(now-began);
       if(frameLog.length<800)frameLog.push([Math.round(time*1000)/1000,Math.round(now-began),read?1:0,acquired.cells.filter(cell=>cell.quality.usable).length,thumbRow]);
       while((now-started)/1000>=nextTick){const tick=counts();timeline.push({t:nextTick,...tick});nextTick++;
+        // The zero check also runs while the share goes on (about once a second, one run at a time),
+        // so a card with no extra copies is confirmed when its crops show it, not only at the end.
+        if(evidence&&reader&&options.zeroCheck!==false&&options.zeroCheck!=='end'&&!zeroRun){
+          const began=performance.now();
+          zeroRun=evidence.confirmZeros((image,id)=>reader.read(image,id,true,false)).then(check=>{
+            zeroLive.runs++;zeroLive.ms+=performance.now()-began;zeroLive.previewReads+=check.previewReads;zeroLive.resolved.push(...check.resolved);
+          }).catch(()=>{}).finally(()=>{zeroRun=null;});
+        }
         if(options.onCounts)options.onCounts(tick,describeListGuidance(session.guidance(scrollSteps+GRID_ROWS),{totalRows:scrollSteps+GRID_ROWS}));}
       if(frames%10===0)options.onProgress?.(`줄 중심 실시간 · 읽은 프레임 ${frames} · 카드 ${session.cards().length}`);
     }
@@ -295,6 +309,7 @@ export async function runRowLive(options:{/** The recording to replay; or `input
     await session.namesIdle();
     const afterNames=counts();
     let afterZeroCheck:RowLiveResult['live']['afterZeroCheck'];
+    if(zeroRun)await zeroRun;
     if(evidence&&reader&&options.zeroCheck!==false){
       const zeroStarted=performance.now();
       const brief=(values:Awaited<ReturnType<typeof reader.read>>)=>({awakening:values.awakening,extraCopies:values.extraCopies,diagnostics:values.countDiagnostics});
@@ -322,7 +337,8 @@ export async function runRowLive(options:{/** The recording to replay; or `input
         line:{limit,longest:Math.max(longestLine,workerLine?.longest??0),dropped:dropped+(workerLine?.dropped??0),passedWithoutWindow:passed+(workerLine?.passed??0),waitMs:(()=>{const ordered=[...waitMs].sort((a,b)=>a-b),pick=(part:number)=>ordered.length?Math.round(ordered[Math.min(ordered.length-1,Math.floor(part*ordered.length))]):0;return {median:pick(.5),p95:pick(.95),max:pick(1)};})(),catchUpMs,afterFrames},
         ...(evidence?{evidence:evidence.summary(true)}:{}),
         frameLog,
-        stages:{draw:share(stage.draw),freeze:share(stage.freeze),detect:share(stage.detect),crop:share(stage.crop),transfer:share(stage.transfer),materialize:share(stage.materialize),thumb:share(stage.thumb),read:share(stage.read)},atShareEnd,afterNames,...(afterZeroCheck?{afterZeroCheck}:{})}};
+        stages:{draw:share(stage.draw),freeze:share(stage.freeze),detect:share(stage.detect),crop:share(stage.crop),transfer:share(stage.transfer),materialize:share(stage.materialize),thumb:share(stage.thumb),read:share(stage.read)},atShareEnd,afterNames,...(afterZeroCheck?{afterZeroCheck}:{}),
+        ...(zeroLive.runs?{zeroDuringShare:{runs:zeroLive.runs,ms:Math.round(zeroLive.ms),previewReads:zeroLive.previewReads,resolved:zeroLive.resolved}}:{})}};
   }finally{
     closeWaiting();stopLag();endWorker();input.dispose();acquisition.dispose();for(const visual of visuals)visual?.dispose();await recognizer?.dispose();
     frame.width=0;strip.width=0;

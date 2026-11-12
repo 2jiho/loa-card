@@ -55,7 +55,9 @@ export interface RowZeroCheck {
 export interface RowEvidence {
   /** The scanner's end-of-scan check of stored previews, for cards whose count is still missing
    * or an unconfirmed zero. `read` is the reader's corroborating visual re-read of a crop. Run
-   * once, after everything was read; a crop accepted afterwards cancels its card's result. */
+   * after everything was read, and it may also run while the share goes on (a card it resolved is
+   * not checked again): a crop accepted afterwards cancels its card's result, and a card that gets
+   * a new observation during a run is left for the next one. */
   confirmZeros(read:(image:HTMLCanvasElement,id:string)=>Promise<ReadFieldValues>,
     /** Diagnosis only: other readings of an unresolved card's preferred crop, stored as given. */
     diagnose?:(image:HTMLCanvasElement,id:string)=>Promise<unknown>):Promise<RowZeroCheck>;
@@ -87,6 +89,8 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
   const previews=new Map<string,{canvas:HTMLCanvasElement;order:number;stable:boolean}[]>(),PREVIEWS=8;
   const accepts=new Map<string,unknown[]>();
   const resolvedZero=new Map<string,NonNullable<ScannedCard['countDiagnostics']>>();
+  /** Observations accepted per card, to notice one arriving while the zero check reads that card's crops. */
+  const acceptCount=new Map<string,number>();
   const preferred=(a:{order:number;stable:boolean},b:{order:number;stable:boolean})=>Number(b.stable)-Number(a.stable)||b.order-a.order;
   const dropPreviews=(id:string)=>{for(const preview of previews.get(id)??[])preview.canvas.width=0;previews.delete(id);};
   const refresh=(force:boolean)=>{
@@ -124,6 +128,7 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
         icon:values.countDiagnostics?.iconPresent??null,reason:values.countDiagnostics?.reason??null,pattern:values.countDiagnostics?.pattern?.value??null});
       // A new observation of the card replaces what the zero check concluded from older crops.
       resolvedZero.delete(identity.id);
+      acceptCount.set(identity.id,(acceptCount.get(identity.id)??0)+1);
       if(input.image&&input.image.width&&(!confirmedIds.has(identity.id)||values.extraCopies===null||values.awakening===null)){
         const canvas=Object.assign(document.createElement('canvas'),{width:140,height:210});
         canvas.getContext('2d',{willReadFrequently:true})!.drawImage(input.image,0,0,140,210);
@@ -149,6 +154,9 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
       for(const card of projected){
         if(card.awakening===null||!needsPreviewZeroProof(card))continue;
         checked++;
+        // The check may run while crops are still being accepted: a card that gets a new
+        // observation while its kept crops are being read is left for the next run.
+        const acceptsBefore=acceptCount.get(card.id)??0;
         const kept=[...(previews.get(card.id)??[])].sort(preferred);
         if(!kept.length){withoutPreview++;continue;}
         // As in the scanner: every kept crop is read before deciding.
@@ -165,6 +173,7 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
               iconPresent:values.countDiagnostics?.iconPresent??null,zero:reading.zero,positive:reading.positive,counter:{hasIcon:packed.hasIcon,...packed.diagnostic}});
           }catch{/* Try another kept crop. */}
         }
+        if((acceptCount.get(card.id)??0)!==acceptsBefore)continue;
         const chosen=readings[selectZeroPreview(readings)];
         if(!chosen){unresolved.push({name:card.name,awakening:card.awakening,...(diagnose?{picture:kept[0].canvas.toDataURL('image/png')}:{}),
           ...(diagnose?{other:await diagnose(kept[0].canvas,card.id).catch(error=>String(error))}:{}),readings:detail});continue;}
