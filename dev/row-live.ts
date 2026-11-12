@@ -206,7 +206,7 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
         stage.thumb.push(performance.now()-thumbStarted);thumbRow=thumb.position===null?null:Math.round(thumb.position*scrollSteps);
         read=async()=>{
           const readStarted=performance.now();
-          await session.processFrame(time,acquired.cells.map(cell=>({usable:cell.quality.usable,empty:cell.quality.reason===EMPTY_REASON,image:cell.image,feature:cell.feature,alignment:cell.alignment})),thumb);
+          await session.processFrame(time,acquired.cells.map(cell=>({usable:cell.quality.usable,empty:cell.quality.reason===EMPTY_REASON,image:cell.image,feature:cell.feature,alignment:cell.alignment,fieldRevision:cell.fieldRevision})),thumb);
           stage.read.push(performance.now()-readStarted);
         };
       }

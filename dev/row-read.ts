@@ -54,6 +54,8 @@ export interface RowReadResult {
      * own count was unconfirmed (as the scanner does), crops queued for it, and crops whose card
      * had used up its re-reads (at most 3 per card) and was recorded as read. */
     readonly countReads?:number;readonly countQueued?:number;readonly countGivenUp?:number;
+    /** Crops not read in full and not recorded because the same field pixels of their card already were. */
+    readonly countSame?:number;
     /** Background only: crops put in the lane's backlog, crops not queued because their cell was
      * already waiting or being read, the backlog's limit and its longest length, and the longest a
      * crop waited (ms). `skippedBusy` counts crops not queued because the backlog was full. */
@@ -100,7 +102,10 @@ export const PROBE_COLUMNS=[2,7] as const;
 export interface RowReadCell {readonly usable:boolean;readonly empty:boolean;readonly image:HTMLCanvasElement|undefined;
   /** For the evidence only: the crop's field vector (to tell whether its fields matched the frame
    * before) and how well its four borders aligned. */
-  readonly feature?:Uint8Array;readonly alignment?:number}
+  readonly feature?:Uint8Array;readonly alignment?:number;
+  /** The acquisition's key of the crop's raw field pixels: equal keys are byte-identical count and
+   * awakening fields, so a full reading of one is the full reading of the other. */
+  readonly fieldRevision?:string}
 export type RowReadVisual=NonNullable<ReturnType<typeof createVisualClient>>;
 
 /** The reading shared by the prototypes: probes, row plans, reads, the list table and the card
@@ -140,6 +145,9 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
     count?:{code:number;identity:RowEvidenceIdentity}};
   /** Count re-reads started per card. A card that stays unconfirmed is not re-read without end. */
   const countRereads=new Map<number,number>(),COUNT_REREADS=3;
+  /** Per card: the field revisions already sent to the full reading. The same field pixels are
+   * not read again and not recorded again (a repeat of the same pixels is not another observation). */
+  const fullyRead=new Map<number,Set<string>>();
   const backlog:Waiting[]=[];
   let inFlight:Waiting|null=null;
   const cellOf=(item:{cell:Waiting['cell']})=>{
@@ -149,13 +157,21 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
   };
   /** Work through the backlog, one crop at a time. */
   const runLane=async()=>{
-    for(let item=backlog.shift();item;item=backlog.shift()){
+    // The count re-read of a card that is already confirmed waits behind everything else: it
+    // guards against a changed count and names nothing, while a full reading can hold the lane
+    // for seconds and crops waiting for a name scroll away.
+    const take=()=>{
+      const index=backlog.findIndex(item=>!(item.count&&done(item.count.code)));
+      return index>0?backlog.splice(index,1)[0]:backlog.shift();
+    };
+    for(let item=take();item;item=take()){
       inFlight=item;
       try{
         if(item.count){
           // The scanner's re-read of an unconfirmed count: one crop, one observation, recorded after it.
           const {code,identity}=item.count;
-          if(done(code))continue;
+          // A confirmed card's crop is read too: the count may have changed since, and dropping the
+          // re-read would let a later crop of the same card be accepted on its visual reading alone.
           const began=performance.now();nameStats.waitMs.push(began-item.queuedAt);
           let values=await names!.count!(item.copy,identity.id,false);nameStats.countReads++;
           if(values.full&&evidence!.needsCountReread({identity,values:values.full,stable:item.fieldStable,borderAlignment:item.alignment})){
@@ -196,7 +212,7 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
       finally{item.copy.width=0;inFlight=null;}
     }
   };
-  const nameStats={substituteReads:0,reads:0,identified:0,failed:0,skippedKnown:0,skippedHeld:0,skippedBusy:0,skippedNamed:0,skippedQueued:0,queued:0,countReads:0,countQueued:0,countGivenUp:0,longestBacklog:0,waitMs:[] as number[],placed:0,frames:0,maxPerFrame:0,ms:[] as number[],cards:new Map<string,number>(),
+  const nameStats={substituteReads:0,reads:0,identified:0,failed:0,skippedKnown:0,skippedHeld:0,skippedBusy:0,skippedNamed:0,skippedQueued:0,queued:0,countReads:0,countQueued:0,countGivenUp:0,countSame:0,longestBacklog:0,waitMs:[] as number[],placed:0,frames:0,maxPerFrame:0,ms:[] as number[],cards:new Map<string,number>(),
     log:[] as {time:number;slot:number;rowKnown:boolean;settledMs:number|null;ms:number;name:string|null;complete:boolean;attempts?:readonly string[]}[],failures:{} as Record<string,string>};
   const codes=new Map<string,number>(),cards:{id:string;name:string;firstTime:number;observations:LeanObservation[]}[]=[];
   // A card is complete for this reader once one observation gave both of its values.
@@ -229,7 +245,7 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
       const sorted=[...nameStats.ms].sort((a,b)=>a-b),at=(share:number)=>sorted.length?Math.round(sorted[Math.min(sorted.length-1,Math.floor(share*sorted.length))]):0;
       return {substituteReads:nameStats.substituteReads,reads:nameStats.reads,identified:nameStats.identified,failed:nameStats.failed,skippedKnown:nameStats.skippedKnown,holdSeconds:nameHoldSeconds,skippedHeld:nameStats.skippedHeld,
         background:backgroundNames,skippedBusy:nameStats.skippedBusy,skippedNamed:nameStats.skippedNamed,placed:nameStats.placed,
-        ...(evidence?{countReads:nameStats.countReads,countQueued:nameStats.countQueued,countGivenUp:nameStats.countGivenUp}:{}),
+        ...(evidence?{countReads:nameStats.countReads,countQueued:nameStats.countQueued,countGivenUp:nameStats.countGivenUp,countSame:nameStats.countSame}:{}),
         queued:nameStats.queued,skippedQueued:nameStats.skippedQueued,backlogLimit:BACKLOG,longestBacklog:nameStats.longestBacklog,backlogWaitMaxMs:Math.round(Math.max(0,...nameStats.waitMs)),
         totalMs:Math.round(sorted.reduce((a,b)=>a+b,0)),medianMs:at(.5),p95Ms:at(.95),maxMs:at(1),frames:nameStats.frames,maxPerFrame:nameStats.maxPerFrame,
         cards:[...nameStats.cards].map(([id,reads])=>({id,name:cards[codes.get(id)!].name,reads})).sort((a,b)=>b.reads-a.reads),
@@ -257,7 +273,13 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
         // name lane on a copy; this crop is then accepted there, once.
         if(evidence&&whole&&backgroundNames&&names?.count&&!whole.identity.review.length&&
             evidence.countUnconfirmed({identity:whole.identity,values:whole.values,stable:fieldStable(slot),borderAlignment:cells[slot].alignment??0})){
-          const tried=countRereads.get(code)??0;
+          const tried=countRereads.get(code)??0,revision=cells[slot].fieldRevision;
+          if(revision&&fullyRead.get(code)?.has(revision)){
+            // These field pixels were already read in full for this card.
+            nameStats.countSame++;
+            cards[code].observations.push({time,awakening:values?.awakening??null,extraCopies:null});
+            return code;
+          }
           const waitingAlready=[...backlog,...(inFlight?[inFlight]:[])].some(item=>item.count?.code===code);
           if(tried>=COUNT_REREADS)nameStats.countGivenUp++;
           else if(waitingAlready||backlog.length>=BACKLOG){
@@ -271,7 +293,8 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
             copy.getContext('2d',{willReadFrequently:true})!.drawImage(source,0,0);
             backlog.push({copy,time,slot,scrollRow:null,stable:false,settled:null,rowWasKnown:false,about:`count:${code}`,cell:null,queuedAt:performance.now(),
               frameId:frameNumber,fieldStable:fieldStable(slot),alignment:cells[slot].alignment??0,count:{code,identity:whole.identity}});
-            countRereads.set(code,tried+1);nameStats.countQueued++;nameStats.longestBacklog=Math.max(nameStats.longestBacklog,backlog.length);
+            countRereads.set(code,tried+1);nameStats.countQueued++;
+            if(revision){const seen=fullyRead.get(code)??new Set<string>();fullyRead.set(code,seen);seen.add(revision);}nameStats.longestBacklog=Math.max(nameStats.longestBacklog,backlog.length);
             if(!nameLane)nameLane=runLane().finally(()=>{nameLane=null;});
             cards[code].observations.push({time,awakening:values?.awakening??null,extraCopies:null});
             return code;
