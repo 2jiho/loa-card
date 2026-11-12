@@ -6,6 +6,8 @@ import {observedCard,readFieldReliability,settleReadFields} from '../src/feature
 import type {ReadFieldValues} from '../src/features/card-scanner/session/field-acceptance';
 import type {CatalogName} from '../src/features/card-scanner/recognition/card-dictionary';
 import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer-types';
+import {packCount} from '../src/features/card-scanner/recognition/count-pattern';
+import {PREVIEW_ZERO_REASON,needsPreviewZeroProof,previewZeroReading,selectZeroPreview} from '../src/features/card-scanner/session/preview-zero';
 
 /** Development prototype (docs/scanner-live-redesign.md 13.9, step 4). Not a scanner.
  *
@@ -14,6 +16,12 @@ import type {ScannedCard} from '../src/features/card-scanner/recognition/recogni
  * into an InventoryEvidence set up as the scanner sets up its own (empty seed, same consensus
  * and count-conflict policies). "Confirmed" is the scanner's `confirmedReadingCount` over the
  * projected cards, so the number can be compared with the scanner's "read" count.
+ *
+ * After the share it can run the scanner's end-of-scan check of stored previews (`confirmZeros`):
+ * a card whose count is still missing or an unconfirmed zero is confirmed as zero only when a
+ * kept crop of it shows an explicit empty counter and no later kept crop shows a positive count.
+ * The scanner re-reads its saved preview pictures; this keeps the crops themselves (up to 8 per
+ * card not yet confirmed), so the pixels read are not the same bytes.
  *
  * What it leaves out of the scanner: the header total, sort, positions, unknown-observation
  * lifecycle, freshness proofs, recovery and completion. It decides nothing about a finished scan. */
@@ -31,8 +39,24 @@ export interface RowEvidenceInput {
   /** The crop's fields matched the same column of the frame before (the scanner's `stable`). */
   readonly stable:boolean;
   readonly borderAlignment:number;
+  /** The crop, kept (as a copy) for the end-of-scan zero check while its card is not confirmed. */
+  readonly image?:HTMLCanvasElement;
+}
+export interface RowZeroCheck {
+  /** Cards that needed the check, cards it confirmed as zero (names), and crops re-read. */
+  readonly checked:number;readonly resolved:readonly string[];readonly previewReads:number;
+  /** Cards that needed the check but had no kept crop. */
+  readonly withoutPreview:number;
+  /** Diagnosis: for each card left unresolved, what every kept crop read (preferred first). */
+  readonly unresolved:readonly {readonly name:string;readonly awakening:number;readonly readings:readonly {readonly order:number;readonly stable:boolean;
+    readonly readAwakening:number|null;readonly readCopies:number|null;readonly iconPresent:boolean|null;readonly zero:boolean;readonly positive:boolean;
+    readonly counter:unknown}[]}[];
 }
 export interface RowEvidence {
+  /** The scanner's end-of-scan check of stored previews, for cards whose count is still missing
+   * or an unconfirmed zero. `read` is the reader's corroborating visual re-read of a crop. Run
+   * once, after everything was read; a crop accepted afterwards cancels its card's result. */
+  confirmZeros(read:(image:HTMLCanvasElement,id:string)=>Promise<ReadFieldValues>):Promise<RowZeroCheck>;
   /** Accept one named crop. Returns its values after acceptance (an unconfirmed zero is null). */
   accept(input:RowEvidenceInput):{awakening:number|null;extraCopies:number|null};
   /** Whether this crop's count is unconfirmed as read (whatever the reason). Such a crop is read
@@ -52,11 +76,22 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
   const sessionId=crypto.randomUUID();
   const inventory=new InventoryEvidence([],{seedPolicy:'prior-run-v3',consensusPolicy:CURRENT_INVENTORY_CONSENSUS_POLICY,countConflictPolicy:{version:3,sessionId}});
   let sequence=0,dirty=false,refreshed=-Infinity,projected:ScannedCard[]=[],confirmedIds=new Set<string>();
+  /** Kept crops per card not yet confirmed, and the cards the zero check resolved. */
+  const previews=new Map<string,{canvas:HTMLCanvasElement;order:number;stable:boolean}[]>(),PREVIEWS=8;
+  const resolvedZero=new Map<string,NonNullable<ScannedCard['countDiagnostics']>>();
+  const preferred=(a:{order:number;stable:boolean},b:{order:number;stable:boolean})=>Number(b.stable)-Number(a.stable)||b.order-a.order;
+  const dropPreviews=(id:string)=>{for(const preview of previews.get(id)??[])preview.canvas.width=0;previews.delete(id);};
   const refresh=(force:boolean)=>{
     if(!dirty||(!force&&performance.now()-refreshed<refreshMs))return;
-    projected=inventory.project(catalog);
+    projected=inventory.project(catalog).map(card=>{
+      const diagnostics=resolvedZero.get(card.id);
+      return diagnostics?{...card,extraCopies:0,countReliable:true,review:card.review.filter(reason=>!reason.includes('장수')&&!reason.includes('각성')),
+        countDiagnostics:{...diagnostics,reason:diagnostics.reason||PREVIEW_ZERO_REASON}}:card;
+    });
     const evidence={latest:inventory.latestIdentityOrder,confirmed:inventory.confirmedFieldOrder,agreed:inventory.agreedFieldOrder};
     confirmedIds=new Set(projected.filter(card=>confirmedReadingCount({cards:[card],...evidence})===1).map(card=>card.id));
+    // A confirmed card's crops are no longer needed.
+    for(const id of previews.keys())if(confirmedIds.has(id)&&!resolvedZero.has(id))dropPreviews(id);
     dirty=false;refreshed=performance.now();
   };
   return {
@@ -75,6 +110,15 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
       const card=observedCard({identity:{...identity,review:[...identity.review],nameEvidence:identity.nameEvidence??[]},values,review,reliability,
         image:'',time,order,stable,position:{frame,slot,stable,sort:null}});
       inventory.recordObservation(source,card as unknown as ScannedCard,borderAlignment);
+      // A new observation of the card replaces what the zero check concluded from older crops.
+      resolvedZero.delete(identity.id);
+      if(input.image&&input.image.width&&!confirmedIds.has(identity.id)){
+        const canvas=Object.assign(document.createElement('canvas'),{width:140,height:210});
+        canvas.getContext('2d',{willReadFrequently:true})!.drawImage(input.image,0,0,140,210);
+        const kept=previews.get(identity.id)??[];previews.set(identity.id,kept);
+        kept.push({canvas,order,stable});kept.sort(preferred);
+        for(const extra of kept.splice(PREVIEWS))extra.canvas.width=0;
+      }
       dirty=true;
       return {awakening:values.awakening,extraCopies:values.extraCopies};
     },
@@ -85,6 +129,38 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
       const {values,identity}=input;
       return !!values&&values.awakening!==null&&values.countDiagnostics?.pattern?.value!=null&&!identity.review.length&&
         readFieldReliability(values,{stable:input.stable,borderAlignment:input.borderAlignment,maxAwakening:identity.maxAwakening})==='unconfirmed';
+    },
+    async confirmZeros(read){
+      dirty=true;refresh(true);
+      const resolved:string[]=[];let checked=0,previewReads=0,withoutPreview=0;
+      const unresolved:{name:string;awakening:number;readings:RowZeroCheck['unresolved'][number]['readings'][number][]}[]=[];
+      for(const card of projected){
+        if(card.awakening===null||!needsPreviewZeroProof(card))continue;
+        checked++;
+        const kept=[...(previews.get(card.id)??[])].sort(preferred);
+        if(!kept.length){withoutPreview++;continue;}
+        // As in the scanner: every kept crop is read before deciding.
+        const readings:{order:number;zero:boolean;positive:boolean;diagnostics:ScannedCard['countDiagnostics']}[]=[];
+        const detail:RowZeroCheck['unresolved'][number]['readings'][number][]=[];
+        for(const preview of kept){
+          try{
+            const values=await read(preview.canvas,card.id);previewReads++;
+            const pixels=preview.canvas.getContext('2d',{willReadFrequently:true})!.getImageData(0,0,140,210).data;
+            const packed=packCount(pixels,140,0,true);
+            const reading=previewZeroReading({values,packed,card:{awakening:card.awakening,observations:card.observations},stillImage:false});
+            readings.push({order:preview.order,...reading});
+            detail.push({order:preview.order,stable:preview.stable,readAwakening:values.awakening,readCopies:values.extraCopies,
+              iconPresent:values.countDiagnostics?.iconPresent??null,zero:reading.zero,positive:reading.positive,counter:{hasIcon:packed.hasIcon,...packed.diagnostic}});
+          }catch{/* Try another kept crop. */}
+        }
+        const chosen=readings[selectZeroPreview(readings)];
+        if(!chosen){unresolved.push({name:card.name,awakening:card.awakening,readings:detail});continue;}
+        resolvedZero.set(card.id,chosen.diagnostics??{maximum:15,reason:'',readings:[]});
+        inventory.confirmPreviewField(card.id,inventory.latestIdentityOrder.get(card.id)??card.captureOrder??0);
+        resolved.push(card.name);
+      }
+      dirty=true;refresh(true);
+      return {checked,resolved,previewReads,withoutPreview,unresolved};
     },
     confirmed(id){refresh(false);return confirmedIds.has(id);},
     summary(){

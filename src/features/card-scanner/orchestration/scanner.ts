@@ -98,7 +98,7 @@ import { CaptureObservations, settledFields } from "../acquisition/capture-quali
 import { BoundedFrameRing } from '../capture/bounded-frame-ring';
 import { appendFixedGridRescue, confirmFixedGridRescue, fixedGridCell, rescueFixedRowSlot } from '../acquisition/fixed-grid-rescue';
 import type { FixedGridRescueRecord } from '../acquisition/fixed-grid-rescue';
-import { emptyCounterProof, packCount, stablePreviewEmptyCandidate } from '../recognition/count-pattern';
+import { packCount, stablePreviewEmptyCandidate } from '../recognition/count-pattern';
 import { areaGray } from '../acquisition/area-gray';
 import { cutRescueArea, rescueAreaBounds } from '../acquisition/rescue-area';
 import type { RescueArea } from '../acquisition/rescue-area';
@@ -154,7 +154,7 @@ import type {LiveInventorySnapshot} from '../session/live-inventory';
 import { runJoinedWorkers } from '../capture/joined-workers';
 import { runRecoveryPipeline } from '../session/recovery-pipeline';
 import { coveredFieldRetry, fieldRetryIdentity, pruneFieldRetries, retryNeedsIdentity } from '../session/field-retry';
-import { selectZeroPreview } from '../session/preview-zero';
+import { PREVIEW_ZERO_REASON, needsPreviewZeroProof, previewZeroReading, selectZeroPreview } from '../session/preview-zero';
 import { canSkipRecovery, canFinishVerifiedCapture, confirmedReadingCount, freshCaptureTail } from '../session/recovery-completion';
 import {issuePositiveCompletionReceipt,type PositiveCompletionReceipt} from '../session/positive-completion';
 import { pendingScanFields, projectCurrentScanFields } from '../session/current-scan-fields';
@@ -3713,10 +3713,7 @@ async function runScannerInternal(
         // A missing count AND an unconfirmed zero both need the same-capture
         // re-read: only an explicit empty counter on an intact preview resolves
         // either. A confirmed value never re-enters here.
-        const needsZeroProof = card.extraCopies === null ||
-          (card.extraCopies === 0 && card.countReliable === false);
-        if (card.awakening === null || !needsZeroProof ||
-          !card.review.some(reason => reason.includes('장수'))) continue;
+        if (card.awakening === null || !needsPreviewZeroProof(card)) continue;
         const seenImages = new Set<string>();
         // Evidence observations may carry no usable image (thumbnail arrived
         // late or not at all). The finalized representative image is the same
@@ -3737,24 +3734,8 @@ async function runScannerInternal(
         for (const preview of previews) {
           try {
             const {values,pixels}=await readPreview(preview.image,card.id);
-            let diagnostics = values.countDiagnostics;
-            let zero = values.extraCopies === 0 && diagnostics?.iconPresent === false &&
-              values.awakening === card.awakening;
-            if (!zero) {
-              const proof = emptyCounterProof(packCount(pixels, 140, 0, true), card.observations, !!stillImages);
-              if (proof) {
-                const maximum = 15 - card.awakening * (card.awakening + 1) / 2;
-                diagnostics = { maximum, reason: proof === 'still-image'
-                    ? '정지 이미지 확인 · 빈 장수 배경 확인'
-                    : proof === 'repeated-observations'
-                      ? '저장 이미지 재확인 · 다중 관측 빈 장수 배경 확인'
-                      : `저장 이미지 재확인 · 관측 ${card.observations}회 빈 장수 배경 확인 · 이후 관측으로 갱신`,
-                  readings: [], iconPresent: false };
-                zero = true;
-              }
-            }
-            readings.push({preview,order:preview.captureOrder??0,zero,diagnostics,
-              positive:!zero&&typeof values.extraCopies==='number'&&values.extraCopies>0&&values.countDiagnostics?.iconPresent!==false});
+            readings.push({preview,order:preview.captureOrder??0,...previewZeroReading({values,packed:packCount(pixels, 140, 0, true),
+              card:{awakening:card.awakening,observations:card.observations},stillImage:!!stillImages})});
           } catch { /* Try another captured preview before keeping the review. */ }
         }
         const chosen=readings[selectZeroPreview(readings)];
@@ -3763,7 +3744,7 @@ async function runScannerInternal(
           const resolvedDiagnostics = chosen.diagnostics ?? { maximum: 15, reason: '', readings: [] };
           state.cards[index] = { ...card, image: chosen.preview.image, extraCopies: 0, countReliable: true, review,
             countDiagnostics: { ...resolvedDiagnostics,
-              reason: resolvedDiagnostics.reason || '저장 이미지 재확인 · 추가 카드 표시 없음 · 0장 후보' } };
+              reason: resolvedDiagnostics.reason || PREVIEW_ZERO_REASON } };
           inventory!.confirmPreviewField(card.id, latestIdentityOrder.get(card.id) ?? card.captureOrder ?? 0);
           resolved.add(card.id);
         }

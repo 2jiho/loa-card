@@ -67,6 +67,10 @@ export interface RowLiveResult extends RowReadResult {
       readonly catchUpMs:number;readonly afterFrames:{readonly cards:number;readonly complete:number}};
     /** The same once the name reading in flight at the end of the share had finished. */
     readonly afterNames:{readonly cards:number;readonly complete:number;readonly confirmed?:number};
+    /** With evidence: the scanner's end-of-scan zero check of kept crops, run after the name
+     * readings finished: cards that needed it, cards it confirmed as zero, crops re-read, the
+     * time it took and the confirmed cards then. It is not part of the share-end count. */
+    readonly afterZeroCheck?:{readonly checked:number;readonly resolved:readonly string[];readonly previewReads:number;readonly withoutPreview:number;readonly ms:number;readonly confirmed:number};
     /** With evidence: the merged cards after everything was read. */
     readonly evidence?:ReturnType<RowEvidence['summary']>;
   };
@@ -74,7 +78,7 @@ export interface RowLiveResult extends RowReadResult {
 
 type FrameCallbackVideo=HTMLVideoElement&{requestVideoFrameCallback(callback:(now:number,metadata:{mediaTime:number;presentedFrames:number})=>void):number};
 
-export async function runRowLive(options:{recordingId:string;target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
+export async function runRowLive(options:{recordingId:string;target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** After the share, run the scanner's zero check on kept crops (default; needs evidence). */zeroCheck?:boolean;/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
   onProgress?:(text:string)=>void}):Promise<RowLiveResult> {
   const {recordingId,signal}=options,scrollSteps=options.scrollSteps??51,video=options.target as FrameCallbackVideo;
   if(typeof video.requestVideoFrameCallback!=='function')throw Error('이 브라우저는 requestVideoFrameCallback을 지원하지 않습니다.');
@@ -226,6 +230,13 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
     const afterFrames=counts(),catchUpMs=end?Math.round(finished-end.at):0;
     // A name reading still in flight when the share ended finishes; it is counted after the share.
     await session.namesIdle();
+    const afterNames=counts();
+    let afterZeroCheck:RowLiveResult['live']['afterZeroCheck'];
+    if(evidence&&reader&&options.zeroCheck!==false){
+      const zeroStarted=performance.now();
+      const check=await evidence.confirmZeros((image,id)=>reader.read(image,id,true,false));
+      afterZeroCheck={...check,ms:Math.round(performance.now()-zeroStarted),confirmed:evidence.summary().confirmed};
+    }
     const sorted=[...frameMs].sort((a,b)=>a-b),at=(share:number)=>sorted.length?Math.round(sorted[Math.min(sorted.length-1,Math.floor(share*sorted.length))]):0;
     const namesSummary=session.names();
     const share=(values:number[])=>{const ordered=[...values].sort((a,b)=>a-b),pick=(part:number)=>ordered.length?Math.round(ordered[Math.min(ordered.length-1,Math.floor(part*ordered.length))]*10)/10:0;return {median:pick(.5),p95:pick(.95)};};
@@ -240,7 +251,7 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
         line:{limit,longest:longestLine,dropped,passedWithoutWindow:passed,waitMs:(()=>{const ordered=[...waitMs].sort((a,b)=>a-b),pick=(part:number)=>ordered.length?Math.round(ordered[Math.min(ordered.length-1,Math.floor(part*ordered.length))]):0;return {median:pick(.5),p95:pick(.95),max:pick(1)};})(),catchUpMs,afterFrames},
         ...(evidence?{evidence:evidence.summary()}:{}),
         frameLog,
-        stages:{draw:share(stage.draw),freeze:share(stage.freeze),detect:share(stage.detect),crop:share(stage.crop),transfer:share(stage.transfer),materialize:share(stage.materialize),thumb:share(stage.thumb),read:share(stage.read)},atShareEnd,afterNames:counts()}};
+        stages:{draw:share(stage.draw),freeze:share(stage.freeze),detect:share(stage.detect),crop:share(stage.crop),transfer:share(stage.transfer),materialize:share(stage.materialize),thumb:share(stage.thumb),read:share(stage.read)},atShareEnd,afterNames,...(afterZeroCheck?{afterZeroCheck}:{})}};
   }finally{
     closeWaiting();input.dispose();acquisition.dispose();for(const visual of visuals)visual?.dispose();await recognizer?.dispose();
     frame.width=0;strip.width=0;

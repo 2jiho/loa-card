@@ -162,7 +162,7 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
             values=await names!.count!(item.copy,identity.id,true);nameStats.countReads++;
           }
           nameStats.ms.push(performance.now()-began);
-          const accepted=evidence!.accept({identity,values:values.full??null,time:item.time,slot:item.slot,frameId:item.frameId,stable:item.fieldStable,borderAlignment:item.alignment});
+          const accepted=evidence!.accept({identity,values:values.full??null,time:item.time,slot:item.slot,frameId:item.frameId,stable:item.fieldStable,borderAlignment:item.alignment,image:item.copy});
           cards[code].observations.push({time:item.time,awakening:accepted.awakening,extraCopies:accepted.extraCopies});
           if(accepted.awakening!==null&&accepted.extraCopies!==null)complete.add(code);
           continue;
@@ -186,7 +186,7 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
         let code=codes.get(identity.id);
         if(code===undefined){code=cards.length;codes.set(identity.id,code);cards.push({id:identity.id,name:identity.name,firstTime:item.time,observations:[]});}
         const accepted=evidence&&identity.full?evidence.accept({identity:identity.full,values:values?.full??null,time:item.time,slot:item.slot,frameId:item.frameId,
-          stable:item.fieldStable,borderAlignment:item.alignment}):null;
+          stable:item.fieldStable,borderAlignment:item.alignment,image:item.copy}):null;
         cards[code].observations.push({time:item.time,awakening:accepted?accepted.awakening:values?.awakening??null,extraCopies:accepted?accepted.extraCopies:values?.extraCopies??null});
         if(accepted?accepted.awakening!==null&&accepted.extraCopies!==null:both)complete.add(code);
         // The cell this crop came from, by the card its frame placed beside it.
@@ -279,7 +279,7 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
         }
         // With evidence the values are the accepted ones (an unconfirmed zero is unread).
         const accepted=evidence&&whole?evidence.accept({identity:whole.identity,values:whole.values,time,slot,frameId:frameNumber,
-          stable:fieldStable(slot),borderAlignment:cells[slot].alignment??0}):null;
+          stable:fieldStable(slot),borderAlignment:cells[slot].alignment??0,image:cells[slot].image??undefined}):null;
         const awakening=accepted?accepted.awakening:values?.awakening??null,extraCopies=accepted?accepted.extraCopies:values?.extraCopies??null;
         cards[code].observations.push({time,awakening,extraCopies});
         if(awakening!==null&&extraCopies!==null)complete.add(code);
