@@ -12,8 +12,11 @@ import type {RowReadNames,RowReadResult,RowReadVisual} from './row-read';
 /** Development prototype (docs/scanner-live-redesign.md 13.9, step 4, first part). Not a scanner.
  *
  * The row-centred reading of dev/row-read.ts, fed in REAL TIME: the recording plays into a video
- * at its recorded pace (dev/recorded-share-input.ts, as the scanner's `realtime` replay). Each
- * presented frame waits in a short line (12 by default) and the loop reads them in order, taking
+ * at its recorded pace (dev/recorded-share-input.ts, as the scanner's `realtime` replay). Frames
+ * are taken from the share's track itself (MediaStreamTrackProcessor), not from the video element:
+ * the element shows at most one frame per screen refresh, so of two frames a few ms apart it
+ * never presents one, and a row that was on screen for that one frame is lost. Each
+ * frame waits in a short line (12 by default) and the loop reads them in order, taking
  * the next frame while the one before is still being read; a frame the line has no room for is
  * dropped and counted. Frames captured before the share ended are read to the end; nothing is
  * recovered from frames that were dropped.
@@ -27,8 +30,12 @@ export interface RowLiveResult extends RowReadResult {
   readonly live:{
     /** Seconds from the first frame taken to the end of the share. */
     readonly shareSeconds:number;
-    /** Frames the video presented while the loop was watching / frames this loop read. */
+    /** Frames the source gave while the loop was watching (the track's frames, or with the video
+     * source the frames the element presented) / frames this loop read. */
     readonly presentedFrames:number;readonly readFrames:number;
+    /** Where the frames came from, and with the track source the frames the browser discarded
+     * before this loop took them (absent when the browser does not count them). */
+    readonly source:'track'|'video';readonly sourceDiscarded?:number;
     /** Per frame read: milliseconds from taking the frame to the end of its reading. */
     readonly frameMs:{readonly median:number;readonly p95:number;readonly max:number};
     /** Where a frame's time goes, median and 95th percentile ms per frame read: drawing the video
@@ -67,7 +74,7 @@ export interface RowLiveResult extends RowReadResult {
 
 type FrameCallbackVideo=HTMLVideoElement&{requestVideoFrameCallback(callback:(now:number,metadata:{mediaTime:number;presentedFrames:number})=>void):number};
 
-export async function runRowLive(options:{recordingId:string;target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
+export async function runRowLive(options:{recordingId:string;target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
   onProgress?:(text:string)=>void}):Promise<RowLiveResult> {
   const {recordingId,signal}=options,scrollSteps=options.scrollSteps??51,video=options.target as FrameCallbackVideo;
   if(typeof video.requestVideoFrameCallback!=='function')throw Error('이 브라우저는 requestVideoFrameCallback을 지원하지 않습니다.');
@@ -94,7 +101,7 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
       blank.width=0;
     }
     const names:RowReadNames|undefined=reader?{
-      async identify(image,stable){const identity=await reader.identify(image,true,stable);return identity?{id:identity.id,name:identity.name,full:identity}:null;},
+      async identify(image,stable,structural){const identity=await reader.identify(image,true,stable,structural);return identity?{id:identity.id,name:identity.name,full:identity}:null;},
       async values(image,id){const values=await reader.read(image,id,false,false);return {awakening:values.awakening,extraCopies:values.extraCopies,full:values};},
       ranText:image=>reader.nameDiagnostics(image).some(attempt=>attempt.engine!=='quality'),
       async count(image,id,corroborate){const values=await reader.read(image,id,corroborate,true);return {awakening:values.awakening,extraCopies:values.extraCopies,full:values};},
@@ -109,19 +116,45 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
     // `limit` the oldest waiting frame is dropped and counted.
     const limit=Math.max(1,Math.round(options.queue??12));
     const waiting:{snapshot:VideoFrame;mediaTime:number;at:number}[]=[];
-    closeWaiting=()=>{ended=true;for(const item of waiting.splice(0))item.snapshot.close();};
+    closeWaiting=()=>{ended=true;closedLine=true;stopSource();for(const item of waiting.splice(0))item.snapshot.close();};
+    let closedLine=false,stopSource=()=>{};
     let ended=false,wake:(()=>void)|undefined,dropped=0,passed=0,longestLine=0;
     let firstPresented:number|null=null,lastPresented=0;
+    const enqueue=(snapshot:VideoFrame,mediaTime:number)=>{
+      waiting.push({snapshot,mediaTime,at:performance.now()});
+      while(waiting.length>limit){waiting.shift()!.snapshot.close();dropped++;}
+      longestLine=Math.max(longestLine,waiting.length);
+      wake?.();
+    };
     const watch=()=>video.requestVideoFrameCallback((_now,metadata)=>{
       firstPresented??=metadata.presentedFrames;lastPresented=metadata.presentedFrames;
       if(!ended){
-        try{waiting.push({snapshot:new VideoFrame(video),mediaTime:metadata.mediaTime,at:performance.now()});}catch{/* No frame to snapshot yet. */}
-        while(waiting.length>limit){waiting.shift()!.snapshot.close();dropped++;}
-        longestLine=Math.max(longestLine,waiting.length);
-        wake?.();watch();
+        try{enqueue(new VideoFrame(video),metadata.mediaTime);}catch{/* No frame to snapshot yet. */}
+        watch();
       }
     });
-    watch();
+    // The track's own frames, every one of them, with the time the replay gave each (its recorded
+    // delivery time). The video element keeps playing the same track; it is only not read.
+    const track=(video.srcObject as MediaStream|null)?.getVideoTracks()[0];
+    const Processor=(globalThis as {MediaStreamTrackProcessor?:new(init:{track:MediaStreamTrack;maxBufferSize:number})=>{readable:ReadableStream<VideoFrame>;discardedFrames?:number}}).MediaStreamTrackProcessor;
+    const processor=!options.videoSource&&track&&Processor?new Processor({track,maxBufferSize:limit}):undefined;
+    if(!options.videoSource&&!processor)throw Error('이 브라우저는 MediaStreamTrackProcessor를 지원하지 않습니다.');
+    let sourceDone=!processor,trackFrames=0;
+    const trackReader=processor?.readable.getReader();
+    stopSource=()=>{void trackReader?.cancel().catch(()=>{});};
+    if(trackReader)void (async()=>{
+      try{
+        for(;;){
+          const next=await trackReader.read();
+          if(next.done)break;
+          trackFrames++;
+          // Frames the track still held when the share ended were captured before the end: they are read.
+          if(closedLine)next.value.close();else enqueue(next.value,next.value.timestamp/1e6);
+        }
+      }catch{/* The track ended or the run was aborted. */}
+      finally{sourceDone=true;wake?.();}
+    })();
+    else watch();
     let shareEnd:{at:number;cards:number;complete:number;confirmed?:number}|null=null;
     const completion=input.start().finally(()=>{ended=true;shareEnd={at:performance.now(),...counts()};wake?.();});
     const counts=()=>{const cards=session.cards();return {cards:cards.length,complete:cards.filter(card=>card.observations.some(observation=>observation.awakening!==null&&observation.extraCopies!==null)).length,
@@ -137,7 +170,7 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
       signal.throwIfAborted();
       const current=waiting.shift();
       if(!current){
-        if(ended)break;
+        if(ended&&sourceDone)break;
         await new Promise<void>(resolve=>{wake=resolve;});wake=undefined;
         continue;
       }
@@ -198,7 +231,8 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
     const share=(values:number[])=>{const ordered=[...values].sort((a,b)=>a-b),pick=(part:number)=>ordered.length?Math.round(ordered[Math.min(ordered.length-1,Math.floor(part*ordered.length))]*10)/10:0;return {median:pick(.5),p95:pick(.95)};};
     return {frames,locatedFrames:located,wallMs:Math.round(shareSeconds*1000),...session.stats,scrollSteps,table:session.summary(),cards:session.cards(),
       ...(namesSummary?{names:namesSummary}:{}),
-      live:{shareSeconds,presentedFrames:firstPresented===null?0:lastPresented-firstPresented+1,readFrames:frames,
+      live:{shareSeconds,presentedFrames:processor?trackFrames:firstPresented===null?0:lastPresented-firstPresented+1,readFrames:frames,
+        source:processor?'track':'video',...(typeof processor?.discardedFrames==='number'?{sourceDiscarded:processor.discardedFrames}:{}),
         frameMs:{median:at(.5),p95:at(.95),max:at(1)},timeline,
         slots:{exact:Math.round(slotSum.exact/Math.max(1,slotSum.frames)*10)/10,moved:Math.round(slotSum.moved/Math.max(1,slotSum.frames)*10)/10,inspected:Math.round(slotSum.inspected/Math.max(1,slotSum.frames)*10)/10},
         detection:{stages:Object.fromEntries(Object.entries(detectorTotals??{}).map(([name,row])=>[name,{calls:row.calls,cached:row.cached,ms:Math.round(row.elapsedMs)}])),

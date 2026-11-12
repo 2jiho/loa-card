@@ -76,7 +76,9 @@ export interface RowReadResult {
 /** The scanner's own name reading, for a slot the artwork matcher could not name. */
 export interface RowReadNames {
   /** Name the card of a crop (the recognizer's full identify: artwork again, then the label). */
-  identify(image:HTMLCanvasElement,stable:boolean):Promise<{id:string;name:string;/** The reader's whole identity, for the evidence. */full?:RowEvidenceIdentity}|null>;
+  /** `structural`: the crop's four borders line up (the scanner's border alignment of 0.8 or more).
+   * The scanner then lets the name reader work on a label with few pixels and match its raw text. */
+  identify(image:HTMLCanvasElement,stable:boolean,structural?:boolean):Promise<{id:string;name:string;/** The reader's whole identity, for the evidence. */full?:RowEvidenceIdentity}|null>;
   /** Whether the last identify of this crop ran the text reader (false: refused before it). */
   ranText?(image:HTMLCanvasElement):boolean;
   /** The crop's awakening and count for that card, by the visual reading alone. */
@@ -169,7 +171,7 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
         const at=cellOf(item),now=at?table.cellAt(at.island,at.row,at.column):null;
         if(now?.state==='card'&&now.card!==null&&done(now.card)){nameStats.skippedNamed++;continue;}
         const began=performance.now();nameStats.waitMs.push(began-item.queuedAt);
-        const identity=await names!.identify(item.copy,item.stable);
+        const identity=await names!.identify(item.copy,item.stable,item.alignment>=.8);
         let values=identity?await names!.values(item.copy,identity.id):null;
         if(evidence&&identity?.full&&values?.full&&names!.count&&
             evidence.needsCountReread({identity:identity.full,values:values.full,stable:item.fieldStable,borderAlignment:item.alignment})){
@@ -343,7 +345,7 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
             continue;
           }
           const image=cells[slot].image!,started=performance.now();
-          const identity=await names.identify(image,(thumb.settledMs??0)>=200);
+          const identity=await names.identify(image,(thumb.settledMs??0)>=200,(cells[slot].alignment??0)>=.8);
           const values=identity?await names.values(image,identity.id):null;
           const took=performance.now()-started;
           nameStats.ms.push(took);nameStats.reads++;inFrame++;
@@ -427,7 +429,7 @@ export async function runRowRead(options:{recordingId:string;signal:AbortSignal;
     if(options.names)recognizer=await createRecognizer(()=>{},signal);
     const reader=recognizer;
     const names:RowReadNames|undefined=reader?{
-      async identify(image,stable){const identity=await reader.identify(image,true,stable);return identity?{id:identity.id,name:identity.name}:null;},
+      async identify(image,stable,structural){const identity=await reader.identify(image,true,stable,structural);return identity?{id:identity.id,name:identity.name}:null;},
       async values(image,id){const values=await reader.read(image,id,false,false);return {awakening:values.awakening,extraCopies:values.extraCopies};},
       ranText:image=>reader.nameDiagnostics(image).some(attempt=>attempt.engine!=='quality'),
       attempts:image=>reader.nameDiagnostics(image).map(attempt=>`${attempt.variant} | "${attempt.text}" ${attempt.confidence.toFixed(2)} | ${attempt.reason??''}`),
