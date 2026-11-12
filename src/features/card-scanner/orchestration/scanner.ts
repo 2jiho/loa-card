@@ -78,6 +78,7 @@ import {resetPositionsForSort} from '../session/sort-position-reset';
 import type { AcquisitionTiming, RejectedTransportAcquisition, RejectedTransportCell } from '../acquisition/acquisition-client';
 import { tryStartTrackFrames } from '../capture/track-frame-source';
 import { ScanLedger } from "../session/scan-ledger";
+import {observedCard,readFieldReliability,settleReadFields} from '../session/field-acceptance';
 import {UnknownLifecycle,hashUnknownLifecycle} from '../session/unknown-lifecycle';
 import {HiddenUnknownGuard,hiddenUnknownEnabled,type HiddenDiagnosticEvent,type HiddenDiagnosticSummary} from '../session/unknown-hidden-guard';
 import {UNKNOWN_LIFECYCLE_LIMITS} from '../session/unknown-lifecycle-types';
@@ -134,7 +135,7 @@ import {correlateSourceFrame} from '../capture/source-frame-correlation';
 import { ScrollCoverage } from '../session/scroll-coverage';
 import type {ScrollCoverageDiagnostic} from '../session/scroll-coverage-diagnostic';
 import type { ScrollGap } from '../session/scroll-coverage';
-import { countReliability,type CountObservationSource } from "../recognition/count-confidence";
+import type { CountObservationSource } from "../recognition/count-confidence";
 import {CountSourceProbe,type CountSourceProbeStats} from '../recognition/count-source-probe';
 import type {CountProvenanceEvent} from '../recognition/count-source-provenance';
 import { replayDebugFrames } from "../reproduction/debug-capture";
@@ -2207,13 +2208,8 @@ async function runScannerInternal(
           {sessionId:captureSession,captureOrder:fence?.order??initialCaptureOrder,
            captureTime:obstructionLastCaptureTime??0});
       }
-      const resolveCountReliability = () => countReliability({ stable: item.stable,
-        borderAlignment: item.borderAlignment, awakening: values.awakening,
-        maxAwakening: identity.maxAwakening, extraCopies: values.extraCopies,
-        pattern: values.countDiagnostics?.pattern,
-        iconPresent: values.countDiagnostics?.iconPresent,
-        patternOcrAgreed: values.countDiagnostics?.patternOcrAgreed,
-        ocrConfirmedValue: values.countDiagnostics?.ocrConfirmedValue });
+      const resolveCountReliability = () => readFieldReliability(values,
+        {stable: item.stable, borderAlignment: item.borderAlignment, maxAwakening: identity.maxAwakening});
       let reliability = resolveCountReliability();
       if (!visualOnly && reliability === "unconfirmed" && values.awakening !== null &&
           values.countDiagnostics?.pattern?.value != null && !identity.review.length) {
@@ -2221,11 +2217,9 @@ async function runScannerInternal(
         catch(error){if(!(error instanceof CardReadTimeout))throw error;}
         reliability = resolveCountReliability();
       }
-      if (values.extraCopies === 0 && reliability === "unconfirmed") {
-        values.extraCopies = null;
-        if (values.countDiagnostics)
-          values.countDiagnostics.reason = "추가 카드 표시 없음 · 온전한 카드 또는 안정된 장수 영역 확인 필요";
-      }
+      // The shared acceptance rules (session/field-acceptance.ts): an unconfirmed zero stays
+      // unread, and unread values are flagged for review.
+      const review = settleReadFields(values, identity.review, reliability);
       if (values.awakening === null) {
         state.unreadable++;
       }
@@ -2246,24 +2240,10 @@ async function runScannerInternal(
       }
       // Same as drainOne's prepareIdentity: a name under review is not confirmed here.
       if(!identity.review.includes('이름 확인')) inventory!.confirmName(item.source,identity.id,identity.name);
-      const review = [...identity.review];
-      if (values.countDiagnostics) values.countDiagnostics.reliability = reliability;
-      if (values.awakening === null) review.push("각성 확인");
-      if (values.extraCopies === null) review.push("추가 장수 확인");
       // Publish the observed fields before waiting for optional image work.
       // The exact observation token below owns any later image attachment.
-      const observation:ScannedCard={
-        ...identity,
-        ...values,
-        nameEvidence: identity.nameEvidence.map(r => ({ ...r, stable: item.stable, frame: item.position.frame })),
-        review,
-        image: item.preview,
-        time: item.time,
-        captureOrder: item.order,
-        capturePosition: item.position,
-        countReliable: reliability !== "unconfirmed",
-        observations: 1,
-      };
+      const observation:ScannedCard=observedCard({identity,values,review,reliability,
+        image:item.preview,time:item.time,order:item.order,stable:item.stable,position:item.position});
       const change=inventory!.recordObservation(item.source,observation,item.borderAlignment);
       return {values,reliability,recognizedLive,observation,change};
     };

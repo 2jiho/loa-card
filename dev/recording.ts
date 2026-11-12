@@ -10,8 +10,10 @@ import {compareLean,runLeanScan} from './lean-scan';
 import {runRowScan} from './row-scan';
 import {runCardMap} from './card-map';
 import {runGridFit} from './grid-fit';
+import {runArtFail} from './art-fail';
 import {runRowRead} from './row-read';
 import {runRowLight} from './row-light';
+import {runRowLive} from './row-live';
 import {analyzeRows} from './row-analysis';
 import type {LeanCard} from './lean-scan';
 import {parsePolicy} from '../src/features/card-scanner/capture/frame-similarity';
@@ -180,10 +182,14 @@ async function run():Promise<void> {
     progress.textContent=`${state.status}\n읽음 ${state.currentRunRead??0} / ${state.expected??'?'} · 카드 ${state.cards.length}`;
   };
   try{
-    if(modeValue==='rowread'||modeValue==='rowlight'){
+    if(modeValue==='rowread'||modeValue==='rowlight'||modeValue==='rowlive'){
       // Prototype measurements of the row-centred reading, not scans (dev/row-read.ts, dev/row-light.ts).
-      const result=modeValue==='rowlight'?await runRowLight({recordingId,signal,...(Number(new URLSearchParams(location.search).get('handover'))>0?{handOverAfter:Number(new URLSearchParams(location.search).get('handover'))}:{}),onProgress:text=>{progress.textContent=text;}})
-        :await runRowRead({recordingId,signal,onProgress:text=>{progress.textContent=text;}});
+      const query=new URLSearchParams(location.search);
+      const result=modeValue==='rowlive'?await runRowLive({recordingId,target:share,signal,names:query.get('names')!=='0',backgroundNames:query.get('inline')!=='1',placeNames:query.get('place')!=='0',softwareFrame:query.get('soft')==='1',serial:query.get('serial')==='1',warmNames:query.get('warm')!=='0',evidence:query.get('evidence')!=='0',...(query.has('queue')?{queue:Number(query.get('queue'))}:{}),...(query.has('readers')?{readers:Number(query.get('readers'))}:{}),
+          ...(query.has('hold')?{nameHoldSeconds:Number(query.get('hold'))}:{}),onProgress:text=>{progress.textContent=text;}})
+        :modeValue==='rowlight'?await runRowLight({recordingId,signal,...(Number(new URLSearchParams(location.search).get('handover'))>0?{handOverAfter:Number(new URLSearchParams(location.search).get('handover'))}:{}),onProgress:text=>{progress.textContent=text;}})
+        :await runRowRead({recordingId,signal,names:new URLSearchParams(location.search).get('names')==='1',
+          ...(new URLSearchParams(location.search).has('hold')?{nameHoldSeconds:Number(new URLSearchParams(location.search).get('hold'))}:{}),onProgress:text=>{progress.textContent=text;}});
       const listed=await (await fetch(`${BASE}/${encodeURIComponent(recordingId)}/runs`)).json() as {runs:{name:string;summary:RunSummary|null}[]};
       // Compare with the newest full sequential scanner run of this recording, if there is one.
       let baseline:{name:string;report:RunReport}|undefined;
@@ -196,13 +202,25 @@ async function run():Promise<void> {
       const reads=measurement.probeReads+measurement.neededReads;
       const status=`줄 중심 판독 · 카드 ${readCards.length} · 읽은 크롭 ${reads}/${measurement.usableCrops}`;
       const saved=await (await fetch(`${BASE}/${encodeURIComponent(recordingId)}/runs`,{method:'POST',body:JSON.stringify({
-        kind:modeValue==='rowlight'?'row-light':'row-read',version:1,startedAt,finishedAt:new Date().toISOString(),recording:{id:recordingId},status,
+        kind:modeValue==='rowlive'?'row-live':modeValue==='rowlight'?'row-light':'row-read',version:1,startedAt,finishedAt:new Date().toISOString(),recording:{id:recordingId},status,
         cards:readCards.map(card=>({id:card.id,name:card.name,awakening:latestRead(card,'awakening'),extraCopies:latestRead(card,'extraCopies'),observations:card.observations.length})),
         measurement,observations:readCards,
         comparison:baseline?{run:baseline.name,...compareLean(readCards,baseline.report.cards)}:null,
         sourceSignature:String(import.meta.env.VITE_REPLAY_SIGNATURE??'').slice(0,16),
         summary:{build:import.meta.env.VITE_BUILD_REVISION??'local',read:readCards.length,expected:null,unidentified:0,meanLateMs:0,maxLateMs:0,lateOver33Ms:0,deliveredRatio:1,mode:modeValue,faithful:true}})})).json() as {name:string};
       statusLine.textContent=`완료 · 저장됨 ${saved.name}`;
+      await loadRuns();
+      return;
+    }
+    if(modeValue==='artfail'){
+      // Why the artwork matcher rejects the crops it rejects, not a scan (dev/art-fail.ts).
+      const result=await runArtFail({recordingId,signal,onProgress:text=>{progress.textContent=text;}});
+      const saved=await (await fetch(BASE+'/'+encodeURIComponent(recordingId)+'/runs',{method:'POST',body:JSON.stringify({
+        kind:'art-fail',version:1,startedAt,finishedAt:new Date().toISOString(),recording:{id:recordingId},
+        status:'원화 대조 실패 분석 · 크롭 '+result.crops+' · 수락 '+result.accepted,cards:[],measurement:result,
+        sourceSignature:String(import.meta.env.VITE_REPLAY_SIGNATURE??'').slice(0,16),
+        summary:{build:import.meta.env.VITE_BUILD_REVISION??'local',read:result.accepted,expected:null,unidentified:0,meanLateMs:0,maxLateMs:0,lateOver33Ms:0,deliveredRatio:1,mode:'artfail',faithful:true}})})).json() as {name:string};
+      statusLine.textContent='완료 · 저장됨 '+saved.name;
       await loadRuns();
       return;
     }

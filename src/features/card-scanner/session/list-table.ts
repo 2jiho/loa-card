@@ -12,6 +12,7 @@
  * - A frame that overlaps two islands joins them.
  *
  * The table never names a card: a slot's card comes from the reader, the table only places it.
+ * A reading that finishes after its frame was observed names that frame's cell late (nameCell).
  * It never drops what it cannot place: islands without an anchor stay, as "floating" rows.
  * Whatever does not fit (a card seen at two positions, two anchors for one island, a slot that
  * changes its card) is counted and left as it was first recorded, never overwritten. */
@@ -216,7 +217,23 @@ export function createListTable(options:ListTableOptions={}) {
     const cell=islands.get(island)?.cells.get(key(row,column));
     return cell?{...cell}:null;
   }
-  return {observe,snapshot,locate,cellAt};
+  /** Name a cell a frame recorded as unidentified, for a reader that named that frame's crop only
+   * after the frame was observed (a slow reading beside the frame loop). The card still comes
+   * from the reader and from that frame; the table only places it, late. Nothing else is ever
+   * changed this way: a cell that is missing, empty or already a card stays as it is, and a card
+   * the island already has somewhere else is counted as a conflict and not written. Returns
+   * whether the cell was named. */
+  function nameCell(island:number,row:number,column:number,card:number,time:number):boolean {
+    if(!Number.isSafeInteger(card)||card<0)throw new RangeError('Invalid card code');
+    const cell=islands.get(island)?.cells.get(key(row,column));
+    if(!cell||cell.state!=='unidentified')return false;
+    const known=place.get(card);
+    if(known&&known.island===island&&(known.row!==row||known.column!==column)){counts.cellConflicts++;return false;}
+    if(!known)place.set(card,{island,row,column});
+    cell.state='card';cell.card=card;cell.lastTime=Math.max(cell.lastTime,time);
+    return true;
+  }
+  return {observe,snapshot,locate,cellAt,nameCell};
 }
 
 /** The number of scroll steps of the list, read from thumb positions (0..1): the smallest count

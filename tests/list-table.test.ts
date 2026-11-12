@@ -95,6 +95,26 @@ test('what does not fit is counted and never overwritten', () => {
   assert.equal(table.snapshot().counts.leadViolations,1);
 });
 
+test('a late reading names only a cell recorded as unidentified, and the card is then placed', () => {
+  const table=createListTable();
+  table.observe(frame(0,5,{row:5,settledMs:400},slots=>{slots[13]=SLOT_UNIDENTIFIED;slots[14]=SLOT_UNUSABLE;slots[15]=SLOT_EMPTY;}));
+  const at=table.locate(50)!;                                      // list row 5 is row 0 of the island
+  assert.equal(table.nameCell(at.island,at.row+1,4,64,0),false);   // never seen usable
+  assert.equal(table.nameCell(at.island,at.row+1,5,65,0),false);   // empty
+  assert.equal(table.nameCell(at.island,at.row+1,2,999,0),false);  // already a card
+  assert.equal(table.nameCell(at.island,at.row+1,3,62,0),false);   // that card is somewhere else in the island
+  assert.equal(table.snapshot().counts.cellConflicts,1);
+  assert.equal(table.nameCell(at.island,at.row+1,3,63,0),true);
+  assert.equal(table.nameCell(at.island,at.row+1,3,63,0),false);   // once
+  assert.deepEqual(table.locate(63),{island:at.island,row:at.row+1,column:3});
+  const row=table.snapshot().rows.get(6)!;
+  assert.deepEqual(cards(row),[60,61,62,63,null,null,66,67,68,69]);
+  assert.deepEqual({state:row[3]!.state,looks:row[3]!.looks,five:row[5]!.state},{state:'card',looks:1,five:'empty'});
+  // The named card now helps place later frames like any other.
+  assert.deepEqual(table.observe(frame(.03,6,{row:8,settledMs:0},slots=>{slots[5]=SLOT_EMPTY;})),{basis:'overlap',top:6});
+  assert.equal(table.snapshot().counts.cellConflicts,1);
+});
+
 test('a frame with nothing usable is not placed, and too few shared cards do not join islands', () => {
   const table=createListTable();
   table.observe(frame(0,0,{row:0,settledMs:500}));
