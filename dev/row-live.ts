@@ -78,7 +78,7 @@ export interface RowLiveResult extends RowReadResult {
 
 type FrameCallbackVideo=HTMLVideoElement&{requestVideoFrameCallback(callback:(now:number,metadata:{mediaTime:number;presentedFrames:number})=>void):number};
 
-export async function runRowLive(options:{recordingId:string;target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** After the share, run the scanner's zero check on kept crops (default; needs evidence). */zeroCheck?:boolean;/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
+export async function runRowLive(options:{recordingId:string;target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** After the share, run the scanner's zero check on kept crops (default; needs evidence). */zeroCheck?:boolean|'diagnose';/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
   onProgress?:(text:string)=>void}):Promise<RowLiveResult> {
   const {recordingId,signal}=options,scrollSteps=options.scrollSteps??51,video=options.target as FrameCallbackVideo;
   if(typeof video.requestVideoFrameCallback!=='function')throw Error('이 브라우저는 requestVideoFrameCallback을 지원하지 않습니다.');
@@ -108,6 +108,7 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
       async identify(image,stable,structural){const identity=await reader.identify(image,true,stable,structural);return identity?{id:identity.id,name:identity.name,full:identity}:null;},
       async values(image,id){const values=await reader.read(image,id,false,false);return {awakening:values.awakening,extraCopies:values.extraCopies,full:values};},
       ranText:image=>reader.nameDiagnostics(image).some(attempt=>attempt.engine!=='quality'),
+      attempts:image=>reader.nameDiagnostics(image).slice(0,12).map(attempt=>`${attempt.engine??''}|${attempt.variant??''}|${attempt.text}|${Math.round(attempt.confidence)}|${attempt.reason??''}|${(attempt.candidates??[]).slice(0,2).map(candidate=>`${candidate.name}:${Math.round(candidate.score*100)}`).join(',')}`),
       async count(image,id,corroborate){const values=await reader.read(image,id,corroborate,true);return {awakening:values.awakening,extraCopies:values.extraCopies,full:values};},
     }:undefined;
     // The scanner's acceptance and merge for what this reading names (needs the reader's catalogue).
@@ -234,7 +235,10 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
     let afterZeroCheck:RowLiveResult['live']['afterZeroCheck'];
     if(evidence&&reader&&options.zeroCheck!==false){
       const zeroStarted=performance.now();
-      const check=await evidence.confirmZeros((image,id)=>reader.read(image,id,true,false));
+      const brief=(values:Awaited<ReturnType<typeof reader.read>>)=>({awakening:values.awakening,extraCopies:values.extraCopies,diagnostics:values.countDiagnostics});
+      // `diagnose`: also read each unresolved card's preferred crop three more ways and keep its picture (adds to the time reported).
+      const check=await evidence.confirmZeros((image,id)=>reader.read(image,id,true,false),options.zeroCheck!=='diagnose'?undefined:async(image,id)=>({
+        visual:brief(await reader.read(image,id,false,false)),full:brief(await reader.read(image,id,false,true)),corroborated:brief(await reader.read(image,id,true,true))}));
       afterZeroCheck={...check,ms:Math.round(performance.now()-zeroStarted),confirmed:evidence.summary().confirmed};
     }
     const sorted=[...frameMs].sort((a,b)=>a-b),at=(share:number)=>sorted.length?Math.round(sorted[Math.min(sorted.length-1,Math.floor(share*sorted.length))]):0;
@@ -249,7 +253,7 @@ export async function runRowLive(options:{recordingId:string;target:HTMLVideoEle
         detection:{stages:Object.fromEntries(Object.entries(detectorTotals??{}).map(([name,row])=>[name,{calls:row.calls,cached:row.cached,ms:Math.round(row.elapsedMs)}])),
           slowFrames:slow.frames,slowLocated:slow.located,slowTimes:slow.times,unlocatedFrames:frames-located},
         line:{limit,longest:longestLine,dropped,passedWithoutWindow:passed,waitMs:(()=>{const ordered=[...waitMs].sort((a,b)=>a-b),pick=(part:number)=>ordered.length?Math.round(ordered[Math.min(ordered.length-1,Math.floor(part*ordered.length))]):0;return {median:pick(.5),p95:pick(.95),max:pick(1)};})(),catchUpMs,afterFrames},
-        ...(evidence?{evidence:evidence.summary()}:{}),
+        ...(evidence?{evidence:evidence.summary(true)}:{}),
         frameLog,
         stages:{draw:share(stage.draw),freeze:share(stage.freeze),detect:share(stage.detect),crop:share(stage.crop),transfer:share(stage.transfer),materialize:share(stage.materialize),thumb:share(stage.thumb),read:share(stage.read)},atShareEnd,afterNames,...(afterZeroCheck?{afterZeroCheck}:{})}};
   }finally{

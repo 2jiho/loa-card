@@ -48,7 +48,7 @@ export interface RowZeroCheck {
   /** Cards that needed the check but had no kept crop. */
   readonly withoutPreview:number;
   /** Diagnosis: for each card left unresolved, what every kept crop read (preferred first). */
-  readonly unresolved:readonly {readonly name:string;readonly awakening:number;readonly readings:readonly {readonly order:number;readonly stable:boolean;
+  readonly unresolved:readonly {readonly name:string;readonly awakening:number;/** The preferred kept crop (PNG data URL), for a person to look at. */readonly picture?:string;/** Diagnosis: what other readings of that crop say. */readonly other?:unknown;readonly readings:readonly {readonly order:number;readonly stable:boolean;
     readonly readAwakening:number|null;readonly readCopies:number|null;readonly iconPresent:boolean|null;readonly zero:boolean;readonly positive:boolean;
     readonly counter:unknown}[]}[];
 }
@@ -56,7 +56,9 @@ export interface RowEvidence {
   /** The scanner's end-of-scan check of stored previews, for cards whose count is still missing
    * or an unconfirmed zero. `read` is the reader's corroborating visual re-read of a crop. Run
    * once, after everything was read; a crop accepted afterwards cancels its card's result. */
-  confirmZeros(read:(image:HTMLCanvasElement,id:string)=>Promise<ReadFieldValues>):Promise<RowZeroCheck>;
+  confirmZeros(read:(image:HTMLCanvasElement,id:string)=>Promise<ReadFieldValues>,
+    /** Diagnosis only: other readings of an unresolved card's preferred crop, stored as given. */
+    diagnose?:(image:HTMLCanvasElement,id:string)=>Promise<unknown>):Promise<RowZeroCheck>;
   /** Accept one named crop. Returns its values after acceptance (an unconfirmed zero is null). */
   accept(input:RowEvidenceInput):{awakening:number|null;extraCopies:number|null};
   /** Whether this crop's count is unconfirmed as read (whatever the reason). Such a crop is read
@@ -69,7 +71,12 @@ export interface RowEvidence {
   /** Whether the card's values are confirmed by this run's observations (may lag by `refreshMs`). */
   confirmed(id:string):boolean;
   /** The projected cards and how many are confirmed, computed now. */
-  summary():{confirmed:number;cards:{id:string;name:string;awakening:number|null;extraCopies:number|null;confirmed:boolean;review:readonly string[];observations:number}[]};
+  /** `detail`: add the diagnosis of unconfirmed cards (their accepted crops and a picture). */
+  summary(detail?:boolean):{confirmed:number;cards:{id:string;name:string;awakening:number|null;extraCopies:number|null;confirmed:boolean;review:readonly string[];observations:number;
+    /** Diagnosis, unconfirmed cards only: each accepted crop as read (at most 60): time, slot, stable, border alignment, the count as read and after acceptance, reliability, whether an icon was seen, and the reader's reason. */
+    log?:readonly unknown[];
+    /** Diagnosis, unconfirmed cards only: the newest kept crop (PNG data URL), for a person to look at. */
+    picture?:string}[]};
 }
 
 export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEvidence {
@@ -78,6 +85,7 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
   let sequence=0,dirty=false,refreshed=-Infinity,projected:ScannedCard[]=[],confirmedIds=new Set<string>();
   /** Kept crops per card not yet confirmed, and the cards the zero check resolved. */
   const previews=new Map<string,{canvas:HTMLCanvasElement;order:number;stable:boolean}[]>(),PREVIEWS=8;
+  const accepts=new Map<string,unknown[]>();
   const resolvedZero=new Map<string,NonNullable<ScannedCard['countDiagnostics']>>();
   const preferred=(a:{order:number;stable:boolean},b:{order:number;stable:boolean})=>Number(b.stable)-Number(a.stable)||b.order-a.order;
   const dropPreviews=(id:string)=>{for(const preview of previews.get(id)??[])preview.canvas.width=0;previews.delete(id);};
@@ -100,6 +108,7 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
       // Acceptance settles the values in place; the reader's own object is left alone.
       const values:ReadFieldValues=input.values?structuredClone(input.values):{awakening:null,extraCopies:null};
       const reliability=readFieldReliability(values,{stable,borderAlignment,maxAwakening:identity.maxAwakening});
+      const asRead=values.extraCopies;
       const review=settleReadFields(values,identity.review,reliability);
       const order=timedCaptureOrder(0,time,slot),frame=`row:${input.frameId}`;
       const source:InventorySource={sessionId,frameId:input.frameId,observationId:String(++sequence),captureOrder:order,captureTime:time,phase:'input',slot,frame};
@@ -110,9 +119,12 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
       const card=observedCard({identity:{...identity,review:[...identity.review],nameEvidence:identity.nameEvidence??[]},values,review,reliability,
         image:'',time,order,stable,position:{frame,slot,stable,sort:null}});
       inventory.recordObservation(source,card as unknown as ScannedCard,borderAlignment);
+      const log=accepts.get(identity.id)??[];accepts.set(identity.id,log);
+      if(log.length<60)log.push({time:Math.round(time*1000)/1000,slot,stable,alignment:Math.round(borderAlignment*100)/100,awakening:values.awakening,read:asRead,accepted:values.extraCopies,reliability,
+        icon:values.countDiagnostics?.iconPresent??null,reason:values.countDiagnostics?.reason??null,pattern:values.countDiagnostics?.pattern?.value??null});
       // A new observation of the card replaces what the zero check concluded from older crops.
       resolvedZero.delete(identity.id);
-      if(input.image&&input.image.width&&!confirmedIds.has(identity.id)){
+      if(input.image&&input.image.width&&(!confirmedIds.has(identity.id)||values.extraCopies===null||values.awakening===null)){
         const canvas=Object.assign(document.createElement('canvas'),{width:140,height:210});
         canvas.getContext('2d',{willReadFrequently:true})!.drawImage(input.image,0,0,140,210);
         const kept=previews.get(identity.id)??[];previews.set(identity.id,kept);
@@ -130,10 +142,10 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
       return !!values&&values.awakening!==null&&values.countDiagnostics?.pattern?.value!=null&&!identity.review.length&&
         readFieldReliability(values,{stable:input.stable,borderAlignment:input.borderAlignment,maxAwakening:identity.maxAwakening})==='unconfirmed';
     },
-    async confirmZeros(read){
+    async confirmZeros(read,diagnose){
       dirty=true;refresh(true);
       const resolved:string[]=[];let checked=0,previewReads=0,withoutPreview=0;
-      const unresolved:{name:string;awakening:number;readings:RowZeroCheck['unresolved'][number]['readings'][number][]}[]=[];
+      const unresolved:{name:string;awakening:number;picture?:string;other?:unknown;readings:RowZeroCheck['unresolved'][number]['readings'][number][]}[]=[];
       for(const card of projected){
         if(card.awakening===null||!needsPreviewZeroProof(card))continue;
         checked++;
@@ -154,7 +166,8 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
           }catch{/* Try another kept crop. */}
         }
         const chosen=readings[selectZeroPreview(readings)];
-        if(!chosen){unresolved.push({name:card.name,awakening:card.awakening,readings:detail});continue;}
+        if(!chosen){unresolved.push({name:card.name,awakening:card.awakening,...(diagnose?{picture:kept[0].canvas.toDataURL('image/png')}:{}),
+          ...(diagnose?{other:await diagnose(kept[0].canvas,card.id).catch(error=>String(error))}:{}),readings:detail});continue;}
         resolvedZero.set(card.id,chosen.diagnostics??{maximum:15,reason:'',readings:[]});
         inventory.confirmPreviewField(card.id,inventory.latestIdentityOrder.get(card.id)??card.captureOrder??0);
         resolved.push(card.name);
@@ -163,10 +176,12 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
       return {checked,resolved,previewReads,withoutPreview,unresolved};
     },
     confirmed(id){refresh(false);return confirmedIds.has(id);},
-    summary(){
+    summary(detail=false){
       refresh(true);
       return {confirmed:confirmedIds.size,cards:projected.map(card=>({id:card.id,name:card.name,awakening:card.awakening,extraCopies:card.extraCopies,
-        confirmed:confirmedIds.has(card.id),review:card.review,observations:card.observations}))};
+        confirmed:confirmedIds.has(card.id),review:card.review,observations:card.observations,
+        ...(confirmedIds.has(card.id)||!detail?{}:{log:accepts.get(card.id)??[],
+          ...(()=>{const newest=[...(previews.get(card.id)??[])].sort((a,b)=>b.order-a.order)[0];return newest?.canvas.width?{picture:newest.canvas.toDataURL('image/png')}:{};})()})}))};
     },
   };
 }
