@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createListTable,estimateScrollSteps,SLOT_EMPTY,SLOT_UNIDENTIFIED,SLOT_UNUSABLE} from '../src/features/card-scanner/session/list-table';
+import {createListTable,createStillClock,estimateScrollSteps,SLOT_EMPTY,SLOT_UNIDENTIFIED,SLOT_UNUSABLE} from '../src/features/card-scanner/session/list-table';
 import type {ListFrame} from '../src/features/card-scanner/session/list-table';
 
 /** A frame showing list rows top..top+3 of a list whose card code is row*10 + column. */
@@ -133,4 +133,54 @@ test('the scroll step count is read from thumb positions and refused when they d
   assert.equal(estimateScrollSteps([0,.0013,...positions.slice(1)]),51);
   assert.equal(estimateScrollSteps([0,.5,1]),null);                       // too few distinct positions
   assert.equal(estimateScrollSteps([0,.1013,.2291,.3377,.4519,.6113,.7411,.9007],{max:60}),null);   // no step count fits
+});
+
+test('a shorter thumb rest anchors a frame only when the content had not changed either', () => {
+  const still=(time:number,top:number,row:number,settledMs:number,stillMs:number|null)=>({...frame(time,top,{row,settledMs}),stillMs});
+  // Thumb at rest for 120 ms, content unchanged for 150 ms: a position.
+  const both=createListTable();
+  assert.deepEqual(both.observe(still(0,5,5,120,150)),{basis:'thumb',top:5});
+  // The same thumb rest without knowing the content, or with content that just changed: not a position.
+  const unknown=createListTable();
+  assert.deepEqual(unknown.observe(still(0,5,5,120,null)),{basis:'new',top:null});
+  const moving=createListTable();
+  assert.deepEqual(moving.observe(still(0,5,5,120,40)),{basis:'new',top:null});
+});
+
+test('still content alone is never a position: the thumb moves before the cards do', () => {
+  const table=createListTable();
+  // Content unchanged for 1.7 s, but the thumb has just jumped to the next row.
+  assert.deepEqual(table.observe({...frame(0,5,{row:6,settledMs:0}),stillMs:1700}),{basis:'new',top:null});
+  assert.deepEqual(table.observe({...frame(.03,5,{row:6,settledMs:30}),stillMs:1730}),{basis:'overlap',top:null});
+  assert.equal(table.snapshot().rows.size,0);
+});
+
+test('the long thumb rest still anchors a frame whatever is known about the content', () => {
+  const table=createListTable();
+  assert.deepEqual(table.observe({...frame(0,5,{row:5,settledMs:400}),stillMs:0}),{basis:'thumb',top:5});
+});
+
+test('the still clock measures capture time since the content last changed', () => {
+  const clock=createStillClock();
+  const grid=(tag:string)=>Array.from({length:40},(_,slot)=>`${tag}${slot}`);
+  assert.equal(clock(1,grid('a')),0);                 // nothing to compare with
+  assert.equal(clock(1.033,grid('a')),33);            // same as the frame at 1.000
+  assert.equal(clock(1.100,grid('a')),100);
+  assert.equal(clock(1.133,grid('b')),0);             // everything changed
+  assert.equal(clock(1.166,grid('b')),33);
+});
+
+test('the still clock tolerates a few changed slots and needs enough usable ones', () => {
+  const clock=createStillClock();
+  const base=Array.from({length:40},(_,slot)=>`k${slot}`);
+  clock(0,base);
+  // 5 of 40 slots differ (a moving cover): still.
+  assert.equal(clock(.05,base.map((key,slot)=>slot<5?`x${slot}`:key)),50);
+  // 20 of 40 differ: not still.
+  assert.equal(clock(.1,base.map((key,slot)=>slot<20?`y${slot}`:key)),0);
+  // Too few usable slots to say anything.
+  const few=createStillClock();
+  const sparse=base.map((key,slot)=>slot<6?key:undefined);
+  few(0,sparse);
+  assert.equal(few(.05,sparse),0);
 });

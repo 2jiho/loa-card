@@ -9,6 +9,10 @@
  * - Frames that share cards are joined into an ISLAND, a run of rows whose order is known.
  * - An island gets its place in the list (an ANCHOR) only from a frame whose thumb had not moved
  *   for `settleMs`: the thumb moves before the cards do, so a moving thumb is not a position.
+ *   A shorter rest counts when the frame also says the grid's content had not changed
+ *   (`stillMs`): content unchanged for `stillSettleMs` and the thumb unchanged for
+ *   `stillThumbMs`. Still content alone is never a position: when scrolling starts again the
+ *   thumb moves a frame or two before the cards do.
  * - A frame that overlaps two islands joins them.
  *
  * The table never names a card: a slot's card comes from the reader, the table only places it.
@@ -25,6 +29,8 @@ export interface ListFrame {
   readonly thumbRow:number|null;
   /** Milliseconds since the thumb last moved, or null when unknown. */
   readonly settledMs:number|null;
+  /** Milliseconds the grid's content had not changed (`createStillClock`), or null/absent when unknown. */
+  readonly stillMs?:number|null;
   /** One code per visible slot, row by row: a card code (>= 0) or one of the SLOT_ constants. */
   readonly slots:readonly number[];
 }
@@ -40,6 +46,10 @@ export interface ListTableOptions {
   readonly columns?:number;readonly gridRows?:number;
   /** A thumb unchanged for this long is taken as the position of the cards (measured: 100% at 200 ms). */
   readonly settleMs?:number;
+  /** With content unchanged for `stillSettleMs`, a thumb unchanged for `stillThumbMs` is taken as
+   * the position too (measured on six recordings: 296 of 296 frames agreed with the rows fixed by
+   * `settleMs`, and no island got two positions; the thumb alone at 100 ms did give one). */
+  readonly stillSettleMs?:number;readonly stillThumbMs?:number;
   /** Shared cards a frame needs with an island to join it. */
   readonly minOverlap?:number;
   /** Rows a moving thumb may be away from an anchored frame before it is counted as suspicious. */
@@ -84,6 +94,7 @@ interface Island {id:number;anchor:number|null;frames:number;cells:Map<number,Ce
 
 export function createListTable(options:ListTableOptions={}) {
   const columns=options.columns??10,gridRows=options.gridRows??4,settleMs=options.settleMs??200;
+  const stillSettleMs=options.stillSettleMs??100,stillThumbMs=options.stillThumbMs??100;
   const minOverlap=options.minOverlap??3,maxLead=options.maxLead??2;
   if(![columns,gridRows].every(value=>Number.isSafeInteger(value)&&value>0))throw new RangeError('Invalid grid');
   const islands=new Map<number,Island>();
@@ -139,7 +150,8 @@ export function createListTable(options:ListTableOptions={}) {
     }
     agreed.sort((a,b)=>b.count-a.count);
     const usable=frame.slots.some(code=>code!==SLOT_UNUSABLE);
-    const settled=frame.thumbRow!==null&&frame.settledMs!==null&&frame.settledMs>=settleMs;
+    const settled=frame.thumbRow!==null&&frame.settledMs!==null&&(frame.settledMs>=settleMs||
+      (typeof frame.stillMs==='number'&&frame.stillMs>=stillSettleMs&&frame.settledMs>=stillThumbMs));
     let island:Island,top:number,basis:FramePlacement['basis'];
     if(agreed.length){
       island=agreed[0].island;top=agreed[0].row;basis='overlap';
@@ -250,4 +262,23 @@ export function estimateScrollSteps(positions:readonly number[],options:{min?:nu
     if(new Set(distinct.map(value=>Math.round(value*steps))).size>=minDistinct)return steps;
   }
   return null;
+}
+
+/** How long the grid's content has not changed, fed one frame at a time.
+ *
+ * Each frame gives one key per visible slot (undefined for a slot that was not usable): equal keys
+ * mean the same pixels (the acquisition's field revision). A frame continues a still run when at
+ * least `minSlots` slots were usable and `share` of them have the key the same slot had in the
+ * frame before; the run's length is capture time since the frame before the run's first frame.
+ * A frame that does not continue it gives 0. */
+export function createStillClock(options:{minSlots?:number;share?:number}={}) {
+  const minSlots=options.minSlots??10,share=options.share??.8;
+  let previous:readonly (string|undefined)[]|null=null,previousTime=0,since:number|null=null;
+  return (time:number,keys:readonly (string|undefined)[]):number=>{
+    let usable=0,same=0;
+    if(previous)keys.forEach((key,slot)=>{if(key===undefined)return;usable++;if(previous![slot]===key)same++;});
+    if(usable>=minSlots&&same>=usable*share)since??=previousTime;else since=null;
+    previous=[...keys];previousTime=time;
+    return since===null?0:Math.max(0,Math.round((time-since)*1000));
+  };
 }

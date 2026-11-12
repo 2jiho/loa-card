@@ -96,3 +96,15 @@ test('a cell that could not be named in rows without a place is still asked for'
   assert.equal(guidance.unplaced.unidentified,1);
   assert.ok(describeListGuidance(guidance,{totalRows:10}).asks[0].includes('이름을 읽지 못한 칸 1개'));
 });
+
+test('a cell never seen whole is a note, not a request, while other rows wait for a place', () => {
+  const table=createListTable();
+  table.observe(frame(0,0,{row:0,settledMs:400},slots=>{slots[3]=SLOT_UNUSABLE;}));
+  // Another piece of the list without a place: row 0 may be in it, read whole.
+  table.observe(frame(1,20,{row:21,settledMs:0}));
+  const guidance=listGuidance(table.snapshot(),{totalRows:30,unconfirmed:none});
+  assert.deepEqual(guidance.cells,[{row:0,column:3,kind:'unread'}]);
+  const {asks,notes}=describeListGuidance(guidance,{totalRows:30});
+  assert.deepEqual(asks,[]);
+  assert.ok(notes.some(note=>note.startsWith('위치가 확인된 줄에 온전히 보이지 않은 칸 1개(1번째 줄)')));
+});

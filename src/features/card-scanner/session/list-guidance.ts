@@ -84,7 +84,8 @@ export function listGuidance(snapshot:ListTableSnapshot,options:{
  * No asks is not a statement that the scan is complete: the table knows neither the displayed
  * total nor whether values are the latest. Rows after the first empty slot are never asked for
  * (they are noted): the table saw the owned cards end there, not what follows. Rows without an
- * anchor are not asked to be anchored for their own sake; only a card or cell in them is asked for. */
+ * anchor are not asked to be anchored for their own sake; only a card or cell in them is asked for.
+ * While such rows exist, a cell never seen whole in an anchored row is a note too. */
 export function describeListGuidance(guidance:ListGuidance,options:{readonly totalRows:number}):{asks:string[];notes:string[]} {
   const asks:string[]=[],notes:string[]=[],total=Math.max(1,options.totalRows);
   const range=(from:number,to:number)=>from===to?`${from+1}번째 줄`:`${from+1}~${to+1}번째 줄`;
@@ -98,12 +99,20 @@ export function describeListGuidance(guidance:ListGuidance,options:{readonly tot
     const row=byRow.get(cell.row)??{unidentified:[],unread:[]};byRow.set(cell.row,row);
     row[cell.kind].push(cell.column+1);
   }
+  // A cell never seen whole in an anchored row is asked for only when no rows wait for a place:
+  // while they do, the same row may also be in one of those pieces, read there.
+  const unreadKnown=guidance.unplaced.rows===0;
+  let unreadElsewhere=0;const unreadRows:number[]=[];
   for(const [row,kinds] of byRow){
     const parts:string[]=[];
     if(kinds.unidentified.length)parts.push(`${kinds.unidentified.join(', ')}번째 칸은 이름을 읽지 못함`);
-    if(kinds.unread.length)parts.push(`${kinds.unread.join(', ')}번째 칸은 가려졌거나 온전히 보이지 않음`);
-    asks.push(`${row+1}번째 줄(${where(row)}): ${parts.join(' · ')}`);
+    if(kinds.unread.length){
+      if(unreadKnown)parts.push(`${kinds.unread.join(', ')}번째 칸은 가려졌거나 온전히 보이지 않음`);
+      else{unreadElsewhere+=kinds.unread.length;unreadRows.push(row+1);}
+    }
+    if(parts.length)asks.push(`${row+1}번째 줄(${where(row)}): ${parts.join(' · ')}`);
   }
+  if(unreadElsewhere)notes.push(`위치가 확인된 줄에 온전히 보이지 않은 칸 ${unreadElsewhere}개(${unreadRows.join(', ')}번째 줄): 위치를 모르는 조각에서 읽혔을 수 있습니다`);
   if(guidance.unplaced.unidentified)
     asks.push(`위치를 모르는 줄에 이름을 읽지 못한 칸 ${guidance.unplaced.unidentified}개: 천천히 다시 넘기거나 그 부근에서 잠깐 멈춰 주세요`);
   const end=guidance.emptyFromRow;
