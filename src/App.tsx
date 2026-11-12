@@ -9,8 +9,6 @@ import {useScanMonitorSession, useScannerClock, useScannerPreparation} from './a
 import {closeWindowShare, openWindowShare, stopShareStream} from './app/share-commands';
 import {runScanLifecycle} from './app/scan-lifecycle';
 import {createShareAttemptGuard} from './features/card-scanner/capture/share-stream-owner';
-import { PartialArchivePanel } from './PartialArchivePanel';
-import type { PartialSnapshot } from './features/card-scanner/persistence/partial-store';
 import { LIVE_INPUT_LOSS_MESSAGE } from './features/card-scanner/session/input-loss-evidence';
 import { HEADER_CONFLICT_WARNING } from './features/card-scanner/session/completion-header-snapshot';
 import {deferredPanel} from './ui/DeferredPanel';
@@ -66,8 +64,6 @@ function App() {
   const [scanIncompleteReasons,setScanIncompleteReasons]=useState<string[]>([]);
   const [progressRestored,setProgressRestored]=useState(false);
   const [savedBackupAvailable,setSavedBackupAvailable]=useState(false);
-  const [partialSnapshot,setPartialSnapshot]=useState<PartialSnapshot|null>(null);
-  const [partialSnapshotError,setPartialSnapshotError]=useState(false);
   function markScanIncomplete(reasons:string[]){scanIncompleteRef.current=true;setScanIncomplete(true);setScanIncompleteReasons(reasons);}
   function clearScanIncomplete(){scanIncompleteRef.current=false;setScanIncomplete(false);setScanIncompleteReasons([]);}
   function beginEngineWork(){
@@ -360,7 +356,7 @@ function App() {
       beginEngineWork, setProgressRestored, setRecordingReady, setRecordingSaving, setRecordingStatus,
       setPreparationState, setBusy, setResultView, setInventoryFilter, setPage, setEngineReady,
       engineReadyRef, setEngineCleanupUncertain, setResetPending, setCsvPending, setError,
-      setActionError, setState, setSharing, setScanStartedAt, setPartialSnapshot, setPartialSnapshotError,
+      setActionError, setState, setSharing, setScanStartedAt,
     });
   }
 
@@ -555,8 +551,6 @@ function App() {
       }}
         recordingEnabled={recordingEnabled} onRecordingChange={enabled=>{setRecordingEnabled(enabled);setRecordingReady(false);}}
         recordingBusy={busy||recordingSaving} recordingPreparation={busy?'현재 화면을 기록하고 있습니다.':recordingSaving?'이전 진단 기록 저장 중':recordingEnabled?recordingPreparation:undefined}/>}
-      {import.meta.env.DEV&&<PartialArchivePanel snapshot={partialSnapshot}/>}
-      {import.meta.env.DEV&&partialSnapshotError&&<p className="notice" role="alert">부분 기록을 준비하지 못했습니다. 현재 스캔 결과는 이 탭에만 남습니다.</p>}
       {catalogError && <p className="error" role="alert">{catalogError} <button className="text-button" onClick={() => { setCatalogError(''); setCatalogAttempt(n => n + 1); }}>다시 시도</button></p>}
       {legacyChoices.length > 0 && <div className="notice" role="group" aria-label="이전 백업 선택">{legacyChoices.map((item, i) => <Button key={item.key} disabled={!backupReady || busy} onClick={() => void restoreBackup(item.key)} title={item.names}>백업 {i + 1} · {item.count}종 · 경험치 {item.xp?.toLocaleString('ko-KR') ?? '미확인'}</Button>)}</div>}
       {backupError && <div className="notice" role="alert"><p>{backupError}</p>{!!state && <button className="text-button" disabled={busy || !backupReady} onClick={() => setBackupAttempt(n => n + 1)}>저장 다시 시도</button>}<button className="text-button" disabled={busy || !backupReady} onClick={() => void restoreBackup()}>현재 목록 대신 저장 목록 불러오기</button><span> · 현재 목록은 먼저 CSV로 보관해 주세요.</span></div>}

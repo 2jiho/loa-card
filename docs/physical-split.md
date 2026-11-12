@@ -211,7 +211,6 @@ export {ScanReadCount, ScanReadProgress} from './ui/ScanReadProgress';
 |---|---|
 | `scan-backup.ts` | 스캔 결과 백업 |
 | `progress-backup.ts` | 진행 상태 백업 |
-| `partial-store.ts` | 부분 결과 저장 |
 | `recording-journal.ts` | 기록 저널 |
 | `recording-spool.ts` | 기록 스풀 |
 | `archive-journal-mirror.ts` | 기록 미러 |

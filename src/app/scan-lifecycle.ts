@@ -2,8 +2,6 @@ import type {Dispatch, SetStateAction} from 'react';
 import {runScanner} from '../features/card-scanner/orchestration/scanner';
 import type {ScannerState} from '../features/card-scanner/orchestration/scanner';
 import type {ScannedCard} from '../features/card-scanner/recognition/recognizer';
-import {toPartialSnapshot} from '../partial-snapshot';
-import type {PartialSnapshot} from '../features/card-scanner/persistence/partial-store';
 import {createLatestPublisher} from '../latest-publisher';
 import {createScannerFeedback} from '../features/card-scanner/ui/scanner-feedback';
 import {feedbackProbeEnabled} from '../features/card-scanner/ui/feedback-probe-setting';
@@ -59,8 +57,6 @@ export interface ScanLifecycleDeps {
   setState: Dispatch<SetStateAction<ScannerState | null>>;
   setSharing: Dispatch<SetStateAction<boolean>>;
   setScanStartedAt: Dispatch<SetStateAction<number>>;
-  setPartialSnapshot: Dispatch<SetStateAction<PartialSnapshot | null>>;
-  setPartialSnapshotError: Dispatch<SetStateAction<boolean>>;
 }
 
 /**
@@ -75,7 +71,7 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
     beginEngineWork, setProgressRestored, setRecordingReady, setRecordingSaving, setRecordingStatus,
     setPreparationState, setBusy, setResultView, setInventoryFilter, setPage, setEngineReady,
     engineReadyRef, setEngineCleanupUncertain, setResetPending, setCsvPending, setError,
-    setActionError, setState, setSharing, setScanStartedAt, setPartialSnapshot, setPartialSnapshotError,
+    setActionError, setState, setSharing, setScanStartedAt,
   } = deps;
 
   // A failed run must not become the seed of the next run or overwrite the
@@ -126,15 +122,6 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
   let recordingIssue = false;
   let finalState: ScannerState | undefined;
   let completed = false;
-  let lastPartialCapture = -Infinity;
-  const rememberPartial = (result: ScannerState) => {
-    if (!import.meta.env.DEV || controller.current !== abort || !result.cards.length) return;
-    try {
-      const snapshot = toPartialSnapshot(result);
-      setPartialSnapshot(previous => diagnosticRun.current === thisDiagnosticRun ? snapshot : previous);
-      setPartialSnapshotError(false);
-    } catch { setPartialSnapshotError(true); }
-  };
   let scannerStarted = false;
   let sourceVersion: ReturnType<typeof trackSourceVersion> | undefined;
   try {
@@ -194,10 +181,6 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
           if (next.autoStopped) setSharing(false);
           inventory.current = next.cards;
           finalState = next;
-          if (import.meta.env.DEV && performance.now() - lastPartialCapture >= 2000) {
-            lastPartialCapture = performance.now();
-            rememberPartial(next);
-          }
           presentation.publish(next);
         }
       },
@@ -230,7 +213,6 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
         inventory.current = baseline;
         markScanIncomplete(reasons);
         const shown = scanStateAfterIncomplete(finalState, previousState);
-        if (finalState) rememberPartial(finalState);
         if (shown) setState(shown);
       } else completed = true;
     }
@@ -239,7 +221,6 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
     if (controller.current === abort) {
       inventory.current = baseline;
       markScanIncomplete(['스캔 중단']);
-      if (finalState) rememberPartial(finalState);
       if (abort.signal.aborted || (e instanceof DOMException && e.name === 'AbortError'))
         setState(s => {
           const base = finalState ?? previousState ?? s;

@@ -249,7 +249,7 @@
 
 `src/features/card-scanner/persistence/`로 6개, `src/features/card-scanner/reproduction/`로 16개 파일 이동:
 
-- persistence: `scan-backup`, `progress-backup`, `partial-store`, `recording-journal`, `recording-spool`, `archive-journal-mirror`
+- persistence: `scan-backup`, `progress-backup`, `recording-journal`, `recording-spool`, `archive-journal-mirror`
 - reproduction: `scan-reproduction`, `reproduction-session-store`, `reproduction-coverage`, `reproduction-input`, `exact-recording*`, `canonical-frame-index`, `canonical-frame-reader`, `canonical-raster-replay`, `canonical-source-use`, `canonical-storage-attestation`, `debug-capture`, `debug-bundle`
 
 - 기존 경로는 re-export로 유지한다.
