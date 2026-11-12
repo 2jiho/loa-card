@@ -1,4 +1,5 @@
 import {createAcquisitionClient} from '../src/features/card-scanner/acquisition/acquisition-client';
+import {listGuidance} from '../src/features/card-scanner/session/list-guidance';
 import {createVisualClient} from '../src/features/card-scanner/recognition/visual-client';
 import {createRecognizer} from '../src/features/card-scanner/recognition/recognizer';
 import type {VisualResult} from '../src/features/card-scanner/recognition/visual-client';
@@ -419,6 +420,16 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
       }
       if(backlog.length&&!nameLane)nameLane=runLane().finally(()=>{nameLane=null;});
       previousFeatures=features;
+    },
+    /** What to show again, from the table and the cards not confirmed yet (session/list-guidance.ts).
+     * `totalRows`: rows of the whole list. Without the evidence merge a card counts as confirmed
+     * once it has an observation with both values. */
+    guidance(totalRows:number){
+      const unconfirmed=new Map<number,{name:string;reasons:readonly string[]}>();
+      if(evidence){
+        for(const card of evidence.summary().cards)if(!card.confirmed){const code=codes.get(card.id);if(code!==undefined)unconfirmed.set(code,{name:card.name,reasons:card.review});}
+      }else cards.forEach((card,code)=>{if(!complete.has(code))unconfirmed.set(code,{name:card.name,reasons:['각성·장수 확인']});});
+      return listGuidance(table.snapshot(),{totalRows,unconfirmed});
     },
     summary(){
       const snapshot=table.snapshot();

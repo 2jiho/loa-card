@@ -13,11 +13,21 @@ const BASE='/__rec';
 const $=<T extends HTMLElement>(selector:string)=>document.querySelector<T>(selector)!;
 const startButton=$<HTMLButtonElement>('#start'),stopButton=$<HTMLButtonElement>('#stop');
 const statusLine=$('#status'),progress=$('#progress'),countsLine=$('#counts'),resultBox=$('#result'),video=$<HTMLVideoElement>('#share');
+const guidanceBox=$<HTMLUListElement>('#guidance'),guidanceTitle=$('#guidance-title');
 
 function cell(row:HTMLTableRowElement,text:string):void {row.insertCell().textContent=text;}
 
+/** What to show again, as the list table sees it. No lines is not "complete": this page decides no completion. */
+function showGuidance(guidance:{readonly asks:readonly string[];readonly notes:readonly string[]}):void {
+  const shown=guidance.asks.slice(0,12);
+  guidanceBox.replaceChildren(...shown.map(line=>{const item=document.createElement('li');item.textContent=line;return item;}));
+  if(guidance.asks.length>shown.length){const more=document.createElement('li');more.textContent='… 외 '+(guidance.asks.length-shown.length)+'건';guidanceBox.append(more);}
+  for(const note of guidance.notes){const item=document.createElement('li');item.textContent='참고: '+note;item.style.opacity='.7';guidanceBox.append(item);}
+  guidanceTitle.textContent=guidance.asks.length?'다시 보여 줄 곳 ('+guidance.asks.length+')':'다시 보여 줄 곳 없음 (완료 판정은 아님)';
+}
+
 async function run():Promise<void> {
-  startButton.disabled=true;resultBox.replaceChildren();countsLine.textContent='';progress.textContent='';
+  startButton.disabled=true;resultBox.replaceChildren();countsLine.textContent='';progress.textContent='';guidanceBox.replaceChildren();guidanceTitle.textContent='';
   const startedAt=new Date().toISOString();
   let stream:MediaStream|undefined;
   const controller=new AbortController();
@@ -39,6 +49,8 @@ async function run():Promise<void> {
     const result=await runRowLive({target:video,signal:controller.signal,relativeTime:true,
       // ?source=main: read the track on the main thread (as the first version did), for comparison.
       mainReader:new URLSearchParams(location.search).get('source')==='main',
+      // ?source=held: keep captured frames in the line without copying them (as before), for comparison.
+      heldFrames:new URLSearchParams(location.search).get('source')==='held',
       // Stopping the tracks ends the frame source, so the frames taken before the end are read and the run finishes.
       input:{start:()=>ended.then(()=>{stopShareStream(shared);}),dispose:()=>{}},
       onReady:()=>{
@@ -46,7 +58,7 @@ async function run():Promise<void> {
         statusLine.textContent='읽는 중 · 준비 '+((performance.now()-shareStarted)/1000).toFixed(1)+'초'+(recorder?' · 기록 '+recorder.id:' · 기록 없음');
       },
       onLocated:()=>recorder?.located(),
-      onCounts:counts=>{countsLine.textContent='이름 붙인 카드 '+counts.cards+' · 확정 '+(counts.confirmed??counts.complete);},
+      onCounts:(counts,guidance)=>{countsLine.textContent='이름 붙인 카드 '+counts.cards+' · 확정 '+(counts.confirmed??counts.complete);showGuidance(guidance);},
       onProgress:text=>{progress.textContent=text;}});
     stopButton.disabled=true;
     stopShareStream(shared);video.srcObject=null;
@@ -54,11 +66,12 @@ async function run():Promise<void> {
     const stats=recorder?.stats();
     await recorder?.stop();
     const live=result.live,evidence=live.evidence,left=(evidence?.cards??[]).filter(card=>!card.confirmed);
+    showGuidance(live.guidance);
     countsLine.textContent='이름 붙인 카드 '+result.cards.length+' · 공유 종료 시 확정 '+(live.atShareEnd.confirmed??live.atShareEnd.complete)+' · 0장 확인 뒤 확정 '+(live.afterZeroCheck?.confirmed??'-');
     progress.textContent=[
       '공유 '+live.shareSeconds+'초 · 받은 프레임 '+live.presentedFrames+' · 읽은 프레임 '+live.readFrames+' · 줄에서 버린 프레임 '+live.line.dropped+' · 트랙이 먼저 버린 프레임 '+(live.sourceDiscarded??'-')+' / 트랙이 본 프레임 '+(live.sourceTotal??'-'),
       '트랙 설정 '+(live.track?.frameRate??'-')+'fps · 브라우저 집계(전달/버림/전체) '+(live.track?.stats?live.track.stats.deliveredFrames+'/'+live.track.stats.discardedFrames+'/'+live.track.stats.totalFrames:'-'),
-      '트랙 읽기 '+(live.reader==='worker'?'워커':'메인 스레드')+' · 메인 스레드가 멈춘 가장 긴 시간 '+live.mainThread.maxGapMs+'ms (100ms 넘은 횟수 '+live.mainThread.gapsOver100Ms+')',
+      '트랙 읽기 '+(live.reader==='worker'?'워커':'메인 스레드')+(live.lineCopy?' · 복사한 프레임 '+live.lineCopy.copied+' (못 한 것 '+live.lineCopy.uncopied+', 평균 '+live.lineCopy.meanMs+'ms)':'')+' · 줄에 가장 많이 쌓인 수 '+live.line.longest+' · 메인 스레드가 멈춘 가장 긴 시간 '+live.mainThread.maxGapMs+'ms (100ms 넘은 횟수 '+live.mainThread.gapsOver100Ms+')',
       '공유 종료 뒤 남은 프레임 처리 '+live.line.catchUpMs+'ms · 0장 확인 '+(live.afterZeroCheck?live.afterZeroCheck.ms+'ms ('+(live.afterZeroCheck.resolved.join(', ')||'확정 없음')+')':'안 함'),
     ].join('\n');
     if(left.length){

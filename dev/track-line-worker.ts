@@ -6,20 +6,46 @@
  * them (the oldest is dropped and counted) and gives the oldest waiting one to the main thread
  * when it asks. Which frames are lost is then this line's counted choice.
  *
+ * A frame of a screen capture is a buffer of the capturer's small pool: while a few of them are
+ * still open the browser hands out no more and discards what it captures (measured on real shares:
+ * the reader got as many frames as were closed, about a third of those captured, and the line never
+ * held more than two). So each frame is copied out of the pool as it arrives (`copyTo` into memory
+ * and a new frame over that memory, same pixels, time and colour description) and the captured one
+ * is closed at once. A frame that cannot be copied is kept as it is and counted.
+ *
  * Messages in: `start` (the track's readable and the limit), `take` (send the next frame; answered
  * when one is there or the track has ended), `newest` (drop all waiting frames but the newest and
  * count them as passed), `stop`. Messages out: `frame`, `done`. */
 export type TrackLineRequest=
-  |{type:'start';readable:ReadableStream<VideoFrame>;limit:number}
+  |{type:'start';readable:ReadableStream<VideoFrame>;limit:number;/** Copy each frame out of the capture pool (default true). */copy?:boolean}
   |{type:'take'}|{type:'newest'}|{type:'stop'};
-export interface TrackLineStats {received:number;dropped:number;passed:number;longest:number}
+export interface TrackLineStats {received:number;dropped:number;passed:number;longest:number;
+  /** Frames copied out of the capture pool, frames kept as captured because copying failed, and the copying time in all (ms). */
+  copied:number;uncopied:number;copyMs:number}
 export type TrackLineReply=
   |{type:'frame';frame:VideoFrame;/** Arrival, ms since the epoch. */arrivedAt:number;stats:TrackLineStats}
   |{type:'done';stats:TrackLineStats};
 
 const scope=self as unknown as {onmessage:((event:MessageEvent<TrackLineRequest>)=>void)|null;postMessage(message:TrackLineReply,transfer?:Transferable[]):void};
 const waiting:{frame:VideoFrame;arrivedAt:number}[]=[];
-const stats:TrackLineStats={received:0,dropped:0,passed:0,longest:0};
+const stats:TrackLineStats={received:0,dropped:0,passed:0,longest:0,copied:0,uncopied:0,copyMs:0};
+let copyFrames=true;
+
+/** The same picture in memory of its own, so the captured frame can be closed. */
+async function detach(frame:VideoFrame):Promise<VideoFrame> {
+  if(!copyFrames||!frame.format){stats.uncopied++;return frame;}
+  const began=performance.now();
+  try{
+    const data=new Uint8Array(frame.allocationSize());
+    const layout=await frame.copyTo(data);
+    const visible=frame.visibleRect;
+    const copy=new VideoFrame(data,{format:frame.format,codedWidth:visible?.width??frame.codedWidth,codedHeight:visible?.height??frame.codedHeight,
+      timestamp:frame.timestamp,duration:frame.duration??undefined,layout,displayWidth:frame.displayWidth,displayHeight:frame.displayHeight,
+      colorSpace:frame.colorSpace.toJSON()});
+    frame.close();stats.copied++;stats.copyMs+=performance.now()-began;
+    return copy;
+  }catch{stats.uncopied++;return frame;}
+}
 let limit=12,asked=false,ended=false,stopped=false,reader:ReadableStreamDefaultReader<VideoFrame>|undefined;
 
 function answer():void {
@@ -32,7 +58,7 @@ function answer():void {
 scope.onmessage=event=>{
   const message=event.data;
   if(message.type==='start'){
-    limit=Math.max(1,Math.round(message.limit));
+    limit=Math.max(1,Math.round(message.limit));copyFrames=message.copy!==false;
     reader=message.readable.getReader();
     void (async()=>{
       try{
@@ -41,7 +67,10 @@ scope.onmessage=event=>{
           if(next.done)break;
           if(stopped){next.value.close();continue;}
           stats.received++;
-          waiting.push({frame:next.value,arrivedAt:performance.timeOrigin+performance.now()});
+          const arrivedAt=performance.timeOrigin+performance.now();
+          const frame=await detach(next.value);
+          if(stopped){frame.close();continue;}
+          waiting.push({frame,arrivedAt});
           while(waiting.length>limit){waiting.shift()!.frame.close();stats.dropped++;}
           stats.longest=Math.max(stats.longest,waiting.length);
           answer();

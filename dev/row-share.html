@@ -12,6 +12,8 @@
       button { font: inherit; padding: 6px 14px; margin-right: 8px; }
       #share { width: 320px; max-width: 100%; background: #000; display: block; margin-top: 8px; }
       #counts { font-size: 22px; font-weight: 600; margin: 12px 0 4px; }
+      h2 { font-size: 15px; margin: 12px 0 4px; }
+      ul { margin: 0; padding-left: 20px; }
       pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 0; }
       table { border-collapse: collapse; width: 100%; margin-top: 8px; }
       th, td { border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent); padding: 4px 8px; text-align: left; vertical-align: top; }
@@ -25,6 +27,8 @@
     <span id="status" role="status" aria-live="polite"></span>
     <video id="share" muted playsinline></video>
     <div id="counts" aria-live="polite"></div>
+    <h2 id="guidance-title" aria-live="polite"></h2>
+    <ul id="guidance" aria-labelledby="guidance-title"></ul>
     <pre id="progress"></pre>
     <section id="result" aria-label="결과"></section>
     <script type="module" src="./row-share.ts"></script>

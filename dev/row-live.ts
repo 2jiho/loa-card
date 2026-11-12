@@ -1,4 +1,6 @@
 import type {TrackLineReply,TrackLineRequest,TrackLineStats} from './track-line-worker';
+import {describeListGuidance} from '../src/features/card-scanner/session/list-guidance';
+import type {ListGuidance} from '../src/features/card-scanner/session/list-guidance';
 import {createAcquisitionClient} from '../src/features/card-scanner/acquisition/acquisition-client';
 import {createVisualClient} from '../src/features/card-scanner/recognition/visual-client';
 import {createRecognizer} from '../src/features/card-scanner/recognition/recognizer';
@@ -36,6 +38,10 @@ export interface RowLiveResult extends RowReadResult {
     readonly presentedFrames:number;readonly readFrames:number;
     /** Where the frames came from, and with the track source the frames the browser discarded
      * before this loop took them (absent when the browser does not count them). */
+    /** Worker line: frames copied out of the capture pool, frames kept as captured, and the mean copying time. */
+    readonly lineCopy?:{readonly copied:number;readonly uncopied:number;readonly meanMs:number};
+    /** After everything was read: what the list table would ask to be shown again (session/list-guidance.ts) and the same as lines. */
+    readonly guidance:ListGuidance&{readonly totalRows:number;readonly asks:readonly string[];readonly notes:readonly string[]};
     /** The browser's own counts for the track reader (Chrome): frames it saw in all. */
     readonly sourceTotal?:number;
     /** The share track's frame rate setting and the browser's delivered/discarded/total counts for it. */
@@ -96,7 +102,8 @@ export async function runRowLive(options:{/** The recording to replay; or `input
   input?:{start():Promise<void>;dispose():void};
   /** Live input: called once the readers are loaded and frames are being taken. */onReady?:()=>void;
   /** Called for each frame the card window was found in (the development recorder keeps those spans). */onLocated?:()=>void;
-  /** Called about once a second with the cards named and confirmed so far. */onCounts?:(counts:{cards:number;complete:number;confirmed?:number})=>void;
+  /** Called about once a second with the cards named and confirmed so far, and what to show again (lines for a person). */onCounts?:(counts:{cards:number;complete:number;confirmed?:number},guidance:{readonly asks:readonly string[];readonly notes:readonly string[]})=>void;
+  /** Keep the captured frames in the line as they are instead of copying them out of the capture pool (as before); for comparison. */heldFrames?:boolean;
   /** Read the track on the main thread instead of in the worker that keeps the line (as before); for comparison. */mainReader?:boolean;
   /** Frame times count from the first frame taken (a live track's timestamps start anywhere). */relativeTime?:boolean;
   target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** After the share, run the scanner's zero check on kept crops (default; needs evidence). */zeroCheck?:boolean|'diagnose';/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
@@ -190,7 +197,7 @@ export async function runRowLive(options:{/** The recording to replay; or `input
         wake?.();
       };
       worker.onerror=()=>{sourceDone=true;wake?.();};
-      worker.postMessage({type:'start',readable:processor.readable,limit} satisfies TrackLineRequest,[processor.readable as unknown as Transferable]);
+      worker.postMessage({type:'start',readable:processor.readable,limit,copy:!options.heldFrames} satisfies TrackLineRequest,[processor.readable as unknown as Transferable]);
       stopSource=()=>worker.postMessage({type:'stop'} satisfies TrackLineRequest);
       askNext=ask;skipToNewest=()=>worker.postMessage({type:'newest'} satisfies TrackLineRequest);
       ask();
@@ -272,7 +279,8 @@ export async function runRowLive(options:{/** The recording to replay; or `input
       if(options.serial)await reading;
       const now=performance.now();frameMs.push(now-began);
       if(frameLog.length<800)frameLog.push([Math.round(time*1000)/1000,Math.round(now-began),read?1:0,acquired.cells.filter(cell=>cell.quality.usable).length,thumbRow]);
-      while((now-started)/1000>=nextTick){const tick=counts();timeline.push({t:nextTick,...tick});nextTick++;options.onCounts?.(tick);}
+      while((now-started)/1000>=nextTick){const tick=counts();timeline.push({t:nextTick,...tick});nextTick++;
+        if(options.onCounts)options.onCounts(tick,describeListGuidance(session.guidance(scrollSteps+GRID_ROWS),{totalRows:scrollSteps+GRID_ROWS}));}
       if(frames%10===0)options.onProgress?.(`줄 중심 실시간 · 읽은 프레임 ${frames} · 카드 ${session.cards().length}`);
     }
     await completion.catch(()=>{});
@@ -302,7 +310,9 @@ export async function runRowLive(options:{/** The recording to replay; or `input
       ...(namesSummary?{names:namesSummary}:{}),
       live:{shareSeconds,presentedFrames:processor?trackFrames:firstPresented===null?0:lastPresented-firstPresented+1,readFrames:frames,
         source:processor?'track':'video',...(processor?{reader:lineWorker?'worker' as const:'main' as const}:{}),
+        ...(workerLine?{lineCopy:{copied:workerLine.copied,uncopied:workerLine.uncopied,meanMs:workerLine.copied?Math.round(workerLine.copyMs/workerLine.copied*10)/10:0}}:{}),
         mainThread:{maxGapMs:Math.round(lagMax),gapsOver100Ms:lagOver100},
+        guidance:(()=>{const totalRows=scrollSteps+GRID_ROWS,guidance=session.guidance(totalRows);return {totalRows,...guidance,...describeListGuidance(guidance,{totalRows})};})(),
         ...(typeof processor?.totalFrames==='number'?{sourceTotal:processor.totalFrames}:{}),
         ...(track?{track:{frameRate:track.getSettings().frameRate??null,stats:trackStats(track)}}:{}),...(typeof processor?.discardedFrames==='number'?{sourceDiscarded:processor.discardedFrames}:{}),
         frameMs:{median:at(.5),p95:at(.95),max:at(1)},timeline,
