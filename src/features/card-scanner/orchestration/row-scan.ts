@@ -40,6 +40,8 @@ export interface RowLiveResult extends RowReadResult {
      * before this loop took them (absent when the browser does not count them). */
     /** Worker line: frames copied out of the capture pool, frames kept as captured, and the mean copying time. */
     readonly lineCopy?:{readonly copied:number;readonly uncopied:number;readonly meanMs:number};
+    /** The displayed total: as first read (with the frame time), as read again from the last frame, and the readings made and failed. */
+    readonly header:{readonly expected:number|null;readonly capacity:number|null;readonly finalExpected:number|null;readonly firstAtSeconds:number|null;readonly reads:number;readonly failures:number};
     /** After everything was read: what the list table would ask to be shown again (session/list-guidance.ts) and the same as lines. */
     readonly guidance:ListGuidance&{readonly totalRows:number;readonly asks:readonly string[];readonly notes:readonly string[]};
     /** The browser's own counts for the track reader (Chrome): frames it saw in all. */
@@ -114,6 +116,11 @@ export interface RowScanSnapshot {
   readonly waitingReads:number;
   /** The merged cards (with the evidence merge) and how many are confirmed. */
   readonly cards:readonly ScannedCard[];readonly confirmed:number;
+  /** The displayed total and capacity of the storage header ("398 / 450") as first read, and the
+   * total read again from the last frame after everything else (null until then, or when unread). */
+  readonly expected:number|null;readonly capacity:number|null;readonly finalExpected:number|null;
+  /** Cells seen but not named (in anchored rows and in rows without a place). */
+  readonly unidentifiedCells:number;
   readonly guidance:{readonly asks:readonly string[];readonly notes:readonly string[]};
 }
 
@@ -242,6 +249,23 @@ export async function runRowScan(options:{
     let shareEnd:{at:number;cards:number;complete:number;confirmed?:number}|null=null;
     options.onReady?.();
     let lastLocated=false,lastSnapshot=-Infinity;
+    const headerCanvas=document.createElement('canvas'),headerContext=headerCanvas.getContext('2d',{willReadFrequently:true})!;
+    const header={expected:null as number|null,capacity:null as number|null,finalExpected:null as number|null,time:0,kept:false,nextTry:-Infinity,
+      firstAt:null as number|null,reads:0,failures:0};
+    let headerRun:Promise<void>|null=null;
+    /** Read the displayed total from a copy of the kept header (the kept one changes with every frame). */
+    const readHeader=async():Promise<{owned:number;capacity:number}|null>=>{
+      if(!reader||!header.kept)return null;
+      const copy=Object.assign(document.createElement('canvas'),{width:headerCanvas.width,height:headerCanvas.height});
+      copy.getContext('2d',{willReadFrequently:true})!.drawImage(headerCanvas,0,0);
+      header.reads++;
+      try{
+        const total=await reader.total(copy,{x:0,y:0,width:copy.width,height:copy.height},false);
+        if(!total)header.failures++;
+        return total?{owned:total.owned,capacity:total.capacity}:null;
+      }catch{header.failures++;return null;}
+      finally{copy.width=0;}
+    };
     const publishSnapshot=(phase:RowScanSnapshot['phase'])=>{
       if(!options.onSnapshot)return;
       lastSnapshot=performance.now();
@@ -249,7 +273,9 @@ export async function runRowScan(options:{
       try{options.onSnapshot({phase,frames,locatedFrames:located,located:lastLocated,
         waitingFrames:Math.max(waiting.length,workerLine?workerLine.received-workerLine.dropped-workerLine.passed-frames:0),
         droppedFrames:dropped+(workerLine?.dropped??0),waitingReads:session.waitingReads(),
-        cards:merged.cards,confirmed:merged.confirmed,guidance:describeListGuidance(session.guidance(totalRows),{totalRows})});}catch{/* A display callback cannot stop the scan. */}
+        cards:merged.cards,confirmed:merged.confirmed,expected:header.expected,capacity:header.capacity,finalExpected:header.finalExpected,
+        unidentifiedCells:(()=>{const guidance=session.guidance(totalRows);return guidance.cells.filter(cell=>cell.kind==='unidentified').length+guidance.unplaced.unidentified;})(),
+        guidance:describeListGuidance(session.guidance(totalRows),{totalRows})});}catch{/* A display callback cannot stop the scan. */}
     };
     const completion=input.start().finally(()=>{ended=true;shareEnd={at:performance.now(),...counts()};wake?.();publishSnapshot('reading');});
     const counts=()=>{const cards=session.cards();return {cards:cards.length,complete:cards.filter(card=>card.observations.some(observation=>observation.awakening!==null&&observation.extraCopies!==null)).length,
@@ -293,6 +319,21 @@ export async function runRowScan(options:{
       if(acquired.layout&&acquired.cells.length===COLUMNS*GRID_ROWS){
         located++;
         try{options.onLocated?.();}catch{/* Development recording is optional. */}
+        // The storage header of this frame is kept (a small copy) so that the displayed total can
+        // be read from it: once early, and again from the last frame when everything was read.
+        if(reader){
+          const box=acquired.layout.header,width=Math.max(1,Math.round(box.width)),height=Math.max(1,Math.round(box.height));
+          if(headerCanvas.width!==width)headerCanvas.width=width;
+          if(headerCanvas.height!==height)headerCanvas.height=height;
+          headerContext.drawImage(frame,box.x,box.y,box.width,box.height,0,0,width,height);
+          header.time=time;header.kept=true;
+          if(header.expected===null&&!headerRun&&time>=header.nextTry){
+            header.nextTry=time+1;
+            headerRun=readHeader().then(total=>{
+              if(total&&header.expected===null){header.expected=total.owned;header.capacity=total.capacity;header.firstAt=Math.round(time*1000)/1000;}
+            }).finally(()=>{headerRun=null;});
+          }
+        }
         const thumbStarted=performance.now();
         const bar=acquired.layout.scrollbar;
         stripContext.drawImage(frame,bar.x,bar.y,bar.width,bar.height,0,0,16,942);
@@ -338,6 +379,12 @@ export async function runRowScan(options:{
     await session.namesIdle();
     const afterNames=counts();
     publishSnapshot('verifying');
+    // The displayed total of the last frame that showed the card window, read after everything else.
+    if(headerRun)await headerRun;
+    if(reader&&header.kept){
+      const total=await readHeader();
+      if(total){header.finalExpected=total.owned;if(header.expected===null){header.expected=total.owned;header.capacity=total.capacity;}}
+    }
     let afterZeroCheck:RowLiveResult['live']['afterZeroCheck'];
     if(zeroRun)await zeroRun;
     if(evidence&&reader&&options.zeroCheck!==false){
@@ -358,6 +405,7 @@ export async function runRowScan(options:{
         source:processor?'track':'video',...(processor?{reader:lineWorker?'worker' as const:'main' as const}:{}),
         ...(workerLine?{lineCopy:{copied:workerLine.copied,uncopied:workerLine.uncopied,meanMs:workerLine.copied?Math.round(workerLine.copyMs/workerLine.copied*10)/10:0}}:{}),
         mainThread:{maxGapMs:Math.round(lagMax),gapsOver100Ms:lagOver100},
+        header:{expected:header.expected,capacity:header.capacity,finalExpected:header.finalExpected,firstAtSeconds:header.firstAt,reads:header.reads,failures:header.failures},
         guidance:(()=>{const totalRows=scrollSteps+GRID_ROWS,guidance=session.guidance(totalRows);return {totalRows,...guidance,...describeListGuidance(guidance,{totalRows})};})(),
         ...(typeof processor?.totalFrames==='number'?{sourceTotal:processor.totalFrames}:{}),
         ...(track?{track:{frameRate:track.getSettings().frameRate??null,stats:trackStats(track)}}:{}),...(typeof processor?.discardedFrames==='number'?{sourceDiscarded:processor.discardedFrames}:{}),

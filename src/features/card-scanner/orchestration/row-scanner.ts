@@ -1,7 +1,7 @@
 import type {ScannerState} from './scanner';
-import type {ScannedCard} from '../recognition/recognizer-types';
 import {runRowScan} from './row-scan';
 import type {RowScanSnapshot} from './row-scan';
+import {rowScannerState} from './row-scanner-state';
 
 /** The row-centred scan behind the scanner's interface (docs/scanner-live-redesign.md, section 13).
  *
@@ -9,37 +9,10 @@ import type {RowScanSnapshot} from './row-scan';
  * (`debug.engine: 'row'`), so the app, the watchdog and the development recorder run unchanged
  * around it. It reads a live screen share and publishes the scanner's state shape.
  *
- * What it does not do yet, and therefore never claims: it reads no displayed total (`expected`
- * stays null), issues no completion receipt, reports no unidentified observations and starts
- * from an empty list (it is not seeded with saved cards). The app shows its cards and marks the
- * scan incomplete. */
-const collator=new Intl.Collator('ko');
-
-function shownCards(cards:readonly ScannedCard[]):ScannedCard[] {
-  return cards.map(card=>({...card,review:[...card.review]})).sort((a,b)=>collator.compare(a.name,b.name));
-}
-
-/** The scanner state for one snapshot of the row-centred scan. */
-export function rowScannerState(snapshot:RowScanSnapshot):ScannerState {
-  const queued=snapshot.waitingFrames+snapshot.waitingReads,done=snapshot.phase==='done';
-  const status=done?'입력 처리 완료 · 표시 수량 미확인 · 줄 중심 경로(개발)'
-    :snapshot.phase==='verifying'?'판독 결과 검증 중'
-    :queued>0?`카드 스캔 중 · ${queued}개 판독 대기`:'카드 스캔 중';
-  return {
-    status,
-    // There is no displayed total to measure progress against: confirmed over named cards.
-    percent:done?100:snapshot.cards.length?Math.min(99,Math.floor(snapshot.confirmed/snapshot.cards.length*100)):0,
-    sampled:snapshot.frames,stable:snapshot.locatedFrames,
-    expected:null,capacity:null,
-    cards:shownCards(snapshot.cards),
-    currentRunNames:snapshot.cards.length,currentRunRead:snapshot.confirmed,
-    located:snapshot.located,unreadable:0,queued,activeReadings:snapshot.waitingReads>0?1:0,
-    droppedFrames:snapshot.droppedFrames,liveInput:'track',
-    workPhase:snapshot.phase==='capture'?'capture':snapshot.phase==='reading'?'reading':snapshot.phase==='verifying'?'verifying':'cleanup',
-    unidentified:[],
-  };
-}
-
+ * It reads the displayed total and issues the completion receipt under the conditions of
+ * row-scanner-state.ts. What it does not do yet: it lists no pictures of unidentified observations
+ * (only their count), passes no guidance to the app, and starts from an empty list (it is not
+ * seeded with saved cards). */
 export async function runRowScannerInternal(options:{video:HTMLVideoElement;signal:AbortSignal;
   update:(state:ScannerState)=>void;onReady?:()=>void;
   /** A frame the card window was found in (the development recorder keeps those spans). */
