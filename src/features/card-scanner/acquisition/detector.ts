@@ -52,8 +52,13 @@ export function loadCv(): Promise<CV> {
     }).catch(error => { runtime = undefined; throw error; });
   return runtime;
 }
-/** Coarse search scales, in the order they are tried when nothing is remembered. */
-export const COARSE_SCALES = [1, 0.85, 1.15, 0.7, 1.3, 0.55, 1.5] as const;
+/** Coarse search scales, in the order they are tried when nothing is remembered.
+ *
+ * The templates are 2560x1440 pixels (scale 1). The game draws its interface for 1920x1080 and
+ * scales it with the resolution, so a 1920x1080 window is scale 0.75: it is tried second. Without
+ * it the nearest scales were 0.7 and 0.85, and the card window of a 1080p share was not found at
+ * all (the native refinement only reaches 0.09 around a coarse match that already passed). */
+export const COARSE_SCALES = [1, 0.75, 0.85, 1.15, 0.7, 1.3, 0.55, 1.5] as const;
 /** Frames without a window that use only the remembered scale before one full search. */
 export const FULL_SEARCH_AFTER = 5;
 export interface DetectorPlatform {

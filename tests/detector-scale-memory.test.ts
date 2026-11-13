@@ -113,3 +113,12 @@ test('a weak match at the remembered scale that refinement rejects still leads b
     assert.ok(found>0,'the window at the new scale is found within '+(FULL_SEARCH_AFTER+1)+' frames');
   }finally{d.dispose();}
 });
+
+test('the 1920x1080 interface scale is one of the search scales', () => {
+  // 1080 / 1440: the card window of a 1080p share is this size relative to the templates.
+  assert.ok((COARSE_SCALES as readonly number[]).includes(.75));
+  // Every scale is reachable by the native refinement (+-0.09) from a coarse scale only if the
+  // coarse scales themselves are not too far apart around the common resolutions.
+  const sorted=[...COARSE_SCALES].sort((a,b)=>a-b);
+  assert.ok(sorted.includes(1)&&sorted.includes(.75));
+});
