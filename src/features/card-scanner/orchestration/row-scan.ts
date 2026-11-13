@@ -168,7 +168,12 @@ export async function runRowScan(options:{
       blank.width=0;
     }
     const names:RowReadNames|undefined=reader?{
-      async identify(image,stable,structural){const identity=await reader.identify(image,true,stable,structural);return identity?{id:identity.id,name:identity.name,full:identity}:null;},
+      // The name lane also runs the artwork match with fractional registration (the scanner's
+      // refined match for structurally intact crops). At 1920x1080 a crop is 105x158 pixels and
+      // the whole-cell artwork match misses cards it names at 2560x1440; the refined one names
+      // them (docs/dev-recording.md). ?refine=0 turns it off, for comparison.
+      async identify(image,stable,structural){const identity=await reader.identify(image,true,stable,structural,undefined,
+        typeof location==='undefined'||new URLSearchParams(location.search).get('refine')!=='0');return identity?{id:identity.id,name:identity.name,full:identity}:null;},
       async values(image,id){const values=await reader.read(image,id,false,false);return {awakening:values.awakening,extraCopies:values.extraCopies,full:values};},
       ranText:image=>reader.nameDiagnostics(image).some(attempt=>attempt.engine!=='quality'),
       attempts:image=>reader.nameDiagnostics(image).slice(0,12).map(attempt=>`${attempt.engine??''}|${attempt.variant??''}|${attempt.text}|${Math.round(attempt.confidence)}|${attempt.reason??''}|${(attempt.candidates??[]).slice(0,2).map(candidate=>`${candidate.name}:${Math.round(candidate.score*100)}`).join(',')}`),

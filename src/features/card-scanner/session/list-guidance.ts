@@ -21,6 +21,10 @@ export interface ListGuidance {
    * after it were seen to start holding no cards; whether the rest of the list is empty too is
    * not known from the table. */
   readonly emptyFromRow:number|null;
+  /** Disagreements the table counted (shared cards placing a frame at two rows, two positions for
+   * one piece, a cell showing another card than first recorded). The table keeps what it recorded
+   * first, so a row number given here may be off when this is not 0. */
+  readonly conflicts:number;
   /** Separate pieces the list was read in: runs of anchored rows next to each other, plus islands
    * without an anchor. More than one means there are places where continuity was not seen. */
   readonly pieces:number;
@@ -74,7 +78,8 @@ export function listGuidance(snapshot:ListTableSnapshot,options:{
     const at=placed.get(code);
     return {code,name:card.name,reasons:[...card.reasons],row:at?.row??null,column:at?.column??null};
   }).sort((a,b)=>(a.row??Infinity)-(b.row??Infinity)||(a.column??0)-(b.column??0)||a.name.localeCompare(b.name,'ko'));
-  return {missingRows,missingRowsUnseen:rows===0,emptyFromRow,pieces:runs+snapshot.floating.length,unplaced:{islands:snapshot.floating.length,rows,cards,unidentified,unread},
+  const conflicts=snapshot.counts.overlapConflicts+snapshot.counts.anchorConflicts+snapshot.counts.cellConflicts;
+  return {missingRows,missingRowsUnseen:rows===0,emptyFromRow,conflicts,pieces:runs+snapshot.floating.length,unplaced:{islands:snapshot.floating.length,rows,cards,unidentified,unread},
     cells:cells.sort((a,b)=>a.row-b.row||a.column-b.column),cards:cardList};
 }
 
@@ -125,6 +130,8 @@ export function describeListGuidance(guidance:ListGuidance,options:{readonly tot
   }
   if(guidance.unplaced.rows)
     notes.push(`위치를 모르는 줄이 ${guidance.unplaced.islands}조각(카드 ${guidance.unplaced.cards}장, 조각끼리 겹칠 수 있음) 있습니다. 스크롤이 멈춘 적이 없는 구간입니다`);
+  if(guidance.conflicts>0)
+    notes.push(`목록 위치가 서로 맞지 않은 곳이 ${guidance.conflicts}건 있었습니다. 줄 번호가 한두 줄 어긋났을 수 있습니다`);
   if(guidance.pieces>1)
     notes.push(`목록이 ${guidance.pieces}조각으로 읽혔습니다. 조각 사이에 보지 못한 줄이 있는지는 알 수 없습니다`);
   if(after.length&&end!==null)

@@ -108,3 +108,18 @@ test('a cell never seen whole is a note, not a request, while other rows wait fo
   assert.deepEqual(asks,[]);
   assert.ok(notes.some(note=>note.startsWith('위치가 확인된 줄에 온전히 보이지 않은 칸 1개(1번째 줄)')));
 });
+
+test('row numbers carry a warning when the table counted disagreements', () => {
+  const table=createListTable();
+  table.observe(frame(0,0,{row:0,settledMs:400}));
+  // The same rows again, but the settled thumb now says they start one row lower: an anchor conflict.
+  table.observe(frame(1,0,{row:1,settledMs:400}));
+  const guidance=listGuidance(table.snapshot(),{totalRows:4,unconfirmed:none});
+  assert.ok(guidance.conflicts>0);
+  assert.ok(describeListGuidance(guidance,{totalRows:4}).notes.some(note=>note.includes('줄 번호가 한두 줄 어긋났을 수 있습니다')));
+  // Without disagreements there is no such note.
+  const clean=createListTable();clean.observe(frame(0,0,{row:0,settledMs:400}));
+  const quiet=listGuidance(clean.snapshot(),{totalRows:4,unconfirmed:none});
+  assert.equal(quiet.conflicts,0);
+  assert.ok(!describeListGuidance(quiet,{totalRows:4}).notes.some(note=>note.includes('어긋났을')));
+});

@@ -57,6 +57,8 @@ export interface RowReadResult {
     readonly countSame?:number;
     /** Crops not recorded when they arrived because their card's full reading was paced or busy; the newest per card is read in full later. */
     readonly countDeferred?:number;
+    /** Count re-reads put back from a full line to make room for a crop waiting for a name. */
+    readonly countMadeRoom?:number;
     /** Background only: crops put in the lane's backlog, crops not queued because their cell was
      * already waiting or being read, the backlog's limit and its longest length, and the longest a
      * crop waited (ms). `skippedBusy` counts crops not queued because the backlog was full. */
@@ -179,12 +181,16 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
     if(!nameLane)nameLane=runLane().finally(()=>{nameLane=null;});
   };
   const runLane=async()=>{
-    // The count re-read of a card that is already confirmed waits behind everything else: it
-    // guards against a changed count and names nothing, while a full reading can hold the lane
-    // for seconds and crops waiting for a name scroll away.
+    // A crop waiting for a name goes first: nothing else can happen to a card that has no name,
+    // and such a crop scrolls away. Then the count re-reads of cards not yet confirmed, and last
+    // those of confirmed cards (they guard against a changed count and name nothing). A full
+    // reading can hold the lane for seconds; at 1920x1080, where few counts read by pattern,
+    // count re-reads otherwise filled the lane and crops waiting for a name were turned away.
+    const rank=(item:Waiting)=>!item.count?0:done(item.count.code)?2:1;
     const take=()=>{
-      const index=backlog.findIndex(item=>!(item.count&&done(item.count.code)));
-      return index>0?backlog.splice(index,1)[0]:backlog.shift();
+      let best=-1;
+      for(let index=0;index<backlog.length;index++)if(best<0||rank(backlog[index])<rank(backlog[best]))best=index;
+      return best<0?undefined:backlog.splice(best,1)[0];
     };
     for(let item=take();item;item=take()){
       inFlight=item;
@@ -234,7 +240,7 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
       finally{item.copy.width=0;inFlight=null;}
     }
   };
-  const nameStats={substituteReads:0,reads:0,identified:0,failed:0,skippedKnown:0,skippedHeld:0,skippedBusy:0,skippedNamed:0,skippedQueued:0,queued:0,countReads:0,countQueued:0,countGivenUp:0,countSame:0,countDeferred:0,longestBacklog:0,waitMs:[] as number[],placed:0,frames:0,maxPerFrame:0,ms:[] as number[],cards:new Map<string,number>(),
+  const nameStats={substituteReads:0,reads:0,identified:0,failed:0,skippedKnown:0,skippedHeld:0,skippedBusy:0,skippedNamed:0,skippedQueued:0,queued:0,countReads:0,countQueued:0,countGivenUp:0,countSame:0,countDeferred:0,countMadeRoom:0,longestBacklog:0,waitMs:[] as number[],placed:0,frames:0,maxPerFrame:0,ms:[] as number[],cards:new Map<string,number>(),
     log:[] as {time:number;slot:number;rowKnown:boolean;settledMs:number|null;ms:number;name:string|null;complete:boolean;attempts?:readonly string[]}[],failures:{} as Record<string,string>};
   const codes=new Map<string,number>(),cards:{id:string;name:string;firstTime:number;observations:LeanObservation[]}[]=[];
   // A card is complete for this reader once one observation gave both of its values.
@@ -273,7 +279,7 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
       const sorted=[...nameStats.ms].sort((a,b)=>a-b),at=(share:number)=>sorted.length?Math.round(sorted[Math.min(sorted.length-1,Math.floor(share*sorted.length))]):0;
       return {substituteReads:nameStats.substituteReads,reads:nameStats.reads,identified:nameStats.identified,failed:nameStats.failed,skippedKnown:nameStats.skippedKnown,holdSeconds:nameHoldSeconds,skippedHeld:nameStats.skippedHeld,
         background:backgroundNames,skippedBusy:nameStats.skippedBusy,skippedNamed:nameStats.skippedNamed,placed:nameStats.placed,
-        ...(evidence?{countReads:nameStats.countReads,countQueued:nameStats.countQueued,countGivenUp:nameStats.countGivenUp,countSame:nameStats.countSame,countDeferred:nameStats.countDeferred}:{}),
+        ...(evidence?{countReads:nameStats.countReads,countQueued:nameStats.countQueued,countGivenUp:nameStats.countGivenUp,countSame:nameStats.countSame,countDeferred:nameStats.countDeferred,countMadeRoom:nameStats.countMadeRoom}:{}),
         queued:nameStats.queued,skippedQueued:nameStats.skippedQueued,backlogLimit:BACKLOG,longestBacklog:nameStats.longestBacklog,backlogWaitMaxMs:Math.round(Math.max(0,...nameStats.waitMs)),
         totalMs:Math.round(sorted.reduce((a,b)=>a+b,0)),medianMs:at(.5),p95Ms:at(.95),maxMs:at(1),frames:nameStats.frames,maxPerFrame:nameStats.maxPerFrame,
         cards:[...nameStats.cards].map(([id,reads])=>({id,name:cards[codes.get(id)!].name,reads})).sort((a,b)=>b.reads-a.reads),
@@ -440,7 +446,17 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
           return where&&there?there.island===where.island&&there.row===where.row&&there.column===where.column:!where&&!there&&old.about===candidate.about;
         });
         if(twin){nameStats.skippedQueued++;continue;}
-        if(backlog.length>=BACKLOG){nameStats.skippedBusy++;continue;}
+        // A full line makes room for a name by putting back the newest count re-read: it is kept as
+        // its card's crop to read in full later, so the card's latest look is still read.
+        if(backlog.length>=BACKLOG){
+          let index=-1;
+          for(let at=backlog.length-1;at>=0;at--)if(backlog[at].count){index=at;break;}
+          if(index<0){nameStats.skippedBusy++;continue;}
+          const [moved]=backlog.splice(index,1),code=moved.count!.code;
+          if(!pendingFull.has(code)){pendingFull.set(code,{item:moved,revision:undefined});nameStats.countDeferred++;}
+          else moved.copy.width=0;
+          nameStats.countMadeRoom++;
+        }
         const source=cells[candidate.slot].image!,copy=Object.assign(document.createElement('canvas'),{width:source.width,height:source.height});
         copy.getContext('2d',{willReadFrequently:true})!.drawImage(source,0,0);
         backlog.push({copy,time,slot:candidate.slot,scrollRow,stable:(thumb.settledMs??0)>=200,settled:thumb.settledMs===null?null:Math.round(thumb.settledMs),
