@@ -7,6 +7,8 @@ import {attentionCardImage} from './attention-card-image';
 import {scrollLocationLabel} from '../session/scroll-card-location';
 import {attentionCardAdvice,attentionCountAdvice,attentionScanMode,unidentifiedAttention,unidentifiedDisplayKey,unidentifiedReferenceAdvice,unmatchedPendingFields} from './scan-attention-guidance';
 import {recognitionNeededSlotLabel,type RecognitionNeededSlot} from '../session/recognition-needed';
+import {ListPositionMap} from './ListPositionMap';
+import type {ListGuidanceMap} from '../session/list-guidance';
 import '../scan-activity.css';
 
 export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pendingFields=[],evidenceLost=false,recognitionNeeded=[],guidance,sharing,busy,queued,activeReadings}:{
@@ -15,7 +17,7 @@ export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pe
   evidenceLost?:boolean;
   recognitionNeeded?:readonly RecognitionNeededSlot[];
   /** Where to show the list again, from the list table (row-centred scan only). */
-  guidance?:{readonly asks:readonly string[];readonly notes:readonly string[]};
+  guidance?:{readonly asks:readonly string[];readonly notes:readonly string[];readonly map?:ListGuidanceMap};
   sharing:boolean;busy:boolean;queued?:number;activeReadings?:number;
 }){
   const mode=attentionScanMode({sharing,busy,queued,activeReadings});
@@ -98,6 +100,7 @@ export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pe
     {!!asks.length&&<div className="scan-attention-group">
       <h3>다시 보여 줄 곳 <span>{asks.length}곳</span></h3>
       <p>{sharing?'아래 위치를 다시 비춰 주세요. 스크롤을 잠깐 멈추면 위치를 더 정확히 알 수 있어요.':'다시 스캔할 때 아래 위치를 비춰 주세요.'}</p>
+      {guidance?.map&&<ListPositionMap map={sharing?guidance.map:{...guidance.map,currentRow:null,direction:null}}/>}
       <ul>{asks.slice(0,SHOWN_ASKS).map((line,index)=><li key={index}>{line}</li>)}{asks.length>SHOWN_ASKS&&<li>외 {asks.length-SHOWN_ASKS}곳</li>}</ul>
       {!!notes.length&&<ul className="scan-attention-notes">{notes.map((line,index)=><li key={index}>참고: {line}</li>)}</ul>}
     </div>}

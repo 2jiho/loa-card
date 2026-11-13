@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DEFAULT_LAYOUT, normalizeLayoutGeometry} from '../src/features/card-scanner/acquisition/layout-geometry';
+import {insideCard} from '../src/features/card-scanner/acquisition/capture-quality';
 
 test('reference 1440p anchor yields the fixed 10x4 grid and chrome boxes', () => {
   const layout = normalizeLayoutGeometry({x: 1000, y: 100, scale: 1}, 2560, 1440);
@@ -99,4 +100,17 @@ test('invalid origin, media size and observed grid are rejected', () => {
     {cardWidth: 140, cardHeight: 210, columnStep: 100, rowStep: 243}), /간격/u);
   assert.throws(() => normalizeLayoutGeometry({x: 0, y: 0, scale: 1}, 1920, 1080,
     {cardWidth: 140, cardHeight: 280, columnStep: 157.5, rowStep: 300}), /2:3/u);
+});
+
+test('every card of a window drawn at a fractional scale lies inside the card area', () => {
+  // A 2560x1440 window drawn at 0.98 (share-...-81a0): the first row and column were rejected
+  // as cut off at the screen edge because the rounded cell started inside a fractional area edge.
+  for (const origin of [{x: 786.4, y: 222.6, scale: .9799}, {x: 799.7, y: 223.2, scale: .97}, {x: 600.25, y: 160.5, scale: .75}]) {
+    const layout = normalizeLayoutGeometry(origin, 2510, 1438);
+    assert.ok(Object.values(layout.area).every(Number.isSafeInteger));
+    for (const box of layout.cells) assert.equal(insideCard(box, layout.area), true, JSON.stringify({origin, box, area: layout.area}));
+  }
+  // A whole-pixel origin at scale 1 keeps the area it had.
+  const full = normalizeLayoutGeometry({x: 900, y: 200, scale: 1}, 2560, 1440);
+  assert.deepEqual(full.area, {x: 900 + DEFAULT_LAYOUT.area.x, y: 200 + DEFAULT_LAYOUT.area.y, width: DEFAULT_LAYOUT.area.width, height: DEFAULT_LAYOUT.area.height});
 });

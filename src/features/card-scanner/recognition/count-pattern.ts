@@ -12,6 +12,15 @@ export interface CountPatternReading {
   gap: number;
   reason: string;
   emptyEvidence?: CountEmptyEvidence;
+  /** With a trailing-stroke veto: the score a single-digit candidate needs to count as strong
+   * at this crop size (countStrongScore). Absent: the 2560x1440 value. */
+  strongScore?: number;
+  /** The contrast floor used for a resampled crop (countContrastFloor). Absent: 0.30. Later
+   * checks of the score (count-confidence.ts, count-corroboration.ts) scale by it. */
+  contrastFloor?: number;
+  /** For a crop narrower than 100 pixels: the factor on the score a candidate needs when an
+   * independent digit OCR read the same value (countAgreementScale). Absent: as contrastFloor. */
+  agreementScale?: number;
 }
 export function prepareContrastPattern(pattern: CountPattern): ContrastPattern {
   const bytes = Uint8Array.from(atob(pattern.bits), c => c.charCodeAt(0));
@@ -52,22 +61,77 @@ export function prepareContrastPattern(pattern: CountPattern): ContrastPattern {
 export function readContrastCount(rgba: ArrayLike<number>, patterns: ContrastPattern[]) {
   return matchCountPattern(rgba, patterns).value;
 }
+/** Whether a crop is resampled before it is read: every crop is drawn at 140x210, and only a
+ * 2560x1440 full-screen card is 140 pixels wide. A width that is not known counts as native. */
+function resampledCrop(cropWidth:number|undefined):boolean {
+  return typeof cropWidth==='number'&&cropWidth>0&&Math.round(cropWidth)!==140;
+}
 /** The contrast a count pattern needs, for a crop of this width before it is drawn at 140x210.
  *
- * The digits are drawn white with a dark outline. A crop taken from a smaller screen (1920x1080
- * draws a card 105 pixels wide) is enlarged to 140 before it is read, which blurs the outline into
- * the artwork behind it: on three 1080p shares the right value scored 0.22..0.30 where 2560x1440
- * crops score above 0.30 (of 267 such readings 263 had the right first candidate and the other 4
- * scored 0). Crops narrower than 120 pixels therefore need 0.22; every other crop keeps 0.30.
- * The gap to the runner-up, the trailing-stroke veto and the awakening limit are unchanged, and a
- * pattern reading is still only one observation for the acceptance rules. */
+ * The digits are drawn white with a dark outline. Any crop that is not 140 pixels wide is
+ * resampled to 140 before it is read, which blurs the outline into the artwork behind it. The
+ * same card's count scores 0.64 (1920x1080, crop 105) and 0.69 (a 2560x1440 window drawn at 0.98,
+ * crop 137) of its 2560x1440 full-screen score (medians over about 287 cards): the drop comes
+ * from resampling at all, not from how much. Resampled crops therefore need 0.22, native crops
+ * keep 0.30. Readings between 0.22 and 0.30: 1080p 681 on three shares, none with a wrong first
+ * candidate; windowed 1440 225 on two shares, 5 wrong (소나벨 +10 read 13), all with a runner-up
+ * gap of 0.002 or less, which the 0.018 gap rule rejects. The gap, the trailing-stroke veto and the
+ * awakening limit are unchanged, and a pattern reading is still only one observation. */
 export function countContrastFloor(cropWidth:number|undefined):number {
-  return typeof cropWidth==='number'&&cropWidth>0&&cropWidth<120?.22:.30;
+  return resampledCrop(cropWidth)?.22:.30;
+}
+/** The score a single-digit candidate needs, despite an unexplained trailing stroke, to count as
+ * strong (count-confidence.ts; it still needs the runner-up gap and an agreeing independent OCR).
+ *
+ * 0.45 was set on 2560x1440 full-screen crops. A resampled crop scores lower (see
+ * countContrastFloor): 0.55..0.68 (p10..p90) of the full-screen score at 1920x1080 and
+ * 0.64..0.73 in a window drawn at 0.98. Resampled crops therefore need 0.45 x 0.6 = 0.27.
+ * Measured case: 구스토 (+1 in front of a white coat) scores 0.50 at full screen and 0.29 at
+ * 1080p with the same veto, gap 0.12 and OCR reading 1. */
+export function countStrongScore(cropWidth:number|undefined):number {
+  return resampledCrop(cropWidth)?.27:.45;
+}
+/** The runner-up gap that goes with a strong trailing-glyph candidate: 0.10 at full screen, scaled
+ * like the score (strongScore / 0.45, i.e. 0.06 for a resampled crop). Measured case: 구스토 in a
+ * 2560x1440 window drawn at 0.98 scores 0.32 with gap 0.066 (full screen: 0.50, gap 0.13), with the
+ * independent OCR reading 1; it is drawn the same way in every frame, so showing it again cannot
+ * help. The agreeing OCR value stays required. */
+export function countStrongGap(reading:{strongScore?:number}|undefined):number {
+  const score=reading?.strongScore;
+  return typeof score==='number'&&score>0&&score<.45?.10*score/.45:.10;
+}
+/** A score threshold set on 2560x1440 full-screen crops, for the crop a reading came from: scaled
+ * by that crop's contrast floor (0.22 / 0.30 for a resampled crop, see countContrastFloor). */
+export function countScoreAtCropSize(fullScreenThreshold:number,reading:{contrastFloor?:number}|undefined):number {
+  const floor=reading?.contrastFloor;
+  return typeof floor==='number'&&floor>0&&floor<.30?fullScreenThreshold*floor/.30:fullScreenThreshold;
+}
+/** The factor on a full-screen score threshold for a candidate that an INDEPENDENT digit OCR
+ * confirmed (the same value read from the digits by another reader). Never used for a pattern
+ * reading alone.
+ *
+ * 0.625 interface scale (1600x900, 1600x1200; crop about 88 pixels): even with templates from that
+ * scale, a third of the crops seen while scrolling stay below the 0.22 floor although the first
+ * candidate is right (p10..p90 0.15..0.21, median 0.19, on 831 crops of two shares), with runner-up
+ * gaps of 0.014..0.034. At this size the score barely separates right from wrong: lowering the
+ * pattern-only floor to 0.18 also reads one wrong value (하백 +6 as 5 at 0.19, gap 0.029). So the
+ * pattern alone keeps the 0.22 floor, and for an OCR-confirmed candidate the independent OCR
+ * carries the evidence: the pattern must point at the same value with digit ink, at 0.4 of the
+ * full-screen thresholds (score 0.30 -> 0.12, 0.40 -> 0.16, gap 0.035 -> 0.014). Wider resampled
+ * crops keep 0.22/0.30, full-screen crops 1. */
+export function countAgreementScale(cropWidth:number|undefined):number {
+  if(!resampledCrop(cropWidth))return 1;
+  return (cropWidth as number)<100?.4:.22/.30;
+}
+/** A full-screen threshold for an OCR-confirmed candidate of this reading (see countAgreementScale). */
+export function countAgreementScore(fullScreenThreshold:number,reading:{contrastFloor?:number;agreementScale?:number}|undefined):number {
+  const scale=reading?.agreementScale;
+  return typeof scale==='number'&&scale>0&&scale<1?fullScreenThreshold*scale:countScoreAtCropSize(fullScreenThreshold,reading);
 }
 /** Rank all 15 values before applying the awakening limit: never turn an
  * out-of-range winner into a plausible but wrong second choice. Scores are
  * foreground/outline contrast, not calibrated recognition probabilities. */
-export function matchCountPattern(rgba: ArrayLike<number>, patterns: ContrastPattern[], offsetY = 0, maximum = 15, requireIcon = true, minContrast = .30): CountPatternReading {
+export function matchCountPattern(rgba: ArrayLike<number>, patterns: ContrastPattern[], offsetY = 0, maximum = 15, requireIcon = true, minContrast = .30, strongScore = .45, agreementScale = 1): CountPatternReading {
   const rejected = (reason: string): CountPatternReading => ({ value: null, candidate: null, score: 0, gap: 0, reason });
   if (!Number.isInteger(offsetY) || Math.abs(offsetY) > 6 || rgba.length !== 140 * 210 * 4)
     return rejected("장수 영역 크기 또는 위치 확인 필요");
@@ -114,7 +178,10 @@ export function matchCountPattern(rgba: ArrayLike<number>, patterns: ContrastPat
     : gap < .018 ? "장수 패턴 후보 간 차이 부족"
     : "장수 전체 패턴 일치";
   return { value: reason === "장수 전체 패턴 일치" ? best[0] : null,
-    candidate: best[0], score: best[1], gap, reason };
+    candidate: best[0], score: best[1], gap, reason,
+    ...(reason === COUNT_UNEXPLAINED_TRAILING_GLYPH && strongScore !== .45 ? { strongScore } : {}),
+    ...(minContrast !== .30 ? { contrastFloor: minContrast } : {}),
+    ...(agreementScale !== 1 && agreementScale !== .22 / .30 ? { agreementScale } : {}) };
 }
 
 /** A positive, font-shaped unexplained stroke can be a second digit. This is
@@ -204,8 +271,12 @@ export function packCount(rgba: ArrayLike<number>, width = 140, offsetY = 0, dia
   // numeric strokes remain. null keeps this observation eligible for OCR
   // without allowing the zero shortcut or claiming a positively seen icon.
   const grayCandidate=!emptyFields&&!iconColor&&!numericEvidence;
-  const grayMarker=grayCandidate||diagnostic?grayCardMarker(rgba,width,offsetY):false;
-  const visibleBackground=grayCandidate||diagnostic?visibleCounterBackground(rgba,width,offsetY,core):false;
+  // The vertical position at which the gray paper marker's whole geometry is seen; the counter
+  // field is drawn at that same position (see grayCardMarker).
+  const markerAt=grayCandidate||diagnostic?grayCardMarkerOffset(rgba,width,offsetY):null;
+  const grayMarker=markerAt!==null;
+  const visibleBackground=grayCandidate||diagnostic?visibleCounterBackground(rgba,width,markerAt??offsetY,
+    markerAt===null||markerAt===offsetY?core:counterCore(rgba,width,markerAt)):false;
   const grayBackgroundEmpty=grayCandidate&&grayMarker&&visibleBackground;
   // Entirely flat opaque patches can cover both a positive icon and its
   // digits while leaving the name, jewels and outer card border intact.
@@ -325,7 +396,23 @@ export function highFrequencyCounterCover(rgba:ArrayLike<number>,width=140,offse
 /** The left card-marker is not itself a zero-count symbol: positive counters
  * have it too. Its whole neutral outline only corroborates unobscured UI for
  * the separate counter-background proof below. No card artwork is matched. */
-function grayCardMarker(rgba:ArrayLike<number>,width:number,offsetY:number) {
+function grayCardMarkerOffset(rgba:ArrayLike<number>,width:number,offsetY:number):number|null {
+  // The whole paper geometry is required at one vertical position. A card drawn from a larger
+  // screen (5120x2880, a 280-pixel card reduced to 140) can put the counter field one pixel below
+  // the position the jewels gave, which softens one edge below its contrast; one pixel either
+  // way is tried, never a different shape.
+  return [offsetY,offsetY+1,offsetY-1].find(at=>grayCardMarkerAt(rgba,width,at))??null;
+}
+/** The icon core classification (0 none, 1 cyan, 2 saturated cyan) at a vertical offset, as packCount builds it. */
+function counterCore(rgba:ArrayLike<number>,width:number,offsetY:number):Uint8Array {
+  const core=new Uint8Array(18*10);
+  for(let y=143;y<153;y++)for(let x=64;x<82;x++){
+    const i=((y+offsetY)*width+x)*4,r=rgba[i],g=rgba[i+1],b=rgba[i+2];
+    if(g>110&&b>110&&g>r*1.2&&b>r*1.2)core[(y-143)*18+x-64]=Math.min(g,b)-r>=40?2:1;
+  }
+  return core;
+}
+function grayCardMarkerAt(rgba:ArrayLike<number>,width:number,offsetY:number) {
   const gray=(x:number,y:number)=>{const i=((y+offsetY)*width+x)*4;return .299*rgba[i]+.587*rgba[i+1]+.114*rgba[i+2];};
   const line=(x:number,y:number,dx:number,dy:number,n:number,bx:number,by:number,contrast:number)=>{
     let neutral=0,edge=0;
@@ -358,6 +445,10 @@ function visibleCounterBackground(rgba:ArrayLike<number>,width:number,offsetY:nu
   for(let y=150;y<166;y++)for(let x=64;x<83;x++)if(cyan(x,y))return false;
   const seeds:number[]=[];
   for(let p=0;p<core.length;p++)if(core[p]===2)seeds.push((143+Math.floor(p/18))*width+64+p%18);
+  // Muted cyan artwork (no saturated pixel) is held to the same conditions: it must continue
+  // above the icon, leave the icon's body rows free of cyan, and show textured background below.
+  // Seen on 하누마탄 at 5120x2880: a teal swirl across the icon's top rows, visibly no icon.
+  if(seeds.length<3)for(let p=0;p<core.length;p++)if(core[p]===1)seeds.push((143+Math.floor(p/18))*width+64+p%18);
   if(seeds.length<3)return false;
   const seen=new Set<number>(),queue=[seeds[0]];seen.add(seeds[0]);let above=false;
   for(let at=0;at<queue.length;at++){

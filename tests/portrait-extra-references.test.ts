@@ -23,10 +23,12 @@ test('an extra reference adds a card the other references cannot name, and only 
 });
 
 test('shipped extra references name catalog cards and use the 20x10 region',()=>{
-  const file=json('../public/scanner/screen-artwork-extra.json');
   const ids=new Set(cards.map((card:{id:string})=>card.id));
-  for(const [id,list] of Object.entries(file.cards as Record<string,string[]>)){
-    assert.ok(ids.has(id),id);
-    for(const value of list)assert.equal(Buffer.from(value,'base64').length,200);
+  for(const name of ['screen-artwork-extra.json','screen-artwork-1080.json','screen-artwork-0625.json']){
+    const file=json(`../public/scanner/${name}`);
+    for(const [id,list] of Object.entries(file.cards as Record<string,string[]>)){
+      assert.ok(ids.has(id),`${name} ${id}`);
+      for(const value of list)assert.equal(Buffer.from(value,'base64').length,200);
+    }
   }
 });

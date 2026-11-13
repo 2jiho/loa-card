@@ -25,3 +25,14 @@ test("numeric OCR cannot corroborate a partial single-digit pattern with another
     pattern:{value:null,candidate:1,score:.55,gap:.08,reason:COUNT_UNEXPLAINED_TRAILING_GLYPH} };
   assert.equal(corroboratedCount(input),false);
 });
+test("a resampled crop's agreeing OCR corroborates at the score of its crop size, other conditions unchanged", () => {
+  // A 2560x1440 window drawn at 0.98 (crop 137): the same card scores about 0.69 of full screen.
+  const observation = { awakening: 0, value: 15, iconPresent: true, ocrAgreed: true,
+    pattern: { value: 15, candidate: 15, score: .25, gap: .03, reason: "장수 전체 패턴 일치", contrastFloor: .22 } };
+  assert.equal(corroboratedCount(observation), true);
+  // The same reading from a full-screen crop (no contrast floor recorded) is too weak.
+  assert.equal(corroboratedCount({ ...observation, pattern: { ...observation.pattern, contrastFloor: undefined } }), false);
+  for (const change of [{ ocrAgreed: false }, { value: 13 }, { pattern: { ...observation.pattern, gap: .017 } },
+    { pattern: { ...observation.pattern, score: .21 } }])
+    assert.equal(corroboratedCount({ ...observation, ...change }), false);
+});

@@ -7,7 +7,7 @@ import type { Layout } from "../acquisition/detector";
 import type { Box } from "../acquisition/detector";
 import { createNameReader } from "./name-reader";
 import type {NameOcrMetrics,NameRawResultPolicy,NameReading} from './name-reader';
-import { prepareContrastPattern, matchCountPattern, countContrastFloor } from "./count-pattern";
+import { prepareContrastPattern, matchCountPattern, countContrastFloor, countStrongScore, countAgreementScale } from "./count-pattern";
 import type { CountPattern } from "./count-pattern";import { nameMask } from "./name-pattern";
 import { createPortraitMatcher, screenExtraReferences } from "./portrait-matcher";
 import {loadPortraitCompetitors} from './portrait-competitors';
@@ -122,7 +122,10 @@ export async function createRecognizer(status: (message: string) => void, signal
   const byId = new Map(cards.map((card) => [card.id, card]));
   const portraitAtlas = await loadScannerJson<Record<string,string>>('artwork-details.json', initializationSignal);
   const screen = await loadScannerJson<{cards:Record<string,string>}>('screen-artwork-details.json', initializationSignal);
-  const extraReferences = screenExtraReferences(await loadScannerJson<{cards:Record<string,string[]>}>('screen-artwork-extra.json', initializationSignal));
+  // Further screen references: three cards the others miss, and the 1920x1080 and 0.625-scale
+  // (1600x900) renderings of every card.
+  const extraReferences = (await Promise.all(['screen-artwork-extra.json','screen-artwork-1080.json','screen-artwork-0625.json'].map(name=>
+    loadScannerJson<{cards:Record<string,string[]>}>(name, initializationSignal)))).flatMap(screenExtraReferences);
   const competitors=await loadPortraitCompetitors(import.meta.env.BASE_URL,initializationSignal);
   const matchPortrait = createPortraitMatcher(cards,portraitAtlas,screen.cards,{competitors,extra:extraReferences});
   let refinePortrait:ReturnType<typeof createPortraitMatcher>|undefined;
@@ -356,7 +359,7 @@ export async function createRecognizer(status: (message: string) => void, signal
             readings: [], iconPresent: false,...(fields.emptyEvidence?{emptyEvidence:fields.emptyEvidence}:{}) } satisfies CountDiagnostics };
       const maximum = level === null ? 15 : 15 - (level * (level + 1)) / 2;
       drawVisualRaster(canvas, context);
-      const pattern = matchCountPattern(context.getImageData(0, 0, 140, 210).data, countPatterns, fields.offsetY, maximum, true, countContrastFloor(canvas.width));
+      const pattern = matchCountPattern(context.getImageData(0, 0, 140, 210).data, countPatterns, fields.offsetY, maximum, true, countContrastFloor(canvas.width), countStrongScore(canvas.width), countAgreementScale(canvas.width));
       const diagnostic: CountDiagnostics = { maximum, reason: fields.hasIcon === null ? '장수 숫자 미검출 또는 불명확' : pattern.reason, readings: [], pattern, iconPresent: fields.hasIcon ?? undefined };
       if (pattern.value !== null && !corroborate)
         return { awakening: level, extraCopies: pattern.value, countDiagnostics: diagnostic };
@@ -387,8 +390,10 @@ export async function createRecognizer(status: (message: string) => void, signal
           diagnostic.reason = digitValue === pattern.value ? "숫자 패턴과 독립 숫자 OCR 일치"
             : digitValue === null ? "숫자 OCR 보강 근거 부족" : "숫자 패턴과 숫자 OCR 불일치";
         } else if (pattern.candidate !== null && digitValue === pattern.candidate &&
-          Number.isFinite(pattern.score) && pattern.score >= .30 &&
-          Number.isFinite(pattern.gap) && pattern.gap >= .035) {
+          // Full-screen thresholds scaled for the crop size (countAgreementScale): score 0.30 and
+          // gap 0.035 at full screen, 0.22/0.026 for wider resampled crops, 0.12/0.014 below 100 px.
+          Number.isFinite(pattern.score) && pattern.score >= .30 * countAgreementScale(canvas.width) &&
+          Number.isFinite(pattern.gap) && pattern.gap >= .035 * countAgreementScale(canvas.width)) {
           // A strong single-digit candidate can be corroborated even when a
           // trailing artwork stroke kept the template result null.
           diagnostic.patternOcrAgreed = true;

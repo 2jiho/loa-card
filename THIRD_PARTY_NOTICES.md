@@ -43,7 +43,7 @@ Lost Ark의 카드 원화·게임 UI·명칭 및 관련 게임 자산의 권리�
 다음 자료는 이미지가 JSON/base64/특징 벡터로 변환되어 있어도 자동으로 프로젝트 MIT 대상이 되지 않는다.
 
 - `public/scanner/growth-tab.png`, `header-anchor.png`: 게임 UI 일부.
-- `public/scanner/cards.json`, `artwork-details.json`, `screen-artwork-details.json`, `screen-artwork-extra.json`, `portrait-competitors.json`, `counter-patterns.json`, `stars.json`: 카드 메타데이터 및 원화·UI에서 유래한 인식 자료.
+- `public/scanner/cards.json`, `artwork-details.json`, `screen-artwork-details.json`, `screen-artwork-extra.json`, `screen-artwork-1080.json`, `screen-artwork-0625.json`, `portrait-competitors.json`, `counter-patterns.json`, `stars.json`: 카드 메타데이터 및 원화·UI에서 유래한 인식 자료.
 - `public/growth/master.json`, `public/raid/master.json`, `src/features/merchants/merchants.json`: 게임 데이터 기반 마스터.
 - `tests/fixtures/`: 게임 화면에서 자른 픽셀, 이름 마스크, 특징과 수동 라벨. 일부 JSON에서 이미지를 복원할 수 있다. 별도의 합성 테스트 자료도 있지만 실제 화면에서 얻은 표본의 권리가 바뀌는 것은 아니다.
 

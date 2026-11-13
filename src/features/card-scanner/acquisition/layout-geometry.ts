@@ -83,6 +83,15 @@ function positive(value: unknown): value is number {
   return finite(value) && value > 0;
 }
 
+/** A box widened to whole pixels. The card area's edges coincide with the first column's left
+ * and first row's top edge, and cells are placed at whole pixels (rounded). At a scale that is
+ * not a whole number of pixels (a 2560x1440 window drawn at 0.98) the rounded first cell could
+ * start a fraction of a pixel outside the fractional area and every card of the first row and
+ * column was taken as cut off at the screen edge. */
+function wholePixels(box: Box): Box {
+  const x = Math.floor(box.x + 1e-9), y = Math.floor(box.y + 1e-9);
+  return {x, y, width: Math.ceil(box.x + box.width - 1e-9) - x, height: Math.ceil(box.y + box.height - 1e-9) - y};
+}
 function scaled(origin: LayoutOrigin, scale: number, x: number, y: number, width: number, height: number): Box {
   return {
     x: origin.x + x * scale,
@@ -176,8 +185,8 @@ export function normalizeLayoutGeometry(
       DEFAULT_LAYOUT.scrollbar.width, DEFAULT_LAYOUT.scrollbar.height),
     header: scaled(origin, anchorScale, DEFAULT_LAYOUT.header.x, DEFAULT_LAYOUT.header.y,
       DEFAULT_LAYOUT.header.width, DEFAULT_LAYOUT.header.height),
-    area: scaled(origin, anchorScale, DEFAULT_LAYOUT.area.x, DEFAULT_LAYOUT.area.y,
-      DEFAULT_LAYOUT.area.width, DEFAULT_LAYOUT.area.height),
+    area: wholePixels(scaled(origin, anchorScale, DEFAULT_LAYOUT.area.x, DEFAULT_LAYOUT.area.y,
+      DEFAULT_LAYOUT.area.width, DEFAULT_LAYOUT.area.height)),
     geometry,
   };
 }

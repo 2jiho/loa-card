@@ -93,7 +93,7 @@ export function rowScannerState(snapshot:RowScanSnapshot):ScannerState {
     droppedFrames:0,liveMissedFrames:snapshot.droppedFrames,liveInput:'track',
     workPhase:snapshot.phase==='capture'?'capture':snapshot.phase==='reading'?'reading':snapshot.phase==='verifying'?'verifying':'cleanup',
     unidentified:[],
-    listGuidance:{asks:[...snapshot.guidance.asks],notes:[...snapshot.guidance.notes]},
+    listGuidance:{asks:[...snapshot.guidance.asks],notes:[...snapshot.guidance.notes],...(snapshot.guidance.map?{map:snapshot.guidance.map}:{})},
     ...(complete&&expected!==null?{completionReceipt:{version:1 as const,mode:'ended' as const,expected,finalExpected:snapshot.finalExpected!}}:{}),
   };
 }

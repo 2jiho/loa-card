@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {COARSE_SCALES,createDetector} from '../src/features/card-scanner/acquisition/detector';
+import {COARSE_SCALES,createDetector,inputScale} from '../src/features/card-scanner/acquisition/detector';
 import type {DetectorPlatform} from '../src/features/card-scanner/acquisition/detector';
 import {recordDetectorStage,type DetectorProfile} from '../src/features/card-scanner/acquisition/detector-profile';
 
@@ -257,9 +257,10 @@ test('an exact repeated global miss can be reused but changed input searches aga
  const detector=await createDetector(fake.value,true);
  try {
   const input={width:2000,height:1600} as HTMLCanvasElement;
-  // One full search tries every coarse scale once.
-  assert.equal(detector.detect(input),null);assert.equal(matches,COARSE_SCALES.length);
-  assert.equal(detector.detect(input),null);assert.equal(matches,COARSE_SCALES.length);
-  fake.changePixel();assert.equal(detector.detect(input),null);assert.equal(matches,COARSE_SCALES.length*2);
+  // One full search tries the scale the input size suggests (2000x1600: 0.78) and every coarse scale once.
+  const full=COARSE_SCALES.length+(COARSE_SCALES.some(scale=>Math.abs(scale-inputScale(2000,1600)!)<=.005)?0:1);
+  assert.equal(detector.detect(input),null);assert.equal(matches,full);
+  assert.equal(detector.detect(input),null);assert.equal(matches,full);
+  fake.changePixel();assert.equal(detector.detect(input),null);assert.equal(matches,full*2);
  } finally {detector.dispose();}
 });

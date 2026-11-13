@@ -477,9 +477,9 @@ test('one observation of a clean empty counter is enough for zero; more only fir
   assert.equal(emptyCounterProof(explicitEmpty,1,true),null,'explicit empty uses the existing path');
 });
 
-test('only crops from a smaller screen get the lower contrast floor', () => {
-  assert.equal(countContrastFloor(140),.30);   // 2560x1440 full screen
-  assert.equal(countContrastFloor(137),.30);   // a 2560x1440 window drawn at 0.98
+test('only resampled crops get the lower contrast floor', () => {
+  assert.equal(countContrastFloor(140),.30);   // 2560x1440 full screen: read at its own size
+  assert.equal(countContrastFloor(137),.22);   // a 2560x1440 window drawn at 0.98
   assert.equal(countContrastFloor(105),.22);   // 1920x1080
   assert.equal(countContrastFloor(undefined),.30);
   assert.equal(countContrastFloor(0),.30);

@@ -1,5 +1,5 @@
 import type { CountPatternReading } from "./count-pattern";
-import { COUNT_UNEXPLAINED_TRAILING_GLYPH } from "./count-pattern";
+import { countStrongGap, countScoreAtCropSize, COUNT_UNEXPLAINED_TRAILING_GLYPH } from "./count-pattern";
 import { corroboratedCount } from "./count-corroboration";
 
 export type CountReliability = "stable-frame" | "clear-pattern" | "distinct-pattern" | "repeated-pattern" | "pattern-ocr" | "empty-counter" | "fixed-zero" | "unconfirmed";
@@ -17,7 +17,7 @@ function validPositive(input: CountInput) {
     input.extraCopies !== null && Number.isInteger(input.extraCopies) && input.extraCopies > 0 &&
     input.extraCopies <= 15 - input.awakening * (input.awakening + 1) / 2 && !!p &&
     p.value === input.extraCopies && p.candidate === input.extraCopies &&
-    Number.isFinite(p.score) && Number.isFinite(p.gap) && p.score >= .30 && p.gap >= .018;
+    Number.isFinite(p.score) && Number.isFinite(p.gap) && p.score >= countScoreAtCropSize(.30, p) && p.gap >= .018;
 }
 
 /** A canonical-frame claim must be backed by the caller's input store. An ID
@@ -140,8 +140,8 @@ export function countReliability(input: {
     // readings plus a strong single-digit candidate can show the stroke belongs
     // to the artwork, while a low-gap/weak candidate stays unconfirmed.
     const strongCandidate = input.pattern.candidate === input.extraCopies &&
-      Number.isFinite(input.pattern.score) && input.pattern.score >= .45 &&
-      Number.isFinite(input.pattern.gap) && input.pattern.gap >= .10;
+      Number.isFinite(input.pattern.score) && input.pattern.score >= (input.pattern.strongScore ?? .45) &&
+      Number.isFinite(input.pattern.gap) && input.pattern.gap >= countStrongGap(input.pattern);
     if (!strongCandidate || input.patternOcrAgreed !== true ||
       input.ocrConfirmedValue !== input.extraCopies) return "unconfirmed";
   }

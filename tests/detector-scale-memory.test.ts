@@ -122,3 +122,15 @@ test('the 1920x1080 interface scale is one of the search scales', () => {
   const sorted=[...COARSE_SCALES].sort((a,b)=>a-b);
   assert.ok(sorted.includes(1)&&sorted.includes(.75));
 });
+
+test('the input size suggests the fitted interface scale first', async () => {
+  const {inputScale} = await import('../src/features/card-scanner/acquisition/detector');
+  assert.equal(inputScale(2560, 1440), 1);
+  assert.equal(inputScale(1920, 1080), .75);
+  assert.equal(inputScale(1922, 1106), .75);   // 1080p window share with border and title
+  assert.equal(inputScale(2510, 1438), .98);   // 2560x1440 window drawn at 0.98
+  assert.equal(inputScale(1600, 900), .63);
+  assert.equal(inputScale(1600, 1200), .63);   // 4:3: black bars above and below, same scale
+  assert.equal(inputScale(3440, 1440), 1);     // 21:9: bars at the sides
+  assert.equal(inputScale(0, 900), null);
+});

@@ -66,6 +66,8 @@ test('recognizer policies preserve evidence and isolate invocation diagnostics a
     '/scanner/artwork-details.json':{},
     '/scanner/screen-artwork-details.json':{cards:{}},
     '/scanner/screen-artwork-extra.json':{cards:{}},
+    '/scanner/screen-artwork-1080.json':{cards:{}},
+    '/scanner/screen-artwork-0625.json':{cards:{}},
     '/scanner/portrait-competitors.json':{version:1,kind:'client-atlas-competitor-only',cards:{}},
     '/scanner/stars.json':{gray:[new Array(170).fill(0)],gold:[new Array(170).fill(255)]},
     '/scanner/counter-patterns.json':{patterns:[]},

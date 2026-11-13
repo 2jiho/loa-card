@@ -1,7 +1,7 @@
 import type {TrackLineReply,TrackLineRequest,TrackLineStats} from '../capture/track-line-worker';
 import type {ScannedCard} from '../recognition/recognizer-types';
-import {describeListGuidance} from '../session/list-guidance';
-import type {ListGuidance} from '../session/list-guidance';
+import {describeListGuidance,listGuidanceMap} from '../session/list-guidance';
+import type {ListGuidance,ListGuidanceMap} from '../session/list-guidance';
 import {createAcquisitionClient} from '../acquisition/acquisition-client';
 import {createVisualClient} from '../recognition/visual-client';
 import {createRecognizer} from '../recognition/recognizer';
@@ -127,7 +127,9 @@ export interface RowScanSnapshot {
   readonly growthPoints:{readonly current:number;readonly maximum:number|null}|null;
   /** Cells seen but not named (in anchored rows and in rows without a place). */
   readonly unidentifiedCells:number;
-  readonly guidance:{readonly asks:readonly string[];readonly notes:readonly string[]};
+  readonly guidance:{readonly asks:readonly string[];readonly notes:readonly string[];
+    /** The same rows on a picture of the list, with the rows on screen now (session/list-guidance.ts). */
+    readonly map?:ListGuidanceMap};
 }
 
 export async function runRowScan(options:{
@@ -260,6 +262,8 @@ export async function runRowScan(options:{
     let shareEnd:{at:number;cards:number;complete:number;confirmed?:number}|null=null;
     options.onReady?.();
     let lastLocated=false,lastSnapshot=-Infinity;
+    /** The list row at the top of the screen in the latest frame the scrollbar was read in. */
+    let screenRow:number|null=null;
     const headerCanvas=document.createElement('canvas'),headerContext=headerCanvas.getContext('2d',{willReadFrequently:true})!;
     const header={expected:null as number|null,capacity:null as number|null,finalExpected:null as number|null,time:0,kept:false,nextTry:-Infinity,
       firstAt:null as number|null,reads:0,failures:0,fresh:null as number|null,freshTried:-Infinity};
@@ -297,7 +301,8 @@ export async function runRowScan(options:{
         cards:merged.cards,confirmed:merged.confirmed,expected:header.expected,capacity:header.capacity,finalExpected:header.finalExpected,freshExpected:header.fresh,
         growthPoints:growth.points,
         unidentifiedCells:(()=>{const guidance=session.guidance(totalRows);return guidance.cells.filter(cell=>cell.kind==='unidentified').length+guidance.unplaced.unidentified;})(),
-        guidance:describeListGuidance(session.guidance(totalRows),{totalRows})});}catch{/* A display callback cannot stop the scan. */}
+        guidance:(()=>{const guidance=session.guidance(totalRows);return {...describeListGuidance(guidance,{totalRows}),
+          map:listGuidanceMap(guidance,{totalRows,visibleRows:GRID_ROWS,currentRow:screenRow})};})()});}catch{/* A display callback cannot stop the scan. */}
     };
     const completion=input.start().finally(()=>{ended=true;shareEnd={at:performance.now(),...counts()};wake?.();publishSnapshot('reading');});
     const counts=()=>{const cards=session.cards();return {cards:cards.length,complete:cards.filter(card=>card.observations.some(observation=>observation.awakening!==null&&observation.extraCopies!==null)).length,
@@ -367,6 +372,7 @@ export async function runRowScan(options:{
         stripContext.drawImage(frame,bar.x,bar.y,bar.width,bar.height,0,0,16,942);
         const thumb=thumbClock(time,readScrollGeometry(stripContext.getImageData(0,0,16,942).data,16,942)?.position??null);
         stage.thumb.push(performance.now()-thumbStarted);thumbRow=thumb.position===null?null:Math.round(thumb.position*scrollSteps);
+        if(thumbRow!==null)screenRow=thumbRow;
         read=async()=>{
           const readStarted=performance.now();
           await session.processFrame(time,acquired.cells.map(cell=>({usable:cell.quality.usable,empty:cell.quality.reason===EMPTY_REASON,image:cell.image,feature:cell.feature,alignment:cell.alignment,fieldRevision:cell.fieldRevision})),thumb);

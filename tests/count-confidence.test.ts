@@ -8,6 +8,22 @@ test("unexplained trailing glyph blocks OCR and even a stable-frame shortcut",()
   assert.equal(countReliability(sample),"unconfirmed");
   assert.equal(currentCountReliability(sample),"unconfirmed");
 });
+test("a trailing-glyph candidate is strong by the score of its crop size, with gap and agreeing OCR",()=>{
+  // 구스토 at 1920x1080: +1 in front of a white coat, the same veto it gets at 2560x1440 (score 0.50).
+  const small={stable:true,borderAlignment:1,awakening:0,extraCopies:1,iconPresent:true,ocrConfirmedValue:1,patternOcrAgreed:true,
+    pattern:{value:null,candidate:1,score:.288,gap:.119,reason:COUNT_UNEXPLAINED_TRAILING_GLYPH,strongScore:.27}};
+  assert.notEqual(countReliability(small),"unconfirmed");
+  // Without the crop-size score (a 2560x1440 crop), the same score stays unconfirmed.
+  assert.equal(countReliability({...small,pattern:{...small.pattern,strongScore:undefined}}),"unconfirmed");
+  // The other conditions are unchanged: runner-up gap, OCR agreement, OCR value.
+  assert.equal(countReliability({...small,pattern:{...small.pattern,gap:.059}}),"unconfirmed");
+  // The gap scales with the score: 0.06 for a resampled crop (구스토 in a window drawn at 0.98: gap 0.066).
+  assert.notEqual(countReliability({...small,pattern:{...small.pattern,gap:.066}}),"unconfirmed");
+  assert.equal(countReliability({...small,pattern:{...small.pattern,gap:.066,strongScore:undefined,score:.5}}),"unconfirmed");
+  assert.equal(countReliability({...small,patternOcrAgreed:false}),"unconfirmed");
+  assert.equal(countReliability({...small,ocrConfirmedValue:11}),"unconfirmed");
+  assert.equal(countReliability({...small,pattern:{...small.pattern,score:.26}}),"unconfirmed");
+});
 test("numeric confirmation reaches final reliability only on an intact card", () => {
   const observation = { stable: false, borderAlignment: .95, awakening: 0, extraCopies: 8,
     iconPresent: true, ocrConfirmedValue: 8,

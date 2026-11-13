@@ -103,7 +103,7 @@ import { areaGray } from '../acquisition/area-gray';
 import { cutRescueArea, rescueAreaBounds } from '../acquisition/rescue-area';
 import type { RescueArea } from '../acquisition/rescue-area';
 import type { CardSort } from "../recognition/capture-metadata";
-import { createDetector } from "../acquisition/detector";
+import { createDetector, inputScale } from "../acquisition/detector";
 import type {Box} from '../acquisition/detector';
 import {
   createRecognizer,
@@ -280,7 +280,7 @@ export interface ScannerState {
   /** Row-centred scan only: what to show again, worked out from the list table
    * (session/list-guidance.ts). `asks` are requests; `notes` are what the table cannot decide.
    * Presentation only: it supplies no card, no value and no completion evidence. */
-  listGuidance?:{readonly asks:readonly string[];readonly notes:readonly string[]};
+  listGuidance?:{readonly asks:readonly string[];readonly notes:readonly string[];readonly map?:import('../session/list-guidance').ListGuidanceMap};
   recoveryReuse?: { frames:number; observations:number; skippedOriginals:number };
   /** DEV-only restored buffer handoff counters, not an acquisition/OCR proof. */
   restoredHandoff?:{consumed:number;unavailable:number;failed:number;prefetchTransfers:number|null};
@@ -397,6 +397,23 @@ export async function runScanner(...args:Parameters<typeof runScannerInternal>) 
         liveReporter=createLiveRunReporter({recordingId:recorder.id,build:String(import.meta.env.VITE_BUILD_REVISION??'local')});
         // The scanner tells the recorder when it located the card window.
         locatedFrameSink=()=>recorder.located();
+        // Development only: keep the whole share, also when the card window is never found, so a
+        // failure can be studied. On with ?record=all; on by itself for an input size whose
+        // fitted scale no recording has covered yet, and when no window is found in the first
+        // 5 seconds. (A share where the window is found keeps only its card-window spans.)
+        {
+          const TESTED_SCALES=[1,.98,.75];
+          const media=video as HTMLVideoElement,scale=inputScale(media.videoWidth,media.videoHeight);
+          const always=(typeof location!=='undefined'&&new URLSearchParams(location.search).get('record')==='all')||
+            (scale!==null&&!TESTED_SCALES.some(tested=>Math.abs(tested-scale)<.015));
+          let everLocated=false,timer:ReturnType<typeof setInterval>|undefined;
+          const keepAll=()=>{timer??=setInterval(()=>{try{recorder.located();}catch{/* Development recording is optional. */}},500);};
+          locatedFrameSink=()=>{everLocated=true;recorder.located();};
+          if(always)keepAll();
+          const fallback=setTimeout(()=>{if(!everLocated)keepAll();},5000);
+          if(always)console.info('[share-recorder] recording the whole share (input',media.videoWidth+'x'+media.videoHeight,'scale',scale,')');
+          shareRecorder={stop:()=>{clearTimeout(fallback);if(timer)clearInterval(timer);return recorder.stop();},stats:()=>recorder.stats()} as typeof shareRecorder;
+        }
         try{debug?.onShareRecording?.(recorder.id);}catch{/* Optional callback. */}
       }else{
         const reason='공유 영상 트랙을 읽을 수 없음';

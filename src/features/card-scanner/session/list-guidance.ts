@@ -138,3 +138,50 @@ export function describeListGuidance(guidance:ListGuidance,options:{readonly tot
     notes.push(`${end+1}번째 줄에서 빈 칸이 보였습니다. 그 뒤 ${after.map(run=>range(run.from,run.to)).join(', ')}은 보지 않았습니다(카드가 더 있는지는 알 수 없음)`);
   return {asks,notes};
 }
+
+/** Where the rows to show again are, against the rows on screen now, for a picture of the list. */
+export interface ListGuidanceMap {
+  readonly totalRows:number;
+  /** Rows the screen shows at once. */
+  readonly visibleRows:number;
+  /** The list row at the top of the screen now (from the scrollbar), or null when not known. */
+  readonly currentRow:number|null;
+  /** Rows to show again (0 = top), each once, in order: a card or cell to read again there, or a
+   * row not seen yet. The same rows `describeListGuidance` asks for; rows without a place are not
+   * in it (they cannot be drawn). */
+  readonly targets:readonly {readonly row:number;readonly kind:'card'|'cell'|'unseen'}[];
+  /** Which way the nearest target is from the rows on screen. */
+  readonly direction:{readonly kind:'here'|'up'|'down';readonly rows:number;readonly row:number}|null;
+}
+
+export function listGuidanceMap(guidance:ListGuidance,options:{readonly totalRows:number;readonly visibleRows:number;readonly currentRow:number|null}):ListGuidanceMap {
+  const totalRows=Math.max(0,Math.floor(options.totalRows)),visibleRows=Math.max(1,Math.floor(options.visibleRows));
+  const kinds=new Map<number,'card'|'cell'|'unseen'>();
+  const put=(row:number,kind:'card'|'cell'|'unseen')=>{if(row<0||row>=totalRows)return;const was=kinds.get(row);
+    // A card to read again says most; an unseen row least.
+    if(!was||(was==='unseen'&&kind!=='unseen')||(was==='cell'&&kind==='card'))kinds.set(row,kind);};
+  for(const card of guidance.cards)if(card.row!==null)put(card.row,'card');
+  const unreadKnown=guidance.unplaced.rows===0;
+  for(const cell of guidance.cells)if(cell.kind==='unidentified'||unreadKnown)put(cell.row,'cell');
+  // As describeListGuidance: unseen rows are asked for only when no rows wait for a place, and
+  // never after the first empty slot.
+  if(guidance.missingRowsUnseen){
+    const end=guidance.emptyFromRow;
+    for(const run of guidance.missingRows)for(let row=run.from;row<=run.to&&(end===null||row<=end);row++)put(row,'unseen');
+  }
+  const targets=[...kinds].sort((a,b)=>a[0]-b[0]).map(([row,kind])=>({row,kind}));
+  const current=options.currentRow===null||!Number.isFinite(options.currentRow)?null:
+    Math.max(0,Math.min(Math.max(0,totalRows-visibleRows),Math.round(options.currentRow)));
+  let direction:ListGuidanceMap['direction']=null;
+  if(current!==null&&targets.length){
+    const last=current+visibleRows-1;
+    const here=targets.find(target=>target.row>=current&&target.row<=last);
+    if(here)direction={kind:'here',rows:0,row:here.row};
+    else{
+      const above=[...targets].reverse().find(target=>target.row<current),below=targets.find(target=>target.row>last);
+      const up=above?current-above.row:Infinity,down=below?below.row-last:Infinity;
+      direction=up<=down?{kind:'up',rows:up,row:above!.row}:{kind:'down',rows:down,row:below!.row};
+    }
+  }
+  return {totalRows,visibleRows,currentRow:current,targets,direction};
+}

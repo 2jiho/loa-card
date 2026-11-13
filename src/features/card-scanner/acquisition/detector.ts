@@ -60,6 +60,17 @@ export function loadCv(): Promise<CV> {
  * it the nearest scales were 0.7 and 0.85, and the card window of a 1080p share was not found at
  * all (the native refinement only reaches 0.09 around a coarse match that already passed). */
 export const COARSE_SCALES = [1, 0.75, 0.85, 1.15, 0.7, 1.3, 0.55, 1.5] as const;
+/** The scale the input size suggests, tried before the fixed list. The game keeps its 16:9 layout
+ * and scales it to fit the screen (a narrower screen gets black bars above and below, a wider one
+ * at the sides), so the fitted scale is min(width/2560, height/1440): 0.75 for 1920x1080, about
+ * 0.98 for a 2510x1438 window, 0.625 for 1600x900 and 1600x1200. A window share adds a few
+ * pixels of border and title, which this rounding to 0.01 absorbs; the native refinement and the
+ * grid measurement settle the rest. It is only a first guess: the fixed list follows. */
+export function inputScale(width:number,height:number):number|null {
+  if(!(width>0&&height>0))return null;
+  const scale=Math.round(Math.min(width/2560,height/1440)*100)/100;
+  return scale>=.4&&scale<=2?scale:null;
+}
 /** Frames without a window that use only the remembered scale before one full search. */
 export const FULL_SEARCH_AFTER = 5;
 export interface DetectorPlatform {
@@ -162,7 +173,9 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
       const tracked = previous;
       if(knownScale&&(knownScale.width!==mediaWidth||knownScale.height!==mediaHeight))knownScale=null;
       const restricted=!tracked&&!!knownScale&&restrictedMisses<FULL_SEARCH_AFTER;
-      const coarseScales:readonly number[]=restricted?[knownScale!.scale]:COARSE_SCALES;
+      const fitted=inputScale(mediaWidth,mediaHeight);
+      const coarseScales:readonly number[]=restricted?[knownScale!.scale]
+        :fitted===null?COARSE_SCALES:[fitted,...COARSE_SCALES.filter(scale=>Math.abs(scale-fitted)>.005)];
       // Every untracked search that ends without a window counts, whichever check rejected
       // it: a weak match at the remembered scale that a later check refuses must still lead
       // back to the full search.
