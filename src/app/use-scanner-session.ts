@@ -124,11 +124,10 @@ export function useScannerClock(options: {
  * and passes `onCleanupUncertain` so an unverifiable disposal aborts the run. */
 export function useScannerPreparation(options: {
   busy: boolean;
-  replayBusy: boolean;
   engineSettling: boolean;
   onCleanupUncertain: () => void;
 }) {
-  const {busy, replayBusy, engineSettling, onCleanupUncertain} = options;
+  const {busy, engineSettling, onCleanupUncertain} = options;
   const preparation = useRef<ReturnType<typeof createPreparedSlot<PreparedScanner>> | null>(null);
   const [preparationState, setPreparationState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [preparationMessage, setPreparationMessage] = useState('');
@@ -155,7 +154,7 @@ export function useScannerPreparation(options: {
     });
   }
   useEffect(() => {
-    if (busy || replayBusy || engineSettling || preparationSettling || pendingPreparationCleanups.current > 0 || preparationCleanupUncertainRef.current) return;
+    if (busy || engineSettling || preparationSettling || pendingPreparationCleanups.current > 0 || preparationCleanupUncertainRef.current) return;
     let active = true;
     let slot: ReturnType<typeof createPreparedSlot<PreparedScanner>> | undefined;
     const feedback = createPreparationFeedback(message => {
@@ -192,7 +191,7 @@ export function useScannerPreparation(options: {
         trackPreparationSettlement(Promise.allSettled([slot.ready, Promise.resolve(disposal)]));
       }
     };
-  }, [busy, replayBusy, engineSettling, preparationSettling, preparationCleanupUncertain, preparationAttempt]);
+  }, [busy, engineSettling, preparationSettling, preparationCleanupUncertain, preparationAttempt]);
   return {
     preparation, preparationState, setPreparationState, preparationMessage, setPreparationMessage,
     preparationAttempt, setPreparationAttempt, preparationCleanupUncertainRef,

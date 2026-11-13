@@ -12,8 +12,6 @@ import {createShareAttemptGuard} from './features/card-scanner/capture/share-str
 import { LIVE_INPUT_LOSS_MESSAGE } from './features/card-scanner/session/input-loss-evidence';
 import { HEADER_CONFLICT_WARNING } from './features/card-scanner/session/completion-header-snapshot';
 import {deferredPanel} from './ui/DeferredPanel';
-import {takeMatchingPreparedScanner} from './features/card-scanner/session/matching-scanner-preparation';
-import { createPreparedSlot } from './features/card-scanner/acquisition/prepared-slot';
 import { ScanReadCount } from './features/card-scanner/ui/ScanReadProgress';
 import { scanHasInputWarnings } from './features/card-scanner/session/scan-monitor-outcome';
 import { duplicateRescueObservationCount } from './features/card-scanner/acquisition/fixed-grid-rescue';
@@ -23,8 +21,6 @@ import {monotonicNow} from './features/card-scanner/capture/monotonic-clock';
 import {ScanAttention} from './features/card-scanner/ui/ScanAttention';
 import {unattributedFieldReviewCount} from './features/card-scanner/session/current-scan-fields';
 import {knownReviewCardCount} from './features/card-scanner/ui/review-display';
-import type {ExactRecorder} from './features/card-scanner/reproduction/exact-recording';
-import {defaultDetailedRecording} from './features/card-scanner/ui/recording-ui-policy';
 import type { ScannerState } from "./features/card-scanner/orchestration/scanner";
 import type { ScannedCard } from "./features/card-scanner/recognition/recognizer";
 import "./App.css";
@@ -42,7 +38,6 @@ import { clearScanProgress, loadScanProgress, saveScanProgress } from "./feature
 const MerchantAlerts = deferredPanel(async () => ({default:(await import('./features/merchants/MerchantAlerts')).MerchantAlerts}));
 const GrowthPlanner = deferredPanel(async () => ({default:(await import('./features/growth/GrowthPlanner')).GrowthPlanner}));
 const RaidCards = deferredPanel(async () => ({default:(await import('./features/raid/RaidCards')).RaidCards}));
-const ScanReplayDialog = deferredPanel(async () => ({default:(await import('./features/card-scanner/ui/ScanReplayDialog')).ScanReplayDialog}));
 
 function App() {
   const [guideOpen, setGuideOpen] = useState(false);
@@ -54,8 +49,6 @@ function App() {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const {store:scanMonitorStore,probe:monitorLatency,publish:publishMonitor}=useScanMonitorSession();
-  const [replayOpen,setReplayOpen]=useState(false);
-  const [replayBusy,setReplayBusy]=useState(false);
   const pendingEngines=useRef(0);
   const [engineSettling,setEngineSettling]=useState(false);
   const [engineCleanupUncertain,setEngineCleanupUncertain]=useState(false);
@@ -70,34 +63,10 @@ function App() {
     pendingEngines.current++;setEngineSettling(true);let released=false;
     return()=>{if(released)return;released=true;pendingEngines.current--;setEngineSettling(pendingEngines.current>0);};
   }
-  const [recordingStatus,setRecordingStatus]=useState('');
-  const [recordingEnabled,setRecordingEnabled]=useState(()=>defaultDetailedRecording(import.meta.env.DEV));
-  const [recordingSaving,setRecordingSaving]=useState(false);
-  const [recordingPreparation,setRecordingPreparation]=useState('');
-  const [recordingReady,setRecordingReady]=useState(false);
-  const [recordingUnavailable,setRecordingUnavailable]=useState(false);
-  const exactPreparation=useRef<ReturnType<typeof createPreparedSlot<ExactRecorder>>|null>(null);
-  const diagnosticRun=useRef(0);
-  const archiveStatusSession=useRef<{id:string;message:string}|null>(null);
-  const archiveAbort=useRef<AbortController|null>(null);
-  useEffect(()=>{
-    if(!recordingEnabled||busy||replayBusy)return;
-    let active=true;
-    queueMicrotask(()=>{if(active){setRecordingReady(false);setRecordingUnavailable(false);setRecordingPreparation('상세 입력 기록 준비 중…');}});
-    const slot=createPreparedSlot(async signal=>{
-      const {createExactRecording}=await import('./features/card-scanner/reproduction/exact-recording');
-      signal.throwIfAborted();
-      return createExactRecording();
-    });
-    exactPreparation.current=slot;
-    void slot.ready.then(()=>{if(active){setRecordingReady(true);setRecordingPreparation('상세 입력 기록 준비 완료');}})
-      .catch(()=>{if(active){setRecordingReady(false);setRecordingUnavailable(true);setRecordingPreparation('무손실 기록을 준비하지 못했습니다. 스캔은 계속할 수 있으며 영상 또는 진단 요약만 남을 수 있습니다.');}});
-    return()=>{active=false;if(exactPreparation.current===slot)exactPreparation.current=null;void slot.dispose();};
-  },[recordingEnabled,busy,replayBusy]);
   const {preparation,preparationState,setPreparationState,preparationMessage,
     setPreparationAttempt,preparationCleanupUncertainRef,preparationCleanupUncertain,
     pendingPreparationCleanups,preparationSettling}=
-    useScannerPreparation({busy,replayBusy,engineSettling,onCleanupUncertain:()=>controller.current?.abort()});
+    useScannerPreparation({busy,engineSettling,onCleanupUncertain:()=>controller.current?.abort()});
   const [engineReady, setEngineReady] = useState(false);
   const [scanStartedAt, setScanStartedAt] = useState(0);
   const engineReadyRef = useRef(false);
@@ -319,41 +288,11 @@ function App() {
     },
     [],
   );
-  useEffect(()=>{
-    if(!import.meta.env.DEV||!recordingEnabled||busy||replayBusy||engineSettling||recordingSaving)return;
-    const abort=new AbortController();
-    archiveAbort.current=abort;
-    let retry:ReturnType<typeof setTimeout>|undefined;
-    const run=async()=>{
-      let failed=false;
-      try{
-        const {archivePendingReplaySessions}=await import('./features/card-scanner/reproduction/dev-replay-archive');
-        await archivePendingReplaySessions(abort.signal,event=>{
-          if(abort.signal.aborted)return;
-          if(event.state==='failed'||event.state==='waiting')failed=true;
-          const current=archiveStatusSession.current;
-          if(current?.id===event.id){
-            const suffix=event.state==='saving'?'로컬 검증 사례 저장 중':event.state==='waiting'?'기록 봉인 대기 중 · 브라우저 기록 보호 중':event.state==='unavailable'?'재현할 입력 없음 · 브라우저 진단 보호 중':event.state==='stored'?
-              event.storage==='raw'?'원시 기록 보관됨 · 재현 파일 없음 · 브라우저 기록 보호 중':event.storage==='raw-and-replay'?`원시 기록과 재현 파일 보관됨 · ${event.coverage==='partial'?'부분 기록':'재현 범위 미확인'} · 브라우저 기록 보호 중`:event.coverage==='declared-complete'?'로컬 검증 사례 보관됨':'로컬에 부분·미확인 기록 보관됨 · 브라우저 기록 보호 중'
-              :'로컬 검증 사례 저장 실패 · 브라우저 기록 보호 중';
-            setRecordingStatus(`${current.message} · ${suffix}`);
-          }else if(!current&&(event.state==='failed'||event.state==='unavailable'))
-            setRecordingStatus(event.state==='failed'?'이전 재현 기록의 로컬 보관 실패 · 브라우저 기록 보호 중':'이전 재현 기록에 입력이 없어 진단만 보호 중');
-        });
-      }catch{
-        if(!abort.signal.aborted){failed=true;setRecordingStatus('로컬 검증 사례 보관을 확인하지 못했습니다.');}
-      }
-      if(failed&&!abort.signal.aborted)retry=setTimeout(()=>void run(),60_000);
-    };
-    void run();
-    return()=>{abort.abort();clearTimeout(retry);if(archiveAbort.current===abort)archiveAbort.current=null;};
-  },[recordingEnabled,busy,replayBusy,engineSettling,recordingSaving]);
   async function start() {
     await runScanLifecycle({
-      inventory, state, preparation, exactPreparation, diagnosticRun, archiveAbort,
-      archiveStatusSession, controller, video, stream, scanMonitorStore, recordingEnabled,
-      catalogVersion, clearScanIncomplete, markScanIncomplete, noteScanProgress, publishMonitor,
-      beginEngineWork, setProgressRestored, setRecordingReady, setRecordingSaving, setRecordingStatus,
+      inventory, state, preparation, controller, video, stream, scanMonitorStore,
+      clearScanIncomplete, markScanIncomplete, noteScanProgress, publishMonitor,
+      beginEngineWork, setProgressRestored,
       setPreparationState, setBusy, setResultView, setInventoryFilter, setPage, setEngineReady,
       engineReadyRef, setEngineCleanupUncertain, setResetPending, setCsvPending, setError,
       setActionError, setState, setSharing, setScanStartedAt,
@@ -364,8 +303,8 @@ function App() {
     closeWindowShare({guard:shareAttempt.current, controller, engineReady:engineReadyRef, stream, setSharing});
   }
   async function share() {
-    if(busy || replayBusy || pendingEngines.current>0 || pendingPreparationCleanups.current>0 || preparationCleanupUncertainRef.current || csvReading || !backupReady || !catalog.length ||
-      preparationState!=='ready' || (recordingEnabled&&!recordingReady&&!recordingUnavailable) || shareAttempt.current.picking())return;
+    if(busy || pendingEngines.current>0 || pendingPreparationCleanups.current>0 || preparationCleanupUncertainRef.current || csvReading || !backupReady || !catalog.length ||
+      preparationState!=='ready' || shareAttempt.current.picking())return;
     release();
     resetScanDeadline();
     syncClock();
@@ -463,7 +402,6 @@ function App() {
   // and could not be pressed.
   const shareReadiness = sharePicking ? {title:'공유 창 선택 중',description:'공유할 로스트아크 창을 선택해 주세요.'}
     : preparationCleanupUncertain || engineCleanupUncertain ? {title:'엔진 정리 확인 필요',description:'이전 인식 엔진 종료를 확인하지 못해 새 스캔을 잠갔습니다. 페이지를 새로고침해 주세요.'}
-    : replayBusy ? {title:'재현 기록 처리 중',description:'저장된 재현 기록을 처리하고 있습니다.'}
     : !backupReady ? {title:'목록 불러오는 중',description:'저장된 카드 목록을 확인하고 있습니다. 끝나면 화면을 공유해 주세요.'}
     : catalogError ? {title:'카드 사전 불러오기 실패',description:'카드 이름 기준을 불러오지 못했습니다. 다시 시도를 눌러 주세요.'}
     : !catalog.length ? {title:'카드 사전 준비 중',description:'카드 이름 기준을 불러오는 중입니다.'}
@@ -471,10 +409,9 @@ function App() {
     : preparationState === 'loading' ? {title:'스캔 준비 중',description:'이름·장수 인식 엔진을 준비하고 있습니다. 끝나면 화면 공유 시작을 눌러 주세요.'}
     : preparationSettling || engineSettling ? {title:'이전 준비 정리 중',description:'이전 인식 엔진을 정리하고 있습니다. 잠시만 기다려 주세요.'}
     : csvReading ? {title:'CSV 확인 중',description:'CSV 파일을 확인하고 있습니다.'}
-    : recordingEnabled && !recordingReady && !recordingUnavailable ? {title:'진단 기록 준비 중',description:'진단 기록을 준비하고 있습니다. 끝나면 화면을 공유해 주세요.'}
     : null;
   const readinessStatus = !busy && !sharing && !error && !stopped && !scanIncomplete &&
-    (sharePicking || csvReading || replayBusy || !cards.length) ? shareReadiness : null;
+    (sharePicking || csvReading || !cards.length) ? shareReadiness : null;
   const statusTitle = scanTimedOut ? "스캔 시간 초과" : state?.interrupted === "stalled" ? "스캔 미완료" : error ? "입력을 확인해 주세요" : busy && !engineReady ? "스캔 준비 중" : sharing ? "화면 공유 중" : previewStatus ? previewStatus.title : busy && workPhase==='cleanup' ? "스캔을 마무리하고 있어요" : busy && workPhase==='verifying' ? "판독 결과를 검증하고 있어요" : busy && workPhase==='recovery' ? "저장된 화면을 다시 확인하고 있어요" : finalizing ? "카드 검증 완료" : busy ? "카드를 읽고 있어요" : stopped ? "스캔 중지됨" : scanIncomplete ? "스캔 미완료" : readinessStatus ? readinessStatus.title : review > 0 ? "확인할 카드가 남아 있어요" : inputWarnings ? knownInputWarnings ? "확인할 입력이 남아 있어요" : "카드 목록 준비됨" : state?.autoStopped ? "전체 카드 수집 완료" : state?.status === "CSV 불러오기 완료" ? "CSV 불러오기 완료" : cards.length ? "카드 목록 준비됨" : "화면을 공유해 시작하세요";
   const statusDescription = scanTimedOut ? "스캔 진행이 일정 시간 없어 중지했습니다. 카드가 충분히 보이도록 다시 스캔해 주세요."
     : error ? error
@@ -502,8 +439,7 @@ function App() {
       resultsReady={resultsReady} cardCount={cards.length}
       navHint={unattributedReview ? '최신 판독 확인이 필요합니다. 카드 성장 탭을 다시 공유해 주세요.' : busy ? '읽은 카드부터 각 메뉴에 반영합니다.' : review > 0 || nameIssues.length > 0 ? '강조된 카드를 다시 보여 주세요.' : !cards.length ? '스캔하거나 CSV를 불러오면 시작할 수 있어요.' : undefined}
       busy={busy} csvReading={csvReading} engineReady={engineReady} backupStatus={backupStatus} catalogVersion={catalogVersion}
-      guideOpen={guideOpen} onGuideOpen={()=>setGuideOpen(true)} onGuideClose={()=>setGuideOpen(false)}
-      diagnosticsDisabled={busy||csvReading} onDiagnostics={()=>{setGuideOpen(false);setReplayOpen(true);}}>
+      guideOpen={guideOpen} onGuideOpen={()=>setGuideOpen(true)} onGuideClose={()=>setGuideOpen(false)}>
       {actionError && <p className="error" role="alert">{actionError}<button className="text-button" onClick={() => setActionError('')}>닫기</button></p>}
       {busy && activeView!=='cards' && <div className="notice" role="status">
         <span className="scan-spinner" aria-hidden="true" /> 스캔 중 · <ScanReadCount completed={state?.currentRunRead ?? 0} expected={state?.expected ?? null} store={scanMonitorStore} inline/> 판독 · 결과 갱신 중
@@ -519,13 +455,11 @@ function App() {
       {backupReady && !cards.length && !busy && !sharing && !csvReading && <ScanQuickStart onHelp={() => setGuideOpen(true)} />}
       <ScannerWorkspace
         sharing={sharing} onStopSharing={stopSharing} onShare={()=>void share()}
-        sharePicking={sharePicking} busy={busy} replayBusy={replayBusy}
+        sharePicking={sharePicking} busy={busy}
         engineSettling={engineSettling} preparationSettling={preparationSettling}
         preparationCleanupUncertain={preparationCleanupUncertain} engineCleanupUncertain={engineCleanupUncertain}
         csvReading={csvReading} backupReady={backupReady} catalogLength={catalog.length}
-        preparationState={preparationState} recordingEnabled={recordingEnabled}
-        recordingReady={recordingReady} recordingUnavailable={recordingUnavailable}
-        recordingPreparation={recordingPreparation} recordingStatus={recordingStatus}
+        preparationState={preparationState}
         onAbort={()=>controller.current?.abort()} controller={controller}
         onResetRequest={()=>{setResetPending(!resetPending);setCsvPending(null);}}
         onResetCancel={()=>setResetPending(false)} onResetConfirm={()=>void resetInventory()} resetPending={resetPending}
@@ -545,11 +479,6 @@ function App() {
         video={video} ready={ready} onReady={()=>setReady(true)}
         onVideoError={()=>setError("공유 화면을 표시할 수 없습니다.")} monitorLatency={monitorLatency}
       />
-      {replayOpen&&<ScanReplayDialog open onClose={()=>setReplayOpen(false)} onBusy={setReplayBusy} beginEngineWork={beginEngineWork} onEngineCleanupUncertain={()=>setEngineCleanupUncertain(true)} engineBusy={engineSettling||preparationSettling||preparationCleanupUncertain} takePrepared={configuration=>{
-        setPreparationState('loading');return takeMatchingPreparedScanner(()=>preparation.current?.take(),configuration);
-      }}
-        recordingEnabled={recordingEnabled} onRecordingChange={enabled=>{setRecordingEnabled(enabled);setRecordingReady(false);}}
-        recordingBusy={busy||recordingSaving} recordingPreparation={busy?'현재 화면을 기록하고 있습니다.':recordingSaving?'이전 진단 기록 저장 중':recordingEnabled?recordingPreparation:undefined}/>}
       {catalogError && <p className="error" role="alert">{catalogError} <button className="text-button" onClick={() => { setCatalogError(''); setCatalogAttempt(n => n + 1); }}>다시 시도</button></p>}
       {legacyChoices.length > 0 && <div className="notice" role="group" aria-label="이전 백업 선택">{legacyChoices.map((item, i) => <Button key={item.key} disabled={!backupReady || busy} onClick={() => void restoreBackup(item.key)} title={item.names}>백업 {i + 1} · {item.count}종 · 경험치 {item.xp?.toLocaleString('ko-KR') ?? '미확인'}</Button>)}</div>}
       {backupError && <div className="notice" role="alert"><p>{backupError}</p>{!!state && <button className="text-button" disabled={busy || !backupReady} onClick={() => setBackupAttempt(n => n + 1)}>저장 다시 시도</button>}<button className="text-button" disabled={busy || !backupReady} onClick={() => void restoreBackup()}>현재 목록 대신 저장 목록 불러오기</button><span> · 현재 목록은 먼저 CSV로 보관해 주세요.</span></div>}

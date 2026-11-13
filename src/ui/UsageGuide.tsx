@@ -4,7 +4,6 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import HelpOutline from '@mui/icons-material/HelpOutlined';
-import BugReportOutlined from '@mui/icons-material/BugReportOutlined';
 import './UsageGuide.css';
 
 const steps = [
@@ -26,7 +25,7 @@ export function ScanQuickStart({ onHelp }: { onHelp: () => void }) {
   </section>;
 }
 
-export function UsageGuide({ open, onClose, onDiagnostics, diagnosticsDisabled }: { open: boolean; onClose: () => void; onDiagnostics: () => void; diagnosticsDisabled: boolean }) {
+export function UsageGuide({ open, onClose }: { open: boolean; onClose: () => void }) {
   return <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" aria-labelledby="usage-guide-title">
     <DialogTitle id="usage-guide-title">LoaCard 사용법</DialogTitle>
     <DialogContent dividers className="usage-guide">
@@ -58,15 +57,6 @@ export function UsageGuide({ open, onClose, onDiagnostics, diagnosticsDisabled }
         <p>이름·각성·장수가 미확인인 카드는 다시 읽은 뒤 CSV로 저장할 수 있습니다.</p>
         <p>CSV 불러오기는 현재 목록을 교체합니다. 다른 계정을 스캔할 때는 필요한 CSV를 저장하고 <strong>목록 초기화</strong> 후 시작하세요.</p>
         <p>CSV로 불러온 카드에는 DB에 연결된 원화를 표시합니다. 원화가 없는 카드는 대체 아이콘이 나오며, 이름·각성·장수는 그대로 사용할 수 있습니다.</p>
-      </section>
-      <section aria-labelledby="guide-replay"><h3 id="guide-replay">문제 해결</h3>
-        <p>스캔별 결과와 문제 카드 사진을 확인하고, 저장한 입력으로 다시 판독할 수 있습니다. 내 카드 목록은 바뀌지 않습니다.</p>
-        <Button color="inherit" startIcon={<BugReportOutlined />} disabled={diagnosticsDisabled} onClick={onDiagnostics}>스캔 진단</Button>
-        {diagnosticsDisabled&&<p>진행 중인 작업이 끝나면 사용할 수 있습니다.</p>}
-        <p>{import.meta.env.DEV?'개발 모드에서는 재현용 입력 기록이 기본으로 켜집니다.':'배포 페이지에서는 진단 요약과 제한된 문제 이미지의 저장을 기본으로 시도합니다. 입력을 다시 실행하려면 스캔 전에 진단 화면에서 상세 입력 기록을 켜 주세요.'} 기록은 이 브라우저에 보관하며 외부로 자동 전송하지 않습니다.</p>
-        <p>최근 8개·총 512MiB 한도로 보관합니다. 오래된 미고정 기록부터 정리하며, 고정하거나 진행 중인 기록은 자동 삭제하지 않습니다. 저장 공간이 부족하거나 오류가 나면 일부 또는 전체가 저장되지 않을 수 있습니다.</p>
-        <p>페이지가 중단되면 마지막 활성 확인에서 2분이 지난 뒤 진단 목록을 다시 열어 남아 있는 부분 기록을 확인하세요. 저장하지 못한 구간은 복구할 수 없습니다. 미리보기 영상이 없어도 입력이 남아 있으면 재현할 수 있습니다.</p>
-        <p>입력 재판독·당시 실행 상태 재생·실시간 속도 검사는 서로 다릅니다. 진단 파일을 공유하기 전 화면의 개인정보를 확인하세요.</p>
       </section>
     </DialogContent>
     <DialogActions><Button onClick={onClose}>닫기</Button></DialogActions>

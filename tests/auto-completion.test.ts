@@ -2,8 +2,6 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {AutoCompletionHold,canFinishEndedCapture,canSkipCoveredOriginals,canStopSharing,captureInputSettled,confirmedCaptureCount,currentHeaderAvailable,hasCompleteCaptureEvidence,stopCompletedShare} from '../src/features/card-scanner/session/auto-completion';
 import type {CaptureCompletion} from '../src/features/card-scanner/session/auto-completion';
-import {createPreviewPresentation} from '../src/features/card-scanner/ui/preview-presentation';
-import {InventoryEvidence} from '../src/features/card-scanner/session/inventory-evidence';
 import {canSkipRecovery} from '../src/features/card-scanner/session/recovery-completion';
 import {canFinishVerifiedCapture} from '../src/features/card-scanner/session/recovery-completion';
 import {UnknownLifecycle} from '../src/features/card-scanner/session/unknown-lifecycle';
@@ -12,34 +10,6 @@ import {ScanLedger} from '../src/features/card-scanner/session/scan-ledger';
 const input=():CaptureCompletion=>({expected:1,finalExpected:1,unresolved:0,dropped:0,
  cards:[{id:'a',name:'카드',awakening:0,extraCopies:1,countReliable:true,review:[],confidence:1,image:'',time:0,observations:1}],
  latest:new Map([['a',1]]),confirmedNames:new Map([['a',1]]),confirmed:new Map([['a',1]]),inputSettled:true,headerAvailable:true,fieldChangesSettled:true});
-
-test('automatic share stop does not wait for optional presentation, but final save does',async()=>{
- const controller=new AbortController(),presentation=createPreviewPresentation(controller.signal);
- let resolve!:(value:string)=>void;
- const thumbnail=new Promise<string>(done=>{resolve=done;});
- const inventory=new InventoryEvidence([],{seedPolicy:'prior-run-v3',trackPresentation:true});
- const source={sessionId:'scan',frameId:1,observationId:'1',captureOrder:1,captureTime:1,phase:'input' as const,slot:0,frame:'frame-1'};
- inventory.acceptIdentity(source,'a');inventory.confirmName(source,'a','카드');
- const change=inventory.recordObservation(source,{...input().cards[0],captureOrder:1,time:1,
-  capturePosition:{frame:'frame-1',slot:0,stable:true,sort:null}},.9);
- let activity='',saved=false,trackStops=0,shareEnded=false;
- assert.equal(presentation.track(thumbnail,image=>{inventory.settlePresentationImage('a',change.presentationObservation,image);}),true);
- void thumbnail.then(image=>{if(presentation.active)activity=image;});
- const work={collectionBusy:false,readingJobs:0,acquisitionSettled:true,queueSettled:true};
- const state={...input(),inputSettled:captureInputSettled(work)},hold=new AutoCompletionHold();
- assert.equal(presentation.waiting,1);
- assert.equal(hold.observe(state,0),false);
- assert.equal(hold.observe(state,1000),true);
- assert.equal(canStopSharing(state),true);
- stopCompletedShare({getTracks:()=>[{stop:()=>{trackStops++;}}] as MediaStreamTrack[]},()=>{shareEnded=true;});
- assert.equal(trackStops,1);assert.equal(shareEnded,true);
- assert.equal(controller.signal.aborted,false,'normal share stop must not cancel presentation');
- const final=presentation.flush().then(()=>{saved=true;});
- await Promise.resolve();assert.equal(saved,false,'final projection and persistence wait for the attachment');
- resolve('data:image/jpeg;base64,cA==');await final;
- assert.equal(inventory.cards.get('a')?.image,'data:image/jpeg;base64,cA==');assert.equal(activity,inventory.cards.get('a')?.image);
- assert.equal(presentation.waiting,0);assert.equal(saved,true);presentation.close();
-});
 
 test('removing preview from completion does not bypass capture, reader, source queue or evidence gates',()=>{
  const idle={collectionBusy:false,readingJobs:0,acquisitionSettled:true,queueSettled:true};

@@ -25,13 +25,11 @@ export function AppShell(props: {
   guideOpen: boolean;
   onGuideOpen: () => void;
   onGuideClose: () => void;
-  diagnosticsDisabled: boolean;
-  onDiagnostics: () => void;
   children: ReactNode;
 }) {
   const {activeView, onViewChange, onBrandClick, resultsReady, cardCount, navHint,
     busy, csvReading, engineReady, backupStatus, catalogVersion, guideOpen,
-    onGuideOpen, onGuideClose, diagnosticsDisabled, onDiagnostics, children} = props;
+    onGuideOpen, onGuideClose, children} = props;
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -62,7 +60,7 @@ export function AppShell(props: {
         {catalogVersion && <p>카드 데이터 기준일: {catalogVersion.replace("client-", "").replaceAll("-", ".")}</p>}
         <p>© 2026 LoaCard</p>
       </footer>
-      <UsageGuide open={guideOpen} onClose={onGuideClose} diagnosticsDisabled={diagnosticsDisabled} onDiagnostics={onDiagnostics} />
+      <UsageGuide open={guideOpen} onClose={onGuideClose} />
     </div>
   );
 }

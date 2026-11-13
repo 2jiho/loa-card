@@ -1,9 +1,7 @@
-import { test } from "node:test";
+import {test} from "node:test";
 import assert from "node:assert/strict";
-import { CandidateQueue,candidateOffer,sourceCandidateKey,sourceQueueSettled } from "../src/features/card-scanner/acquisition/candidate-queue";
+import {CandidateQueue,sourceCandidateKey} from "../src/features/card-scanner/acquisition/candidate-queue";
 import type {InventorySource} from '../src/features/card-scanner/session/inventory-evidence';
-import {UnknownScanSession} from '../src/features/card-scanner/session/unknown-scan-session';
-import {canStopSharing,type CaptureCompletion} from '../src/features/card-scanner/session/auto-completion';
 
 test('replaceAndTake returns the displaced candidate without releasing it',()=>{
  type Item={group:number;image:object}; const retired:Item[]=[];
@@ -205,37 +203,4 @@ test('a throwing clear retains the failed and remaining entries without releasin
  fail=false;queue.clear();
  assert.equal(queue.length,0);assert.deepEqual(released,[1,2,2,3]);
  assert.equal(queue.pushDetailed({group:4,image:first.image}),'queued');queue.clear();
-});
-
-test('a fuzzy duplicate remains a separate v2 candidate and a full queue blocks completion for its dropped source',()=>{
- const source=(frameId:number):InventorySource=>({sessionId:'s',frameId,observationId:`${frameId}`,
-   captureOrder:frameId,captureTime:frameId,phase:'input',slot:0,frame:`f${frameId}`});
- type Item={group:number;source:InventorySource};
- const a={group:4,source:source(1)},b={group:4,source:source(161)};
- assert.equal(candidateOffer('duplicate',false,false),'duplicate','legacy policy unchanged');
- assert.equal(candidateOffer('duplicate',false,true),'better','v2 does not skip based on fuzzy group');
- const queue=new CandidateQueue<Item>(160,()=>assert.fail('distinct sources must not replace one another'),()=>true,sourceCandidateKey);
- for(let frameId=1;frameId<=160;frameId++)assert.equal(queue.push({group:4,source:source(frameId)}),true);
- assert.equal(queue.push(b),false);
- const session=new UnknownScanSession({sessionId:'s'}),key={kind:'group' as const,sessionId:'s',group:4};
- const {frame:_aFrame,...aObservation}=a.source,{frame:_bFrame,...bObservation}=b.source;
- session.report({version:1,kind:'upsert',key,source:bObservation,captureOrder:161,captureTime:161,pending:false,
-   reason:'판독 대기열 가득 참',location:null},{pixelKey:'b',preview:()=>'',recognition:()=>''});
- session.confirmName(key,'a',aObservation,[]);
- const completion:CaptureCompletion={expected:1,finalExpected:1,unresolved:session.unresolved(),dropped:0,
-   cards:[{id:'a',name:'카드',awakening:0,extraCopies:1,countReliable:true,review:[],confidence:1,image:'',time:0,observations:1}],
-   latest:new Map([['a',1]]),confirmedNames:new Map([['a',1]]),confirmed:new Map([['a',1]]),
-   inputSettled:true,headerAvailable:true,fieldChangesSettled:true};
- assert.equal(queue.length,160);assert.equal(session.unresolved(),1);assert.equal(canStopSharing(completion),false);
- assert.equal(session.active()[0].source?.observationId,'161');
- session.confirmName(key,'b',bObservation,[]);
- assert.equal(session.unresolved(),0);
- assert.equal(canStopSharing({...completion,unresolved:0,inputSettled:sourceQueueSettled(true,queue.length)}),false,
-   'pending independent source blocks stop even when current inventory matches');
- assert.equal(sourceQueueSettled(false,queue.length),false,'legacy fuzzy groups do not prove pending crops were read');
- assert.equal(canStopSharing({...completion,unresolved:0,inputSettled:sourceQueueSettled(false,queue.length)}),false,
-   'matching inventory is insufficient while even the legacy queue still holds work');
- assert.equal(sourceQueueSettled(false,0),true);
- assert.equal(sourceQueueSettled(true,0),true);
- for(const invalid of [-1,NaN,Infinity])assert.equal(sourceQueueSettled(false,invalid),false);
 });

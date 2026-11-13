@@ -6,42 +6,28 @@ import {createLatestPublisher} from '../latest-publisher';
 import {createScannerFeedback} from '../features/card-scanner/ui/scanner-feedback';
 import {feedbackProbeEnabled} from '../features/card-scanner/ui/feedback-probe-setting';
 import type {ScanMonitorInput, ScanMonitorStore} from '../features/card-scanner/ui/scan-monitor-store';
-import {trackSourceVersion} from '../features/card-scanner/session/source-version-evidence';
 import {carryUnattributedFieldReviews,unattributedFieldReviewCount} from '../features/card-scanner/session/current-scan-fields';
-import {beginReproduction} from '../features/card-scanner/reproduction/scan-reproduction';
-import {watchRecordingReadiness} from '../features/card-scanner/reproduction/recording-readiness';
-import {detailedRecordingResult} from '../features/card-scanner/ui/recording-ui-policy';
 import {clearScanProgress, saveScanProgress} from '../features/card-scanner/persistence/progress-backup';
 import {takeMatchingPreparedScanner} from '../features/card-scanner/session/matching-scanner-preparation';
 import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../features/card-scanner/session/scanner-name-configuration';
 import {completionReasons} from '../features/card-scanner/session/positive-completion';
 import type {PreparedScanner} from '../features/card-scanner/session/scanner-preparation';
-import type {ExactRecorder} from '../features/card-scanner/reproduction/exact-recording';
 import {scanStateAfterIncomplete} from './scan-state-fallback';
 
 export interface ScanLifecycleDeps {
   inventory: {current: ScannedCard[]};
   state: ScannerState | null;
   preparation: {current: {take(): PreparedScanner | undefined} | null};
-  exactPreparation: {current: {take(): ExactRecorder | undefined} | null};
-  diagnosticRun: {current: number};
-  archiveAbort: {current: AbortController | null};
-  archiveStatusSession: {current: {id: string; message: string} | null};
   controller: {current: AbortController | null};
   video: {current: HTMLVideoElement | null};
   stream: {current: MediaStream | null};
   scanMonitorStore: ScanMonitorStore;
-  recordingEnabled: boolean;
-  catalogVersion: string;
   clearScanIncomplete: () => void;
   markScanIncomplete: (reasons: string[]) => void;
   noteScanProgress: (next: ScannerState) => void;
   publishMonitor: (input: ScanMonitorInput) => void;
   beginEngineWork: () => () => void;
   setProgressRestored: Dispatch<SetStateAction<boolean>>;
-  setRecordingReady: Dispatch<SetStateAction<boolean>>;
-  setRecordingSaving: Dispatch<SetStateAction<boolean>>;
-  setRecordingStatus: Dispatch<SetStateAction<string>>;
   setPreparationState: Dispatch<SetStateAction<'loading' | 'ready' | 'error'>>;
   setBusy: Dispatch<SetStateAction<boolean>>;
   setResultView: Dispatch<SetStateAction<'cards' | 'merchants' | 'growth' | 'raid'>>;
@@ -65,12 +51,10 @@ export interface ScanLifecycleDeps {
  */
 export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
   const {
-    inventory, state, preparation, exactPreparation, diagnosticRun, archiveAbort,
-    archiveStatusSession, controller, video, stream, scanMonitorStore, recordingEnabled,
-    catalogVersion, clearScanIncomplete, markScanIncomplete, noteScanProgress, publishMonitor,
-    beginEngineWork, setProgressRestored, setRecordingReady, setRecordingSaving, setRecordingStatus,
-    setPreparationState, setBusy, setResultView, setInventoryFilter, setPage, setEngineReady,
-    engineReadyRef, setEngineCleanupUncertain, setResetPending, setCsvPending, setError,
+    inventory, state, preparation, controller, video, stream, scanMonitorStore,
+    clearScanIncomplete, markScanIncomplete, noteScanProgress, publishMonitor,
+    beginEngineWork, setProgressRestored, setPreparationState, setBusy, setResultView, setInventoryFilter,
+    setPage, setEngineReady, engineReadyRef, setEngineCleanupUncertain, setResetPending, setCsvPending, setError,
     setActionError, setState, setSharing, setScanStartedAt,
   } = deps;
 
@@ -82,14 +66,8 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
   clearScanIncomplete();
   setProgressRestored(false);
   void clearScanProgress().catch(() => {});
-  archiveAbort.current?.abort();
   let unattributedFields = unattributedFieldReviewCount(state);
   const preparedCandidate = preparation.current?.take();
-  const exact = recordingEnabled ? exactPreparation.current?.take() : undefined;
-  const thisDiagnosticRun = ++diagnosticRun.current;
-  archiveStatusSession.current = null;
-  setRecordingReady(false);
-  setRecordingSaving(false);
   setPreparationState('loading');
   controller.current?.abort();
   const abort = new AbortController();
@@ -118,60 +96,15 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
     setState(next);
   }, 200);
   abort.signal.addEventListener('abort', () => presentation.flush(), {once: true});
-  let recording: ReturnType<typeof beginReproduction> | undefined;
-  let recordingIssue = false;
   let finalState: ScannerState | undefined;
   let completed = false;
   let scannerStarted = false;
-  let sourceVersion: ReturnType<typeof trackSourceVersion> | undefined;
-  try {
-    if (import.meta.env.DEV) {
-      sourceVersion = trackSourceVersion(async () => {
-        const response = await fetch('/__corpus/environment', {cache: 'no-store', signal: AbortSignal.timeout(2000)});
-        if (!response.ok) throw Error('Source snapshot unavailable');
-        return response.json();
-      }, invalidate => {
-        const hot = import.meta.hot;
-        hot?.on('vite:beforeUpdate', invalidate);
-        hot?.on('vite:beforeFullReload', invalidate);
-        return () => {
-          hot?.off('vite:beforeUpdate', invalidate);
-          hot?.off('vite:beforeFullReload', invalidate);
-        };
-      });
-    }
-  } catch { /* Source diagnostics must never prevent scanning. */ }
   const engineSettled = beginEngineWork();
   try {
     const prepared = await takeMatchingPreparedScanner(() => preparedCandidate, NORMAL_SCANNER_NAME_CONFIGURATION);
-    try {
-      recording = beginReproduction(inventory.current, {browser: navigator.userAgent, catalog: catalogVersion, build: import.meta.env.VITE_BUILD_REVISION ?? 'local'},
-        {record: recordingEnabled, exact, nameConfiguration: NORMAL_SCANNER_NAME_CONFIGURATION,
-          protectForArchive: import.meta.env.DEV && recordingEnabled,
-          onRecordingIssue: () => {
-            recordingIssue = true;
-            if (controller.current === abort && diagnosticRun.current === thisDiagnosticRun)
-              setRecordingStatus('진단 기록 일부가 누락될 수 있습니다. 카드 스캔은 계속됩니다.');
-          },
-          ...(sourceVersion ? {sourceVersion: () => sourceVersion.finish()} : {}),
-          ...(feedbackProbe ? {feedbackReceipts: () => feedbackProbe.stats()} : {})});
-      if (!recordingIssue) setRecordingStatus(recordingEnabled ? '진단 입력 기록 준비 중' : '');
-      watchRecordingReadiness(recording.ready, () => controller.current === abort && diagnosticRun.current === thisDiagnosticRun,
-        () => {
-          if (!recordingIssue) setRecordingStatus(recordingEnabled
-            ? (exact ? '진단용 입력 기록 중' : '무손실 기록 준비 실패 · 영상 또는 진단 요약만 남을 수 있습니다.')
-            : '');
-        },
-        () => setRecordingStatus('진단 기록을 저장할 수 없습니다. 카드 스캔은 계속됩니다.'));
-    } catch {
-      void exact?.dispose();
-      setRecordingStatus('진단 기록을 준비하지 못했습니다. 카드 스캔은 계속합니다.');
-    }
     scannerStarted = true;
-    sourceVersion?.scannerStarted();
     await runScanner(
       video.current!,
-      'screen',
       abort.signal,
       (result) => {
         if (controller.current === abort) {
@@ -184,7 +117,6 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
           presentation.publish(next);
         }
       },
-      inventory.current,
       () => {
         if (controller.current === abort) {
           setScanStartedAt(performance.now());
@@ -192,22 +124,9 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
           setEngineReady(true);
         }
       },
-      'all',
-      undefined,
-      false,
-      {...recording?.options, nameConfiguration: NORMAL_SCANNER_NAME_CONFIGURATION, onInternalSettled: engineSettled,
-        onInternalCleanupUncertain: () => setEngineCleanupUncertain(true), feedbackProbe,
-        // Development only: ?engine=classic runs the previous scanner loop instead of the row-centred
-        // scan, for comparison (no option in the app's own screens).
-        ...(import.meta.env.DEV && new URLSearchParams(location.search).get('engine') === 'classic' ? {engine: 'classic' as const} : {}),
-        onAutoCompletion: diagnostic => {
-          if (controller.current === abort) scanMonitorStore.publishAutoCompletion(diagnostic);
-        },
-        onLiveObstructionHint: hint => {
-          if (controller.current === abort && !abort.signal.aborted) scanMonitorStore.publishLiveObstructionHint(hint);
-        }},
+      {nameConfiguration: NORMAL_SCANNER_NAME_CONFIGURATION, onInternalSettled: engineSettled,
+        onInternalCleanupUncertain: () => setEngineCleanupUncertain(true), feedbackProbe},
       prepared,
-      feedback => { if (controller.current === abort) publishMonitor(feedback); },
     );
     presentation.flush();
     if (controller.current === abort) {
@@ -235,9 +154,7 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
       setSharing(false);
     }
   } finally {
-    sourceVersion?.scannerStopped();
-    if (!recording && sourceVersion) void sourceVersion.finish().catch(() => {});
-    if (!scannerStarted) { engineSettled(); void exact?.dispose(); }
+    if (!scannerStarted) engineSettled();
     presentation.cancel();
     if (controller.current === abort) {
       controller.current = null;
@@ -246,28 +163,6 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
       // save succeeds. Clearing it here raced a tab close and could lose the
       // only copy of a just-finished scan. The backup save clears it later.
       if (!completed && finalState) void saveScanProgress(finalState).catch(() => {});
-    }
-    // Result use and inventory autosave resume immediately. Diagnostic I/O
-    // has its own status and cannot hold the scanner in its busy state.
-    if (recording) {
-      const finishedRecording = recording;
-      if (diagnosticRun.current === thisDiagnosticRun) {
-        setRecordingSaving(true);
-        setRecordingStatus(recordingEnabled ? '진단 기록 저장 중 · 카드 목록은 사용할 수 있습니다.' : '');
-      }
-      void finishedRecording.finish(finalState, completed).then(file => {
-        const message = detailedRecordingResult(recordingEnabled, file);
-        if (diagnosticRun.current === thisDiagnosticRun) setRecordingStatus(message);
-        // The idle-only archive effect resumes this protected session after
-        // finalization and also retries interrupted earlier sessions.
-        if (import.meta.env.DEV && recordingEnabled && diagnosticRun.current === thisDiagnosticRun)
-          archiveStatusSession.current = {id: finishedRecording.id, message};
-      }).catch(e => {
-        if (diagnosticRun.current === thisDiagnosticRun)
-          setRecordingStatus(e instanceof Error ? e.message : '진단 기록 저장 실패');
-      }).finally(() => {
-        if (diagnosticRun.current === thisDiagnosticRun) setRecordingSaving(false);
-      });
     }
   }
 }

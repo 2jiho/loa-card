@@ -1,6 +1,6 @@
-import { test } from 'node:test';
+import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import { LiveScanCadence, timedCaptureOrder, liveLanePlan } from '../src/features/card-scanner/session/live-scan-policy';
+import {LiveScanCadence,timedCaptureOrder,liveLanePlan} from '../src/features/card-scanner/session/live-scan-policy';
 
 test('optional extra visual workers help only idle OCR lanes and never displace OCR retries',async()=>{
  const {LiveReaderSchedule}=await import('../src/features/card-scanner/session/live-scan-policy');
@@ -41,16 +41,8 @@ test('experimental OCR assist borrows only the idle second fast lane while prese
  assert.equal(pick(2,{...idle,short:2}),'short');
 });
 
-test('OCR assist request is opt-in and rejects ambiguous or malformed query values',async()=>{
- const {parseScannerExperiment}=await import('../dev/latest-pixel-gate-report');
- assert.equal(parseScannerExperiment('','fastOcrAssist'),false);
- assert.equal(parseScannerExperiment('?fastOcrAssist=0','fastOcrAssist'),false);
- assert.equal(parseScannerExperiment('?fastOcrAssist=1','fastOcrAssist'),true);
- assert.throws(()=>parseScannerExperiment('?fastOcrAssist=1&fastOcrAssist=1','fastOcrAssist'));
- assert.throws(()=>parseScannerExperiment('?fastOcrAssist=true','fastOcrAssist'));
-});
-import { consensus } from '../src/features/card-scanner/recognition/consensus';
-import type { ScannedCard } from '../src/features/card-scanner/recognition/recognizer';
+import {consensus} from '../src/features/card-scanner/recognition/consensus';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 test('a completed acquisition accepts the next delivered frame without a second wall-time delay', () => {
   const cadence = new LiveScanCadence();
   assert.equal(cadence.take(0), true);

@@ -25,7 +25,6 @@ export interface ScannerWorkspaceProps {
   onShare: () => void;
   sharePicking: boolean;
   busy: boolean;
-  replayBusy: boolean;
   engineSettling: boolean;
   preparationSettling: boolean;
   preparationCleanupUncertain: boolean;
@@ -34,11 +33,6 @@ export interface ScannerWorkspaceProps {
   backupReady: boolean;
   catalogLength: number;
   preparationState: 'loading' | 'ready' | 'error';
-  recordingEnabled: boolean;
-  recordingReady: boolean;
-  recordingUnavailable: boolean;
-  recordingPreparation?: string;
-  recordingStatus: string;
   onAbort: () => void;
   controller: {current: AbortController | null};
   onResetRequest: () => void;
@@ -120,21 +114,19 @@ export function ScannerWorkspace(props: ScannerWorkspaceProps) {
   const shareBlockedLabel = p.sharePicking ? '공유 창 선택 중'
     : p.preparationCleanupUncertain || p.engineCleanupUncertain ? '엔진 정리 확인 필요'
     : p.busy ? '스캔 처리 중'
-    : p.replayBusy ? '재현 기록 처리 중'
     : !p.backupReady ? '목록 불러오는 중'
     : !p.catalogLength ? '카드 사전 준비 중'
     : p.preparationState === 'error' ? '스캔 준비 실패'
     : p.preparationState === 'loading' ? '스캔 준비 중'
     : p.engineSettling || p.preparationSettling ? '이전 준비 정리 중'
     : p.csvReading ? 'CSV 확인 중'
-    : p.recordingEnabled && !p.recordingReady && !p.recordingUnavailable ? '진단 기록 준비 중'
     : '화면 공유 시작';
   return <section className="scanner panel" aria-label="카드 스캔">
     <div className="scanner-main">
       <h1>카드 스캔</h1>
       <div className="toolbar">
         {p.sharing ? <Button variant="contained" startIcon={<StopCircleOutlined />} onClick={p.onStopSharing}>화면 공유 종료</Button>
-          : <Button variant="contained" startIcon={<ScreenShareOutlined />} disabled={p.sharePicking || p.busy || p.replayBusy || p.engineSettling || p.preparationSettling || p.preparationCleanupUncertain || p.engineCleanupUncertain || p.csvReading || !p.backupReady || !p.catalogLength || p.preparationState !== 'ready' || (p.recordingEnabled && !p.recordingReady && !p.recordingUnavailable)} onClick={() => p.onShare()}>{shareBlockedLabel}</Button>}
+          : <Button variant="contained" startIcon={<ScreenShareOutlined />} disabled={p.sharePicking || p.busy || p.engineSettling || p.preparationSettling || p.preparationCleanupUncertain || p.engineCleanupUncertain || p.csvReading || !p.backupReady || !p.catalogLength || p.preparationState !== 'ready'} onClick={() => p.onShare()}>{shareBlockedLabel}</Button>}
         <Button color="inherit" startIcon={<RestartAltOutlined />} disabled={p.sharePicking || p.sharing || p.busy || !p.backupReady || !p.cardsLength} aria-expanded={p.resetPending} onClick={p.onResetRequest}>목록 초기화</Button>
         <Button variant="outlined" startIcon={<FileDownloadOutlined />} disabled={p.sharePicking || p.sharing || p.busy || p.scanIncomplete || !p.cardsLength || p.csvReviewCount > 0} title={p.scanIncomplete ? '스캔이 완료되어야 저장할 수 있습니다.' : p.unattributedReview ? '최신 판독 확인 후 저장할 수 있습니다.' : p.csvIssues.length ? `${p.csvIssues.length}종의 이름·각성·장수 확인 후 저장할 수 있습니다.` : '전체 카드의 이름·각수·카드수 저장 · 행이 있으면 보유'} onClick={p.onSaveCsv}>CSV 저장</Button>
         <Button component="label" role={undefined} tabIndex={-1} variant="outlined" startIcon={<FileUploadOutlined />} disabled={p.sharePicking || p.sharing || p.busy || p.csvReading || !p.backupReady || !p.catalogLength} sx={{'&:focus-within': {outline: '2px solid var(--accent)', outlineOffset: 2}}}>
@@ -144,9 +136,6 @@ export function ScannerWorkspace(props: ScannerWorkspaceProps) {
         </Button>
         {p.busy && !p.sharing && <Button variant="outlined" color="inherit" startIcon={<StopCircleOutlined />} onClick={p.onAbort}>스캔 중지</Button>}
       </div>
-      {!p.busy && p.recordingEnabled && <small className="muted" role="status">{p.recordingUnavailable ? p.recordingPreparation :
-        import.meta.env.DEV ? '개발 모드 · 재현 기록 켜짐 · 스캔 후 로컬 검증 폴더 보관 시도' : '재현 기록 켜짐 · 선택한 화면을 이 브라우저에 기록 시도'}</small>}
-      {p.recordingStatus && <small className="muted" role="status">{p.recordingStatus}</small>}
       {!p.busy && p.scanIncomplete && <div className="notice" role="status">
         <p>스캔 미완료 · {p.scanIncompleteReasons.join(' · ')} · 기존 저장 목록은 변경하지 않았습니다.</p>
         {state && <p>{p.progressRestored ? '복원한 진행 기록은 판독이 끝나지 않아 CSV로 저장할 수 없습니다. 새 스캔은 이 카드 목록에서 이어집니다.' : '현재 결과는 확인이 끝나지 않아 CSV로 저장할 수 없습니다.'}</p>}
@@ -158,7 +147,7 @@ export function ScannerWorkspace(props: ScannerWorkspaceProps) {
         <span>{p.preparationMessage}</span>
         {p.preparationState === 'error' && !p.preparationCleanupUncertain && <Button size="small" disabled={p.preparationSettling} onClick={p.onRetryPreparation}>준비 다시 시도</Button>}
         {p.preparationSettling && !p.preparationCleanupUncertain && <span role="status">이전 준비 작업을 정리하고 있습니다.</span>}
-        {p.engineSettling && !p.busy && !p.replayBusy && <span role="status">{p.engineCleanupUncertain ? '인식 엔진 종료를 확인하지 못해 새 스캔을 잠갔습니다.' : '이전 인식 엔진 종료를 기다리고 있습니다.'}</span>}
+        {p.engineSettling && !p.busy && <span role="status">{p.engineCleanupUncertain ? '인식 엔진 종료를 확인하지 못해 새 스캔을 잠갔습니다.' : '이전 인식 엔진 종료를 기다리고 있습니다.'}</span>}
       </div>}
       {p.csvPending && <div className="import-confirm" role="group" aria-label="CSV 불러오기 확인">
         <div><strong>{p.csvPending.name} · {p.csvPending.cards.length}종</strong>

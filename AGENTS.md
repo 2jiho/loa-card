@@ -19,7 +19,7 @@ LoaCard 스캐너를 입력·획득·판독·상태·UI·기록의 책임이 분
 - React + TypeScript + Vite, MUI + Emotion의 정적 앱이다. 백엔드·API 키·Tailwind를 추가한다고 가정하지 않는다.
 - `npm run dev`는 OCR 자산과 배포 고지를 준비한다. 최초 실행은 공개 모델 다운로드에 네트워크가 필요하다.
 - 원본 영상·게임 DB·개인 스캔 결과는 `fixtures/local/`, `work/`에만 둔다. 개인 PC 절대 경로를 코드·문서에 넣지 않는다.
-- 일반 사용자 UI에 개발용 버튼을 되살리지 않는다. 입력 실험은 `dev/scanner.html`을 사용한다.
+- 일반 사용자 UI에 개발용 버튼을 되살리지 않는다. 입력 실험은 개발 서버의 화면 공유 기록과 `dev/recording.html` 재실행을 사용한다.
 - 게임 설치 파일을 수정하지 않는다. 데이터 갱신은 `docs/data-maintenance.md`를 따른다.
 
 ## 스캐너 불변 조건

@@ -1,25 +1,21 @@
-import type {ExactRecorder,ExactRecording,ExactRecordingStats,ExactJournalStats} from './exact-recording';
+import type {ExactRecordingStats} from './exact-recording';
 import {parseDebugCapture} from './debug-capture';
 import type {DebugCapture} from './debug-capture';
-import type {ScannerState,runScanner} from '../orchestration/scanner';
+import type {ScannerState} from '../orchestration/scanner';
 import type {ScannedCard} from '../recognition/recognizer-types';
-import type {ContinuousRecording} from '../capture/continuous-capture';
 import {boundedCountDiagnostics,boundedUnresolvedFieldChanges,type UnresolvedFieldChangeSnapshot} from '../session/current-scan-fields';
-import {createReproductionSessionStore,SessionStorageLimitError} from './reproduction-session-store';
+import {createReproductionSessionStore} from './reproduction-session-store';
 import type {ArchiveReceipt,ReproductionSession,ReproductionArchiveSnapshot,ReproductionSessionStore,SessionArchive} from './reproduction-session-store';
-import {createBoundedJournal,splitJournalBlob} from '../persistence/recording-journal';
 import {inspectExactPrefix} from './exact-recording-prefix';
 import {MAX_RETAINED_DIAGNOSTIC_IMAGES,summarizeUnidentified,type UnidentifiedDiagnostic} from '../session/unidentified-diagnostics';
 import {NORMAL_SCANNER_NAME_CONFIGURATION,parseScannerNameConfiguration,sameScannerNameConfiguration} from '../session/scanner-name-configuration';
 import type {ScannerNameConfiguration} from '../session/scanner-name-configuration';
 import type {NameOcrMetrics} from '../recognition/name-reader';
-import {feedbackReceiptDiagnostic} from '../session/scanner-feedback-summary';
 import type {FeedbackReceiptDiagnostic} from '../session/scanner-feedback-summary';
 import {parseReplayPolicy} from './rgba-window-policy';
-import {verifyCanonicalFinalization} from './canonical-finalization-proof';
 import {boundedAutoCompletionDiagnostic} from '../session/auto-completion-diagnostics';
 import type {AutoCompletionDiagnostic} from '../session/auto-completion-diagnostics';
-import {parseSourceVersionEvidence,resolveSourceVersionEvidence} from '../session/source-version-evidence';
+import {parseSourceVersionEvidence} from '../session/source-version-evidence';
 import type {SourceVersionEvidence} from '../session/source-version-evidence';
 import {boundedDrainInputLoss} from '../session/completion-drain-loss';
 import type {DrainInputLoss} from '../session/completion-drain-loss';
@@ -235,11 +231,6 @@ function omitNameOcr(summary:ScanDiagnosticSummary):boolean {
   const {nameOcr:_omitted,...performance}=summary.performance;
   summary.performance={...performance,nameOcrUnavailable:'invalid-or-over-limit'};return true;
 }
-function omitFeedbackReceipts(summary:ScanDiagnosticSummary):boolean {
-  if(!summary.performance||!Object.hasOwn(summary.performance,'feedbackReceipts'))return false;
-  const {feedbackReceipts:_omitted,...performance}=summary.performance;
-  summary.performance={...performance,feedbackReceiptsUnavailable:'invalid-or-over-limit'};return true;
-}
 
 function reproductionVersion(exact:Pick<ExactRecordingStats,'canonical'|'storageVersion'|'codec'|'policy'>|undefined):3|4|5|6 {
   // A malformed new tag cannot silently fall back to a legacy version. The
@@ -346,7 +337,6 @@ export function compareReproduction(before:ReproductionResult|null,after:Reprodu
 const sessions=createReproductionSessionStore();
 let storageEpoch=0;
 let storageLifetime=new AbortController();
-const EMPTY_IMAGE='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==';
 export interface ReproductionSessionItem {
   id:string;createdAt:string;status:'open'|'complete'|'partial'|'failed';pinned:boolean;bytes:number;
   read:number|null;expected:number|null;hasInput:boolean;record?:boolean;reason?:string;
@@ -522,242 +512,4 @@ export function clearReproduction(signal?:AbortSignal){
   await legacyValue('unused',signal,true);
   return {deleted,protectedActive};
   })();
-}
-export type ReproductionFinalizationStage='registered'|'exactFinish'|'producerJournalJoin'|'exactJournalJoin'|'videoJournalJoin'|
-  'fallbackWrites'|'journalDrain'|'preSealLoad'|'canonicalVerify'|'canonicalPrepare'|'canonicalCommit'|
-  'seal'|'postSealLoad'|'filePrefix'|'cleanup';
-export interface ReproductionJournalJoin {
-  /** Main-clock offsets from this finalization's start, not capture times. */
-  readonly startedAtMs:number|null;readonly finishedAtMs:number|null;
-  readonly before?:Readonly<ExactJournalStats>;readonly after?:Readonly<ExactJournalStats>;
-}
-/** Main-clock elapsed diagnostics, independent of recording completeness. A
- * stage stays null until its attempted work settles. File/prefix and cleanup
- * can overlap; stage durations must not be summed into totalMs. */
-export interface ReproductionFinalizationTiming extends Readonly<Record<`${ReproductionFinalizationStage}Ms`,number|null>> {
-  readonly status:'idle'|'running'|'fulfilled'|'rejected';
-  readonly totalMs:number|null;
-  readonly failedStages:readonly ReproductionFinalizationStage[];
-  readonly producerJournals:Readonly<Record<'exact'|'video',ReproductionJournalJoin>>;
-}
-/** Starting a scan never waits for IndexedDB. The bounded journal owns pending
- * chunks, and final writes run after the inventory becomes available. */
-export interface ReproductionRecordingIssue {readonly scope:'journal'|'exact-input';readonly reason:string}
-export function beginReproduction(seed:ScannedCard[],environment:{browser:string;catalog:string;build:string},
-  settings:{record?:boolean;exact?:ExactRecorder;store?:ReproductionSessionStore;nameConfiguration?:ScannerNameConfiguration;devRecognitionOptions?:DevRecognitionOptions;feedbackReceipts?:()=>unknown;sourceVersion?:()=>Promise<SourceVersionEvidence>;protectForArchive?:boolean;onRecordingIssue?:(issue:ReproductionRecordingIssue)=>void}={}){
-  if(settings.protectForArchive&&!settings.record)throw Error('상세 입력 기록만 자동 보관을 보호할 수 있습니다.');
-  const nameConfiguration=optionalNameConfiguration(settings)??NORMAL_SCANNER_NAME_CONFIGURATION;
-  const devRecognitionOptions=optionalDevRecognitionOptions(settings);
-  const sessionStore=settings.store??sessions;
-  const epoch=storageEpoch,id=crypto.randomUUID(),createdAt=new Date().toISOString();
-  const currentEpoch=()=>!!settings.store||epoch===storageEpoch;
-  // Explicit test/development stores have their own lifecycle. The normal
-  // store's reset cancels pending verification, hashing and transactions.
-  const storageSignal=settings.store?new AbortController().signal:storageLifetime.signal;
-  // Replay needs starting values, not a second set of all thumbnail strings.
-  const initial:InitialContext={seed:settings.record?structuredClone(seed.map(card=>({...card,image:EMPTY_IMAGE}))):[],
-    signature:import.meta.env?.VITE_REPLAY_SIGNATURE,nameConfiguration,...(devRecognitionOptions?{devRecognitionOptions}:{})};
-  const registered=sessionStore.beginSession({id,createdAt,environment,record:!!settings.record,initial,
-    ...(settings.protectForArchive?{protectForArchive:true}:{})},{signal:storageSignal});
-  let heartbeat:ReturnType<typeof setInterval>|undefined;
-  const keepAlive=()=>{void sessionStore.heartbeat(id,{signal:storageSignal}).catch(()=>{});};
-  void registered.then(()=>{if(!finalized){heartbeat=setInterval(keepAlive,15_000);(heartbeat as unknown as {unref?:()=>void}).unref?.();}},()=>{});
-  let journalError='',closed=false,finalized=false,recording:ContinuousRecording|undefined,handedOff:ContinuousRecording|undefined;
-  let issueReported=false;
-  const reportIssue=(scope:ReproductionRecordingIssue['scope'],reason:string)=>{
-    if(!settings.record||issueReported)return;issueReported=true;
-    const issue=Object.freeze({scope,reason:String(reason).slice(0,2000)});
-    // Do not run consumer code in the recording or acquisition hot path.
-    queueMicrotask(()=>{try{void Promise.resolve(settings.onRecordingIssue?.(issue)).catch(()=>{});}catch{/* Optional diagnostics must not stop scanning. */}});
-  };
-  const received={exact:0,video:0};
-  const journal=createBoundedJournal({
-    async write(chunk,signal){await registered;const joined=signal?AbortSignal.any([storageSignal,signal]):storageSignal;
-      joined.throwIfAborted();await sessionStore.appendChunk(id,chunk.kind,chunk.sequence,chunk.blob,{signal:joined});},
-    incomplete(reason){journalError ||= reason;reportIssue('journal',reason);},
-  });
-  let exact=settings.record?settings.exact:undefined;
-  const sink={write(chunk:Parameters<typeof journal.write>[0],signal?:AbortSignal){received[chunk.kind]++;return journal.write(chunk,signal);},
-    incomplete(reason:string){journalError ||= reason;journal.incomplete(reason);}};
-  if(settings.record)try{exact?.setJournal?.(sink,reason=>reportIssue('exact-input',reason));}catch(error){
-    journalError=String(error);
-    reportIssue('exact-input',journalError);
-    const failedRecorder=exact;exact=undefined;
-    void failedRecorder?.dispose().catch(()=>{});
-  }
-  const options:Parameters<typeof runScanner>[9]=settings.record?{nameConfiguration,recordingMode:'detailed',exact,journal:sink,
-    continuous:value=>{if(!closed)recording=value;else if(value!==handedOff)void value.dispose?.();}}:{nameConfiguration};
-  const phaseTimes:Record<`${ReproductionFinalizationStage}Ms`,number|null>={registeredMs:null,exactFinishMs:null,
-    producerJournalJoinMs:null,exactJournalJoinMs:null,videoJournalJoinMs:null,fallbackWritesMs:null,journalDrainMs:null,
-    preSealLoadMs:null,canonicalVerifyMs:null,canonicalPrepareMs:null,canonicalCommitMs:null,sealMs:null,
-    postSealLoadMs:null,filePrefixMs:null,cleanupMs:null};
-  const producerJournals:Record<'exact'|'video',ReproductionJournalJoin>={exact:{startedAtMs:null,finishedAtMs:null},
-    video:{startedAtMs:null,finishedAtMs:null}};
-  const journalSnapshot=(value:ExactJournalStats|undefined):Readonly<ExactJournalStats>|undefined=>{
-    if(!value)return undefined;
-    const copied=structuredClone(value);
-    if(copied.mirror)Object.freeze(copied.mirror);
-    return Object.freeze(copied);
-  };
-  const failedStages=new Set<ReproductionFinalizationStage>();
-  let finalizationStatus:ReproductionFinalizationTiming['status']='idle',totalMs:number|null=null,finalizationStartedAt=0;
-  const finalizationTiming=():ReproductionFinalizationTiming=>Object.freeze({...phaseTimes,status:finalizationStatus,totalMs,
-    failedStages:Object.freeze([...failedStages]),producerJournals:Object.freeze({exact:Object.freeze({...producerJournals.exact}),
-      video:Object.freeze({...producerJournals.video})})});
-  async function measure<T>(stage:ReproductionFinalizationStage,operation:()=>T|Promise<T>):Promise<T>{
-    const started=performance.now();
-    try{return await operation();}
-    catch(error){failedStages.add(stage);throw error;}
-    finally{const key=`${stage}Ms` as const;phaseTimes[key]=(phaseTimes[key]??0)+Math.max(0,performance.now()-started);}
-  }
-  async function joinProducer(kind:'exact'|'video',producer:{readonly journalStats?:ExactJournalStats;
-    finishJournal?:()=>Promise<ExactJournalStats>}|undefined){
-    if(!producer?.finishJournal)return;
-    const offset=()=>Math.max(0,performance.now()-finalizationStartedAt);
-    producerJournals[kind]={startedAtMs:offset(),finishedAtMs:null,before:journalSnapshot(producer.journalStats)};
-    try{const after=await measure(kind==='exact'?'exactJournalJoin':'videoJournalJoin',()=>producer.finishJournal!());
-      producerJournals[kind]={...producerJournals[kind],after:journalSnapshot(after)};
-    }finally{producerJournals[kind]={...producerJournals[kind],finishedAtMs:offset()};}
-  }
-  let finishing:Promise<ReproductionFile|undefined>|undefined;
-  let archiveSource:{generation:string;revision:string}|undefined;
-  const sealedFile=async(stored:ReproductionSession)=>{
-    const file=await fileFromSession(stored,storageSignal);
-    if(file&&settings.protectForArchive&&stored.index.generation&&stored.index.archiveRevision)
-      archiveSource={generation:stored.index.generation,revision:stored.index.archiveRevision};
-    return file;
-  };
-  async function finishRecording(state:ScannerState|undefined,completed:boolean):Promise<ReproductionFile|undefined>{
-    closed=true;
-    const summary=createScanDiagnosticSummary(state,completed),current=recording;handedOff=current;recording=undefined;
-    // Start boundary collection immediately, but never delay stopping either
-    // recorder. Failure is explicit uncertainty, not a scan failure.
-    const sourceVersionPromise=settings.sourceVersion?resolveSourceVersionEvidence(settings.sourceVersion):undefined;
-    // Full inventory is needed only for a detailed replay comparison; never
-    // place it into the small automatic diagnostic summary.
-    const fullResult=settings.record&&state?reproductionResult(state):null;
-    const feedback=feedbackReceiptDiagnostic(settings);
-    if(Object.keys(feedback).length)summary.performance={...summary.performance,...feedback};
-    if(summary.performance?.feedbackReceipts&&new TextEncoder().encode(JSON.stringify(summary)).byteLength>MAX_META)omitFeedbackReceipts(summary);
-    let lossless:ExactRecording|undefined,exactError='',canonicalCommitted=false;
-    const seal=async(value:Parameters<ReproductionSessionStore['sealSession']>[1]):ReturnType<ReproductionSessionStore['sealSession']>=>{
-      try{return await sessionStore.sealSession(id,value,{signal:storageSignal});}
-      catch(error){
-        const capacity=error instanceof SessionStorageLimitError||error instanceof Error&&/기록 정보 (?:항목|용량) 한도 초과/.test(error.message);
-        if(!capacity||!(omitFeedbackReceipts(summary)||omitNameOcr(summary)))throw error;
-        return seal({...value,summary});
-      }
-    };
-    try{
-      await measure('registered',()=>registered);if(!currentEpoch())return;
-      if(summary.nameConfiguration&&!sameScannerNameConfiguration(summary.nameConfiguration,nameConfiguration))
-        throw Error('실제 이름 판독 설정이 기록의 시작 설정과 다릅니다.');
-      // Exact input is useful even when the optional preview encoder failed.
-      if(settings.record)try{lossless=await (exact?measure('exactFinish',()=>exact!.finish()):undefined);}catch(error){exactError=String(error);}
-      // Both producers are already finished. Join independently rather than
-      // starting the preview's deadline only after the exact join has settled.
-      try{await measure('producerJournalJoin',async()=>{
-        const results=await Promise.allSettled([joinProducer('exact',exact),joinProducer('video',current)]);
-        for(const result of results)if(result.status==='rejected')throw result.reason;
-      });}
-      catch(error){journalError ||= String(error);journal.incomplete(journalError);}
-      if(!currentEpoch())return;
-      // Test/legacy adapters can hand over a final Blob without streaming hooks.
-      try{await measure('fallbackWrites',async()=>{
-        if(current&&!received.video)for(const chunk of splitJournalBlob('video',current.blob))await sink.write(chunk);
-        if(lossless&&!received.exact)for(const chunk of splitJournalBlob('exact',lossless.blob))await sink.write(chunk);
-      });}catch(error){journalError ||= String(error);journal.incomplete(journalError);}
-      const durable=await measure('journalDrain',()=>journal.finish());
-      if(!currentEpoch())return;
-      const stored=await measure('preSealLoad',()=>sessionStore.getSession(id,{signal:storageSignal}));if(!stored)return;
-      const sourceVersion=sourceVersionPromise?await sourceVersionPromise:undefined;
-      if(sourceVersion)summary.sourceVersion=sourceVersion;
-      // A failed transport copy can leave a complete producer file on disk.
-      // Only the current recorder's returned Blob is eligible. Imported flags,
-      // counts and partial-prefix reconstruction cannot enter this path.
-      if(settings.record&&lossless?.stats.canonical===true&&lossless.stats.complete&&
-        (!durable.complete||journalError||stored.exact?.size!==lossless.blob.size||stored.index.status==='partial')){
-        try{
-          const finalizationSignal=AbortSignal.any([storageSignal,AbortSignal.timeout(CANONICAL_FINALIZATION_TIMEOUT_MS)]);
-          const proof=await measure('canonicalVerify',()=>verifyCanonicalFinalization(lossless!,finalizationSignal));
-          if(!currentEpoch())return;
-          const metadata:ReproductionMetadata={version:reproductionVersion(lossless.stats),sessionId:id,createdAt,...environment,
-            completed,recordState:completed?'complete':'partial',duration:current?.duration??0,bytes:stored.video.size,
-            type:stored.video.size?stored.video.type:'',seed:initial.seed,
-            nameConfiguration,...(devRecognitionOptions?{devRecognitionOptions}:{}),...(sourceVersion?{sourceVersion}:{}),...(initial.signature?{signature:initial.signature}:{}),result:fullResult,
-            warnings:[...summary.warnings],exact:{...lossless.stats,complete:true}};
-          // The proof checks event/source bindings, not every delivered input
-          // or decoded payload. Preserve the separately recorded video too;
-          // if both cannot fit, the transaction retains the partial prefix
-          // and video rather than deleting the only fallback.
-          const repairSummary={...summary,performance:{...summary.performance,canonicalFinalization:proof,
-            journalBeforeFinalization:{...durable},...(journalError?{journalErrorBeforeFinalization:journalError}:{})}};
-          const plan=await measure('canonicalPrepare',()=>sessionStore.prepareExactFinalization(id,
-            {producer:lossless!.blob,seal:{status:completed?'complete':'partial',summary:repairSummary,metadata},omitVideo:false},{signal:finalizationSignal}));
-          if(!currentEpoch())return;
-          await measure('canonicalCommit',()=>sessionStore.commitExactFinalization(plan,{signal:finalizationSignal}));
-          canonicalCommitted=true;
-        }catch(error){
-          // Failed proof/budget/transaction keeps the pre-existing prefix and
-          // preview. Preserve the failure separately; do not erase producer or
-          // event loss by retrying the legacy complete flag.
-          journalError ||= String(error).slice(0,2000);
-          summary.warnings.push(`원본 기록 정산 미완료: ${String(error).slice(0,1800)}`);
-        }
-        if(canonicalCommitted){
-          // The transaction is the commit point. A later read/open failure
-          // must never re-seal from the stale pre-commit prefix/video snapshot.
-          if(!currentEpoch())return;
-          const sealed=await measure('postSealLoad',()=>sessionStore.getSession(id,{signal:storageSignal}));
-          return currentEpoch()&&sealed?measure('filePrefix',()=>sealedFile(sealed)):undefined;
-        }
-      }
-      const completeInput=!!settings.record&&!!lossless?.stats.complete&&durable.complete&&!journalError&&
-        stored.exact?.size===lossless.blob.size;
-      const hasInput=!!stored.video.size||!!stored.exact?.size;
-      const reason=journalError||durable.error||exactError||(!hasInput&&settings.record?'재현 가능한 입력 없이 진단 요약만 남았습니다.':
-        !completeInput&&settings.record?'입력 일부 또는 압축 영상만 저장되었습니다.':'');
-      let metadata:ReproductionMetadata|undefined;
-      if(hasInput){
-        const fullExact=lossless&&stored.exact?.size===lossless.blob.size?lossless.stats:undefined;
-        metadata={version:reproductionVersion(fullExact),sessionId:id,createdAt,...environment,completed,recordState:completeInput&&completed?'complete':'partial',
-          duration:current?.duration??0,bytes:stored.video.size,type:stored.video.size?stored.video.type:'',seed:initial.seed,
-          nameConfiguration,...(devRecognitionOptions?{devRecognitionOptions}:{}),...(sourceVersion?{sourceVersion}:{}),
-          ...(initial.signature?{signature:initial.signature}:{}),result:fullResult,warnings:[...summary.warnings,...(reason?[reason]:[])],
-          ...(fullExact?{exact:{...fullExact,complete:completeInput}}:{})};
-        // Incomplete exact streams are inspected when opened, not on the hot path.
-        if(stored.exact?.size&&!fullExact)metadata=undefined;
-      }
-      await measure('seal',()=>seal({status:settings.record?(completeInput&&completed?'complete':hasInput?'partial':'failed'):
-        completed?'complete':'partial',summary,metadata,...(reason?{reason}:{})}));
-      if(!settings.record||!currentEpoch())return;
-      const sealed=await measure('postSealLoad',()=>sessionStore.getSession(id,{signal:storageSignal}));
-      return currentEpoch()&&sealed?measure('filePrefix',()=>sealedFile(sealed)):undefined;
-    }catch(error){
-      // A store failure must leave a diagnostic when the index can still be
-      // updated; never manufacture a complete input or delete the old prefix.
-      if(currentEpoch()&&!canonicalCommitted)try{
-        await measure('seal',()=>seal({status:'partial',summary,reason:String(error).slice(0,2000)}));
-      }catch{/* The index remains open/partial for lease-based recovery. */}
-      if(!currentEpoch())return;
-      throw error;
-    }finally{
-      await measure('cleanup',async()=>{
-        finalized=true;clearInterval(heartbeat);journal.dispose();
-        try{await current?.dispose?.();}finally{await exact?.dispose();}
-      });
-    }
-  }
-  async function finish(state:ScannerState|undefined,completed:boolean):Promise<ReproductionFile|undefined>{
-    const started=performance.now();finalizationStartedAt=started;finalizationStatus='running';
-    try{const result=await finishRecording(state,completed);finalizationStatus='fulfilled';return result;}
-    catch(error){finalizationStatus='rejected';throw error;}
-    finally{totalMs=Math.max(0,performance.now()-started);}
-  }
-  return {id,ready:registered,options,journalStats:()=>journal.stats,finalizationTiming,
-    async acknowledgeArchive(receipt:ArchiveReceipt){
-      if(!settings.protectForArchive||!archiveSource)throw Error('보관 확인에 사용할 봉인 기록이 없습니다.');
-      return sessionStore.acknowledgeArchive(id,archiveSource,receipt,{signal:storageSignal});
-    },
-    finish(state:ScannerState|undefined,completed:boolean){return finishing??=finish(state,completed);}};
 }

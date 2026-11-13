@@ -1,58 +1,15 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
-import {beginReproduction,loadReproduction,loadScanDiagnosticSummary,createScanDiagnosticSummary,clearReproduction,createReproductionBundle,openReproduction,replaySettings,compareReproduction,
- listReproductionSessions,loadReproductionSession,loadSessionDiagnosticSummary,createReproductionSessionAccess} from '../src/features/card-scanner/reproduction/scan-reproduction';
+import {createScanDiagnosticSummary,createReproductionBundle,openReproduction,replaySettings,compareReproduction,createReproductionSessionAccess} from '../src/features/card-scanner/reproduction/scan-reproduction';
 import type {ReproductionFile} from '../src/features/card-scanner/reproduction/scan-reproduction';
-import type {ReproductionRecordingIssue} from '../src/features/card-scanner/reproduction/scan-reproduction';
-import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/session/scanner-name-configuration';
 import {MAX_UNRESOLVED_FIELD_CHANGES} from '../src/features/card-scanner/session/current-scan-fields';
 import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction/reproduction-session-store';
-import {noRecordedInputMessage} from '../src/features/card-scanner/ui/recording-ui-policy';
 const file=():ReproductionFile=>({video:new Blob(['webm-content'],{type:'video/webm;codecs=vp8'}),metadata:{
   version:1,createdAt:'2026-10-17T00:00:00Z',browser:'test',catalog:'test',build:'test',completed:true,warnings:[],
   duration:2,type:'video/webm;codecs=vp8',bytes:12,seed:[],result:{expected:1,read:1,unidentified:0,experience:null,cards:[{id:'1',name:'카드',awakening:1,extraCopies:2,review:[]}]},
 }});
 
-test('a write failure reports one asynchronous journal warning without interrupting scanning',async()=>{
- const store=createReproductionSessionStore({dbName:`live-journal-failure-${crypto.randomUUID()}`});
- store.appendChunk=async()=>{throw Error('quota reached');};
- const issues:ReproductionRecordingIssue[]=[];
- const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},
-  {record:true,store,onRecordingIssue(issue){issues.push(issue);throw Error('consumer failure');}});
- await capture.ready;
- const pending=capture.options.journal!.write({kind:'video',sequence:0,blob:new Blob(['preview'])});
- assert.equal(issues.length,0,'notification cannot synchronously block acquisition');
- await assert.rejects(pending,/quota reached/);
- await Promise.resolve();
- assert.deepEqual(issues,[{scope:'journal',reason:'quota reached'}]);
- capture.options.journal!.incomplete('later failure');await Promise.resolve();assert.equal(issues.length,1);
- const result=await capture.finish(undefined,false);
- assert.equal(result,undefined);
- const saved=await store.getSession(capture.id);assert.equal(saved?.index.status,'failed');
-});
-
-test('producer loss is a single warning and does not assert which independent stream survived',async()=>{
- const store=createReproductionSessionStore({dbName:`live-input-failure-${crypto.randomUUID()}`}),issues:ReproductionRecordingIssue[]=[];
- let sourceIssue!:(reason:string)=>void;
- const exact={setJournal(_sink:unknown,onInputIssue:(reason:string)=>void){sourceIssue=onInputIssue;},
-  async finish(){return undefined;},async dispose(){}} as never;
- const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},
-  {record:true,store,exact,onRecordingIssue:issue=>{issues.push(issue);}});
- sourceIssue('frame lost');capture.options.journal!.incomplete('preview lost');
- assert.equal(issues.length,0);await Promise.resolve();
- assert.deepEqual(issues,[{scope:'exact-input',reason:'frame lost'}]);
- await capture.finish(undefined,false);
-});
-
-test('a recorder attachment failure is reported without waiting for recording to finish',async()=>{
- const store=createReproductionSessionStore({dbName:`live-recorder-failure-${crypto.randomUUID()}`}),issues:ReproductionRecordingIssue[]=[];
- const exact={setJournal(){throw Error('attach failed');},async dispose(){}} as never;
- const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},
-  {record:true,store,exact,onRecordingIssue:issue=>{issues.push(issue);}});
- await Promise.resolve();assert.deepEqual(issues,[{scope:'exact-input',reason:'Error: attach failed'}]);
- await capture.finish(undefined,false);
-});
 test('single file keeps source bytes, starting settings and original results without full-video reads',async()=>{
  const value=file();value.video.arrayBuffer=()=>{throw Error('must not read full video');};
  const bundle=createReproductionBundle(value),loaded=await openReproduction(bundle,new AbortController().signal);
@@ -82,120 +39,12 @@ test('canonical source-use bundles require v4 so older readers cannot silently r
  value.metadata.version=4;delete value.metadata.exact.canonical;assert.throws(()=>createReproductionBundle(value),/공통 원본/);
 });
 
-test('cancelled storage operations leave the saved diagnostic intact',async()=>{
- const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'});
- await capture.finish(undefined,false);
- const abort=new AbortController();abort.abort();
- await assert.rejects(loadReproduction(abort.signal),{name:'AbortError'});
- await assert.rejects(loadScanDiagnosticSummary(abort.signal),{name:'AbortError'});
- assert.throws(()=>clearReproduction(abort.signal),{name:'AbortError'});
- assert.ok(await loadScanDiagnosticSummary());
-});
-
-test('exact recorder is disposed even when preview cleanup fails',async()=>{
- let disposed=false;
- const exact={finish:async()=>{throw Error('exact unavailable');},dispose:async()=>{disposed=true;}} as unknown as NonNullable<Parameters<typeof beginReproduction>[2]>['exact'];
- const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},{record:true,exact});
- capture.options.continuous!({blob:file().video,duration:2,dispose:async()=>{throw Error('preview cleanup');}});
- await assert.rejects(capture.finish(undefined,true),/preview cleanup/);
- assert.equal(disposed,true);
-});
 test('comparison distinguishes null from zero and tracks missing and changed fields',()=>{
  const before=file().metadata.result!;
  const after={...before,cards:[{...before.cards[0],extraCopies:null},{id:'2',name:'추가',awakening:0,extraCopies:0,review:[]}]};
  assert.deepEqual(compareReproduction(before,after),{added:['추가'],missing:[],changed:['카드']});
  assert.deepEqual(compareReproduction(after,{...before,cards:[]}),{added:[],missing:['카드','추가'],changed:[]});
 });
-test('each run survives out-of-order completion and deletion blocks late writes without replacing another session',async()=>{
- await clearReproduction();let disposed=0;
- const env={browser:'test',catalog:'test',build:'test'};
- const first=beginReproduction([],env,{record:true}),second=beginReproduction([],env,{record:true});
- first.options.continuous!({blob:file().video,duration:2,dispose:async()=>{disposed++;}});
- second.options.continuous!({blob:new Blob(['latest'],{type:'video/webm'}),duration:3,dispose:async()=>{disposed++;}});
- await second.finish(undefined,true);await first.finish(undefined,false);
- assert.equal(await (await loadReproductionSession(second.id))!.video.text(),'latest');
- assert.equal(await (await loadReproductionSession(first.id))!.video.text(),'webm-content');
- assert.deepEqual(new Set((await listReproductionSessions()).map(item=>item.id)),new Set([first.id,second.id]));assert.equal(disposed,2);
- const third=beginReproduction([],env,{record:true});third.options.continuous!({blob:file().video,duration:2});
- await clearReproduction();assert.equal(await third.finish(undefined,true),undefined);assert.equal(await loadReproduction(),undefined);
-});
-test('recording failures keep a failed session and diagnostic without fake completed input',async()=>{
- await clearReproduction();
- const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},{record:true});
- assert.equal(await capture.finish(undefined,false),undefined);assert.equal(await loadReproduction(),undefined);
- const index=(await listReproductionSessions())[0];assert.equal(index.id,capture.id);assert.equal(index.status,'failed');
- assert.equal(index.hasInput,false);assert.equal((await loadSessionDiagnosticSummary(capture.id))!.completed,false);
- assert.equal(index.record,true);
- assert.match(noRecordedInputMessage(index)!,/상세 입력이 보관되지 않아/);
-});
-
-test('deletion during exact finalization never reports a successfully saved file',async()=>{
- let release!:()=>void,entered!:()=>void;
- const waiting=new Promise<void>(resolve=>{entered=resolve;});
- const finishGate=new Promise<void>(resolve=>{release=resolve;});
- const exact={finish:async()=>{entered();await finishGate;return undefined;},dispose:async()=>{}} as unknown as NonNullable<Parameters<typeof beginReproduction>[2]>['exact'];
- const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},{record:true,exact});
- capture.options.continuous!({blob:file().video,duration:2});
- const finalizing=capture.finish(undefined,true);
- await waiting;await clearReproduction();release();
- assert.equal(await finalizing,undefined);
- assert.equal(await loadReproduction(),undefined);assert.equal(await loadScanDiagnosticSummary(),undefined);
-});
-
-test('ordinary diagnostics start synchronously without a recorder or captured video and store only a summary',async()=>{
- const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'});
- assert.equal('then' in capture,false);
- assert.deepEqual(capture.options,{nameConfiguration:NORMAL_SCANNER_NAME_CONFIGURATION});
- await capture.finish(undefined,false);
- assert.equal(await loadReproduction(),undefined);
- const summary=await loadScanDiagnosticSummary();
- assert.equal(summary?.completed,false);assert.deepEqual(summary?.images,[]);
- assert.equal('seed' in summary!,false);
-});
-
-test('recording off persists bounded failure evidence without input or a fabricated replay',async()=>{
- const store=createReproductionSessionStore({dbName:`summary-only-${crypto.randomUUID()}`});
- const state={status:'장수 확인 필요',expected:1,currentRunRead:0,
-  cards:[{id:'1',name:'카드',awakening:0,extraCopies:null,review:['장수 확인'],image:'data:image/png;base64,AAAA',time:2}],
-  unidentified:Array.from({length:40},(_,i)=>({image:`data:image/png;base64,${'A'.repeat(40_000)}${i}`,reason:'가림',time:i,pending:false})),
-  unresolvedFieldChanges:1,
- } as unknown as NonNullable<Parameters<typeof createScanDiagnosticSummary>[0]>;
- const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},{record:false,store});
- assert.equal(capture.options.exact,undefined);assert.equal(capture.options.continuous,undefined);
- assert.equal(await capture.finish(state,false),undefined);
- const saved=(await store.getSession(capture.id))!;
- assert.equal(saved.video.size,0);assert.equal(saved.exact?.size??0,0);
- assert.equal(saved.metadata,undefined);
- const [item]=await createReproductionSessionAccess(store).list();
- assert.equal(item.record,false);assert.equal(item.hasInput,false);
- assert.match(noRecordedInputMessage(item)!,/상세 입력 기록이 꺼져/);
- assert.equal(item.reason,undefined,'an intentional summary-only session is not described as a recording failure');
- const summary=saved.summary as ReturnType<typeof createScanDiagnosticSummary>;
- assert.equal(summary.completed,false);assert.equal(summary.unresolvedFieldChanges,1);
- assert.equal(summary.scope,'failure-only-v1');assert.equal('cards' in summary.result!,false);
- assert.equal('experience' in summary.result!,false);assert.equal(summary.result?.inventoryCount,1);
- assert.equal(saved.index.cards,1);
- assert.ok(summary.images.length>0&&summary.images.length<=32);
- assert.ok(summary.images.reduce((sum,row)=>sum+row.image.length,0)<=1_048_576);
- assert.equal(summary.unidentifiedObservations?.length,40);
-});
-
-test('detailed replay preserves full comparison results separately from failure-only diagnostics',async()=>{
- const store=createReproductionSessionStore({dbName:`diagnostic-separation-${crypto.randomUUID()}`});
- const state={status:'확인',expected:1,currentRunRead:1,growthPoints:{current:12345},unidentified:[],
-  cards:[{id:'private-id',name:'내 카드',awakening:1,extraCopies:2,review:[],image:'data:image/png;base64,AAAA',time:1}]} as never;
- const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},{record:true,store});
- capture.options.continuous!({blob:file().video,duration:2});
- const replay=await capture.finish(state,true),stored=await store.getSession(capture.id);
- assert.ok(replay);assert.equal(replay.metadata.result?.cards[0].name,'내 카드');
- assert.equal(replay.metadata.result?.experience,12345);
- const summary=stored!.summary as ReturnType<typeof createScanDiagnosticSummary>;
- assert.equal(summary.scope,'failure-only-v1');assert.equal('cards' in summary.result!,false);
- assert.equal('experience' in summary.result!,false);assert.equal(JSON.stringify(summary).includes('private-id'),false);
- assert.equal(stored!.index.cards,1);
- assert.deepEqual(compareReproduction(replay.metadata.result,replay.metadata.result!),{added:[],missing:[],changed:[]});
-});
-
 test('partial replay never treats a failure-only aggregate as a full comparison baseline',async()=>{
  const store=createReproductionSessionStore({dbName:`summary-partial-${crypto.randomUUID()}`});
  const environment={browser:'test',catalog:'test',build:'test'};

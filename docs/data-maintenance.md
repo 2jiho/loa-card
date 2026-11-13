@@ -142,8 +142,7 @@ python -X utf8 scripts/build-composed-card-templates.py --assets work/client-ass
 합성 생성기는 `masked-details.json`도 만든다. 모든 등급/장착 테두리의 알파와
 글자·배너·하단 필드 위치를 이용해 공통으로 드러나는 원화 영역을 선택한다.
 이 자료와 실험 코드는 일반 빌드에 포함하지 않는다.
-[실험 실행·검증 안내](../dev/recognition-experiment/README.md)에 따라 로컬에서
-기존 경로와 비교한다. 기본 개발 서버나 배포의 인식 정책은 바꾸지 않는다.
+이 자료를 쓰던 개발 실험(`dev/recognition-experiment/`)은 이전 스캐너 루프를 고쳐 끼우는 방식이라 v0.3.0에서 그 루프와 함께 제거했다. 기본 개발 서버나 배포의 인식 정책은 바꾸지 않는다.
 
 ## OCR 모델과 외부 코드
 

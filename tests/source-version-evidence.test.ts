@@ -2,8 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseSourceVersionEvidence,resolveSourceVersionEvidence,trackSourceVersion} from '../src/features/card-scanner/session/source-version-evidence';
 import {createReproductionBundle,openReproduction} from '../src/features/card-scanner/reproduction/scan-reproduction';
-import {beginReproduction,createReproductionSessionAccess} from '../src/features/card-scanner/reproduction/scan-reproduction';
-import {createReproductionSessionStore} from '../src/features/card-scanner/reproduction/reproduction-session-store';
 import 'fake-indexeddb/auto';
 
 const a='a'.repeat(64), b='b'.repeat(64);
@@ -69,26 +67,4 @@ test('source evidence survives the replay bundle and contradictory claims are re
   assert.deepEqual(loaded.metadata.sourceVersion,evidence);
   assert.throws(()=>parseSourceVersionEvidence({...evidence,endDigest:b,changed:false}));
   assert.throws(()=>createReproductionBundle({...file,metadata:{...file.metadata,sourceVersion:{...evidence,changed:null}}}));
-});
-test('recording finalization stores boundary evidence in the local session and export',async()=>{
-  const evidence={version:2 as const,startDigest:null,endDigest:b,startBeforeScanner:false,hotUpdateBeforeScanner:false,
-    hotUpdateDuringScanner:true,hotUpdateAfterScanner:false,changed:true};
-  const store=createReproductionSessionStore({dbName:`source-test-${crypto.randomUUID()}`});
-  const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},
-    {record:true,store,sourceVersion:async()=>evidence});
-  capture.options.continuous!({blob:new Blob(['x'],{type:'video/webm'}),duration:1});
-  const result=await capture.finish(undefined,true);
-  assert.deepEqual(result?.metadata.sourceVersion,evidence);
-  const loaded=await createReproductionSessionAccess(store).load(capture.id);
-  assert.deepEqual(loaded?.metadata.sourceVersion,evidence);
-  assert.deepEqual((await store.getSession(capture.id))?.summary &&
-    ((await store.getSession(capture.id))!.summary as {sourceVersion:unknown}).sourceVersion,evidence);
-});
-test('a failing source check does not fail diagnostic finalization',async()=>{
-  const store=createReproductionSessionStore({dbName:`source-unavailable-${crypto.randomUUID()}`});
-  const capture=beginReproduction([],{browser:'test',catalog:'test',build:'test'},
-    {store,sourceVersion:async()=>{throw Error('unavailable');}});
-  assert.equal(await capture.finish(undefined,false),undefined);
-  const summary=(await store.getSession(capture.id))?.summary as {sourceVersion:{changed:boolean|null}};
-  assert.equal(summary.sourceVersion.changed,null);
 });

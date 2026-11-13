@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createMonitorLatencyProbe} from '../dev/monitor-latency';
+import {createMonitorLatencyProbe} from '../src/shared/monitor-latency';
 import {createScanMonitorStore} from '../src/features/card-scanner/ui/scan-monitor-store';
 import type {ScanMonitorState} from '../src/features/card-scanner/ui/scan-monitor-store';
 

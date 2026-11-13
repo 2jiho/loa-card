@@ -1,17 +1,16 @@
-import { test } from 'node:test';
+import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import { consensus } from '../src/features/card-scanner/recognition/consensus';
-import { CURRENT_FIELD_REVIEW, MAX_UNRESOLVED_FIELD_CHANGES, boundedCountDiagnostics, boundedUnresolvedFieldChanges, carryUnattributedFieldReviews, hasCurrentFieldProof, pendingScanFields, projectCurrentScanFields, unattributedFieldReviewCount } from '../src/features/card-scanner/session/current-scan-fields';
-import { confirmedReadingCount } from '../src/features/card-scanner/session/recovery-completion';
-import { scanCompletion } from '../src/features/card-scanner/session/completion';
-import type { ScannedCard } from '../src/features/card-scanner/recognition/recognizer';
-import { inventoryCsv, inventoryCsvIssues } from '../src/inventory-csv';
-import { remainingMerchantCopies } from '../src/features/merchants/merchant-progress';
-import { trustedInventory } from '../src/features/growth/optimizer';
-import { raidMembers } from '../src/features/raid/raid-progress';
-import type { RaidSet } from '../src/features/raid/raid-progress';
-import { inventoryBackupState } from '../src/features/card-scanner/persistence/scan-backup';
-import type { ScannerState } from '../src/features/card-scanner/orchestration/scanner';
+import {consensus} from '../src/features/card-scanner/recognition/consensus';
+import {CURRENT_FIELD_REVIEW,MAX_UNRESOLVED_FIELD_CHANGES,boundedCountDiagnostics,boundedUnresolvedFieldChanges,carryUnattributedFieldReviews,hasCurrentFieldProof,pendingScanFields,projectCurrentScanFields,unattributedFieldReviewCount} from '../src/features/card-scanner/session/current-scan-fields';
+import {confirmedReadingCount} from '../src/features/card-scanner/session/recovery-completion';
+import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
+import {inventoryCsv,inventoryCsvIssues} from '../src/inventory-csv';
+import {remainingMerchantCopies} from '../src/features/merchants/merchant-progress';
+import {trustedInventory} from '../src/features/growth/optimizer';
+import {raidMembers} from '../src/features/raid/raid-progress';
+import type {RaidSet} from '../src/features/raid/raid-progress';
+import {inventoryBackupState} from '../src/features/card-scanner/persistence/scan-backup';
+import type {ScannerState} from '../src/features/card-scanner/orchestration/scanner';
 
 const original: ScannedCard = { id:'3200416', name:'하누마탄', awakening:0, extraCopies:0, review:[], countReliable:true,
   confidence:1, image:'old-good', time:1, observations:1, captureOrder:10 };
@@ -41,27 +40,6 @@ test('a disagreeing newer capture still blocks field proof', () => {
   assert.ok(cards[0].review.includes(CURRENT_FIELD_REVIEW));
   assert.equal(cards[0].countReliable, false);
   assert.equal(confirmedReadingCount({cards, ...evidence}), 0);
-});
-
-test('394 collected identities with one stale zero publish 393 confirmed and one review', () => {
-  const history = [failed, original], merged = consensus(history);
-  assert.deepEqual(merged.review, [], 'consensus deliberately preserves the old complete pair');
-  const others = Array.from({length:393}, (_,i) => ({...original,id:`other-${i}`,name:`카드 ${i}`}));
-  const evidence = proof();
-  for (const card of others) { evidence.latest.set(card.id,10); evidence.confirmed.set(card.id,10); }
-  const before = structuredClone({history,merged});
-  const cards = projectCurrentScanFields([merged,...others], evidence);
-  assert.equal(cards.length,394);
-  assert.equal(confirmedReadingCount({cards,...evidence}),393);
-  assert.equal(cards.filter(card=>card.review.length).length,1);
-  assert.equal(scanCompletion(394,cards.length,1,394),'입력 처리 완료 · 수량 일치 · 1종 판독 확인 필요');
-  assert.deepEqual([cards[0].awakening,cards[0].extraCopies],[0,0]);
-  assert.equal(cards[0].countReliable,false);
-  assert.ok(cards[0].review.includes(CURRENT_FIELD_REVIEW));
-  assert.equal(cards[0].image,'old-good');
-  assert.equal(cards[0].time,1);
-  assert.deepEqual({history,merged},before,'presentation cannot contaminate the consensus history');
-  assert.equal(cards[1],others[0],'confirmed cards remain untouched');
 });
 
 test('the published uncertainty blocks CSV and all numeric calculation consumers', () => {
