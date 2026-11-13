@@ -566,7 +566,7 @@ function App() {
         <strong>{state?.unresolvedFieldChanges ? '확인할 화면 관측이 남아 있습니다.' : '이전 목록의 최신 각성·장수 확인이 필요합니다.'}</strong>
         <p>저장된 판독 근거만으로는 해당 카드를 특정할 수 없습니다. 전체 목록을 다시 공유해 주세요. 확인 전에는 CSV 저장과 계산 메뉴를 사용할 수 없습니다.</p>
       </section>}
-      <ScanAttention cards={reviewCards} unknown={sharing || busy ? nameIssues : []} discarded={state?.discardedObservations ?? (!sharing && !busy ? nameIssues : [])} missing={missingCards} artworkById={artworkById} pendingFields={state?.pendingFields ?? []} evidenceLost={state?.unknownEvidenceLost===true} recognitionNeeded={state?.recognitionNeeded ?? []}
+      <ScanAttention cards={reviewCards} unknown={sharing || busy ? nameIssues : []} discarded={state?.discardedObservations ?? (!sharing && !busy ? nameIssues : [])} missing={missingCards} artworkById={artworkById} pendingFields={state?.pendingFields ?? []} evidenceLost={state?.unknownEvidenceLost===true} recognitionNeeded={state?.recognitionNeeded ?? []} guidance={state?.listGuidance}
         sharing={sharing} busy={busy} queued={state?.queued} activeReadings={state?.activeReadings}/>
       {scrollNotice && <section className="notice" aria-label={scrollNotice==='collecting'?'수집 구간 참고':'다시 보여줄 스크롤 구간'}>
         <strong>{!state?.scrollGaps?.length?'지나간 구간 확인':scrollNotice==='collecting'?'빠르게 지나간 구간이 있어요':'지나간 구간을 한 번 더 보여 주세요'}</strong>

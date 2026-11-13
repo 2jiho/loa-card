@@ -277,6 +277,10 @@ export interface ScannerState {
   /** Slots whose only captures were positively obstructed by a tooltip/cursor.
    * Presentation only: no card identity or field value is inferred. */
   recognitionNeeded?:RecognitionNeededSlot[];
+  /** Row-centred scan only: what to show again, worked out from the list table
+   * (session/list-guidance.ts). `asks` are requests; `notes` are what the table cannot decide.
+   * Presentation only: it supplies no card, no value and no completion evidence. */
+  listGuidance?:{readonly asks:readonly string[];readonly notes:readonly string[]};
   recoveryReuse?: { frames:number; observations:number; skippedOriginals:number };
   /** DEV-only restored buffer handoff counters, not an acquisition/OCR proof. */
   restoredHandoff?:{consumed:number;unavailable:number;failed:number;prefetchTransfers:number|null};

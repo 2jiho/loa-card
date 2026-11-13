@@ -36,6 +36,15 @@ const recognitionNeeded=[
  {slot:14,captureTime:3.4,reason:'이름 영역에 글자 대비 없음 · 가림 해제 후 재관측'},
 ];
 
+// The row-centred scan's guidance (session/list-guidance.ts), as the 816e and a04e recordings ended with.
+const listGuidance={asks:[
+ '라제니스를 이끄는 니나브: 다시 보여 주세요 (1번째 줄 8번째 칸, 목록의 약 0% 지점) · 최신 각성·장수 확인',
+ '5번째 줄(목록의 약 7% 지점): 8, 9, 10번째 칸은 가려졌거나 온전히 보이지 않음',
+ '30번째 줄(목록의 약 54% 지점): 1번째 칸은 이름을 읽지 못함 · 6, 7, 8번째 칸은 가려졌거나 온전히 보이지 않음',
+ '아직 보지 못한 줄: 6번째 줄'],
+ notes:['목록이 2조각으로 읽혔습니다. 조각 사이에 보지 못한 줄이 있는지는 알 수 없습니다',
+ '39번째 줄에서 빈 칸이 보였습니다. 그 뒤 41~55번째 줄은 보지 않았습니다(카드가 더 있는지는 알 수 없음)']};
+
 type ModeFixture={label:string;sharing:boolean;busy:boolean;queued:number;activeReadings:number};
 const modes:ModeFixture[]=[
  {label:'처리 중',sharing:true,busy:true,queued:2,activeReadings:1},
@@ -50,6 +59,7 @@ function Proof(){
  const ended=!mode.sharing&&!mode.busy;
  const panel=<ScanAttention cards={[beskal]} unknown={ended?[]:unknown} discarded={ended?unknown:[]} missing={[{id:'3200999',name:'샘플 카드'}]}
   artworkById={new Map()} pendingFields={[beskalPending]} evidenceLost={evidenceLost} recognitionNeeded={recognitionNeeded}
+  guidance={new URLSearchParams(window.location.search).has('guidance')?listGuidance:undefined}
   sharing={mode.sharing} busy={mode.busy} queued={mode.queued} activeReadings={mode.activeReadings}/>;
  if(new URLSearchParams(window.location.search).has('narrow'))
   return <AppTheme>{panel}</AppTheme>;

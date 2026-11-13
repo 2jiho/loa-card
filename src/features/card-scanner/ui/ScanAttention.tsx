@@ -9,11 +9,13 @@ import {attentionCardAdvice,attentionCountAdvice,attentionScanMode,unidentifiedA
 import {recognitionNeededSlotLabel,type RecognitionNeededSlot} from '../session/recognition-needed';
 import '../scan-activity.css';
 
-export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pendingFields=[],evidenceLost=false,recognitionNeeded=[],sharing,busy,queued,activeReadings}:{
+export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pendingFields=[],evidenceLost=false,recognitionNeeded=[],guidance,sharing,busy,queued,activeReadings}:{
   cards:ScannedCard[];unknown:ScannerState['unidentified'];discarded?:ScannerState['unidentified'];missing:{id:string;name:string}[];artworkById:Map<string,string|undefined>;
   pendingFields?:PendingCardFields[];
   evidenceLost?:boolean;
   recognitionNeeded?:readonly RecognitionNeededSlot[];
+  /** Where to show the list again, from the list table (row-centred scan only). */
+  guidance?:{readonly asks:readonly string[];readonly notes:readonly string[]};
   sharing:boolean;busy:boolean;queued?:number;activeReadings?:number;
 }){
   const mode=attentionScanMode({sharing,busy,queued,activeReadings});
@@ -23,7 +25,8 @@ export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pe
   const pendingById=new Map(pendingFields.map(item=>[item.id,item]));
   const hasCountConflict=cards.some(card=>pendingById.get(card.id)?.reason==='각성·장수 판독 확인');
   const unmatched=unmatchedPendingFields(pendingFields,[...cards,...missing]);
-  const count=cards.length+unresolved.length+discarded.length+recognitionNeeded.length+missing.length+unmatched.length,hasAttention=count>0||evidenceLost;
+  const asks=guidance?.asks??[],notes=guidance?.notes??[],SHOWN_ASKS=12;
+  const count=cards.length+unresolved.length+discarded.length+recognitionNeeded.length+missing.length+unmatched.length+asks.length,hasAttention=count>0||evidenceLost;
   // Keep the panel briefly after the last item clears, without retaining stale
   // cards or delaying newly observed issues. A new issue cancels the close.
   const [linger,setLinger]=useState(false);
@@ -91,6 +94,12 @@ export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pe
       <h3>인식이 필요한 칸 <span>{recognitionNeeded.length}칸</span></h3>
       <p>툴팁이나 커서가 카드를 가려 판독하지 못했어요. 최근 수집 화면의 해당 칸을 다시 보여 주세요. 이대로 스캔을 종료해도 됩니다.</p>
       <ul>{recognitionNeeded.map(item=><li key={item.slot}>{recognitionNeededSlotLabel(item.slot)} · {item.reason}</li>)}</ul>
+    </div>}
+    {!!asks.length&&<div className="scan-attention-group">
+      <h3>다시 보여 줄 곳 <span>{asks.length}곳</span></h3>
+      <p>{sharing?'아래 위치를 다시 비춰 주세요. 스크롤을 잠깐 멈추면 위치를 더 정확히 알 수 있어요.':'다시 스캔할 때 아래 위치를 비춰 주세요.'}</p>
+      <ul>{asks.slice(0,SHOWN_ASKS).map((line,index)=><li key={index}>{line}</li>)}{asks.length>SHOWN_ASKS&&<li>외 {asks.length-SHOWN_ASKS}곳</li>}</ul>
+      {!!notes.length&&<ul className="scan-attention-notes">{notes.map((line,index)=><li key={index}>참고: {line}</li>)}</ul>}
     </div>}
     {!!missing.length&&<div className="scan-missing"><h3>보유 여부를 확인할 카드 <span>{missing.length}종</span></h3><p>{mode==='processing'?'판독 후에도 남으면 보유 중인지 확인해 주세요.':mode==='sharing'?'보유 중인 카드만 다시 보여 주세요.':'화면 공유를 다시 시작하고 보유 중인 카드만 보여 주세요.'}</p><ul>{missing.map(card=><li key={card.id}>{card.name}</li>)}</ul></div>}
   </section>;

@@ -40,6 +40,8 @@ export interface RowLiveResult extends RowReadResult {
      * before this loop took them (absent when the browser does not count them). */
     /** Worker line: frames copied out of the capture pool, frames kept as captured, and the mean copying time. */
     readonly lineCopy?:{readonly copied:number;readonly uncopied:number;readonly meanMs:number};
+    /** The growth points of the storage header, when read. */
+    readonly growthPoints:{readonly current:number;readonly maximum:number|null}|null;
     /** The displayed total: as first read (with the frame time), as read again from the last frame, and the readings made and failed. */
     readonly header:{readonly expected:number|null;readonly capacity:number|null;readonly finalExpected:number|null;readonly firstAtSeconds:number|null;readonly reads:number;readonly failures:number};
     /** After everything was read: what the list table would ask to be shown again (session/list-guidance.ts) and the same as lines. */
@@ -119,6 +121,10 @@ export interface RowScanSnapshot {
   /** The displayed total and capacity of the storage header ("398 / 450") as first read, and the
    * total read again from the last frame after everything else (null until then, or when unread). */
   readonly expected:number|null;readonly capacity:number|null;readonly finalExpected:number|null;
+  /** The total read again while every card of it was confirmed (during the share); null otherwise. */
+  readonly freshExpected:number|null;
+  /** The growth points of the storage header, when read. */
+  readonly growthPoints:{readonly current:number;readonly maximum:number|null}|null;
   /** Cells seen but not named (in anchored rows and in rows without a place). */
   readonly unidentifiedCells:number;
   readonly guidance:{readonly asks:readonly string[];readonly notes:readonly string[]};
@@ -251,8 +257,10 @@ export async function runRowScan(options:{
     let lastLocated=false,lastSnapshot=-Infinity;
     const headerCanvas=document.createElement('canvas'),headerContext=headerCanvas.getContext('2d',{willReadFrequently:true})!;
     const header={expected:null as number|null,capacity:null as number|null,finalExpected:null as number|null,time:0,kept:false,nextTry:-Infinity,
-      firstAt:null as number|null,reads:0,failures:0};
+      firstAt:null as number|null,reads:0,failures:0,fresh:null as number|null,freshTried:-Infinity};
     let headerRun:Promise<void>|null=null;
+    const growth={points:null as {current:number;maximum:number|null}|null,nextTry:-Infinity,reads:0};
+    let growthRun:Promise<void>|null=null;
     /** Read the displayed total from a copy of the kept header (the kept one changes with every frame). */
     const readHeader=async():Promise<{owned:number;capacity:number}|null>=>{
       if(!reader||!header.kept)return null;
@@ -270,10 +278,19 @@ export async function runRowScan(options:{
       if(!options.onSnapshot)return;
       lastSnapshot=performance.now();
       const merged=evidence?.cards()??{cards:[],confirmed:0},totalRows=scrollSteps+GRID_ROWS;
+      // While every card of the displayed total is confirmed, the total is read again (about once
+      // a second) so that a caller may end the share on a total that is current.
+      if(phase==='capture'&&header.expected!==null&&merged.cards.length===header.expected&&merged.confirmed===header.expected){
+        if(!headerRun&&performance.now()-header.freshTried>=1000){
+          header.freshTried=performance.now();
+          headerRun=readHeader().then(total=>{header.fresh=total?.owned??null;}).finally(()=>{headerRun=null;});
+        }
+      }else header.fresh=null;
       try{options.onSnapshot({phase,frames,locatedFrames:located,located:lastLocated,
         waitingFrames:Math.max(waiting.length,workerLine?workerLine.received-workerLine.dropped-workerLine.passed-frames:0),
         droppedFrames:dropped+(workerLine?.dropped??0),waitingReads:session.waitingReads(),
-        cards:merged.cards,confirmed:merged.confirmed,expected:header.expected,capacity:header.capacity,finalExpected:header.finalExpected,
+        cards:merged.cards,confirmed:merged.confirmed,expected:header.expected,capacity:header.capacity,finalExpected:header.finalExpected,freshExpected:header.fresh,
+        growthPoints:growth.points,
         unidentifiedCells:(()=>{const guidance=session.guidance(totalRows);return guidance.cells.filter(cell=>cell.kind==='unidentified').length+guidance.unplaced.unidentified;})(),
         guidance:describeListGuidance(session.guidance(totalRows),{totalRows})});}catch{/* A display callback cannot stop the scan. */}
     };
@@ -327,6 +344,12 @@ export async function runRowScan(options:{
           if(headerCanvas.height!==height)headerCanvas.height=height;
           headerContext.drawImage(frame,box.x,box.y,box.width,box.height,0,0,width,height);
           header.time=time;header.kept=true;
+          if(growth.points===null&&!growthRun&&time>=growth.nextTry){
+            // The reader crops its regions from the frame at once, before the frame canvas changes.
+            growth.nextTry=time+1;growth.reads++;
+            growthRun=reader.metadata(frame,acquired.layout).then(reading=>{if(reading?.growthPoints)growth.points=reading.growthPoints;})
+              .catch(()=>{/* Read again from a later frame. */}).finally(()=>{growthRun=null;});
+          }
           if(header.expected===null&&!headerRun&&time>=header.nextTry){
             header.nextTry=time+1;
             headerRun=readHeader().then(total=>{
@@ -381,6 +404,7 @@ export async function runRowScan(options:{
     publishSnapshot('verifying');
     // The displayed total of the last frame that showed the card window, read after everything else.
     if(headerRun)await headerRun;
+    if(growthRun)await growthRun;
     if(reader&&header.kept){
       const total=await readHeader();
       if(total){header.finalExpected=total.owned;if(header.expected===null){header.expected=total.owned;header.capacity=total.capacity;}}
@@ -405,6 +429,7 @@ export async function runRowScan(options:{
         source:processor?'track':'video',...(processor?{reader:lineWorker?'worker' as const:'main' as const}:{}),
         ...(workerLine?{lineCopy:{copied:workerLine.copied,uncopied:workerLine.uncopied,meanMs:workerLine.copied?Math.round(workerLine.copyMs/workerLine.copied*10)/10:0}}:{}),
         mainThread:{maxGapMs:Math.round(lagMax),gapsOver100Ms:lagOver100},
+        growthPoints:growth.points,
         header:{expected:header.expected,capacity:header.capacity,finalExpected:header.finalExpected,firstAtSeconds:header.firstAt,reads:header.reads,failures:header.failures},
         guidance:(()=>{const totalRows=scrollSteps+GRID_ROWS,guidance=session.guidance(totalRows);return {totalRows,...guidance,...describeListGuidance(guidance,{totalRows})};})(),
         ...(typeof processor?.totalFrames==='number'?{sourceTotal:processor.totalFrames}:{}),

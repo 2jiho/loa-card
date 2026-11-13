@@ -1,7 +1,8 @@
 import type {ScannerState} from './scanner';
 import {runRowScan} from './row-scan';
 import type {RowScanSnapshot} from './row-scan';
-import {rowScannerState} from './row-scanner-state';
+import {rowCanStopSharing,rowScannerState} from './row-scanner-state';
+import {stopCompletedShare} from '../session/auto-completion';
 
 /** The row-centred scan behind the scanner's interface (docs/scanner-live-redesign.md, section 13).
  *
@@ -23,10 +24,12 @@ export async function runRowScannerInternal(options:{video:HTMLVideoElement;sign
   // The share ends when its track does (the person stops sharing); an abort ends the wait too
   // and the scan loop then throws on the aborted signal.
   // A track stopped by the page itself fires no `ended` event, so its state is also polled.
+  let endShare=()=>{};
   const ended=new Promise<void>(resolve=>{
     const live=()=>track.readyState==='live'&&(video.srcObject as MediaStream|null)?.getVideoTracks().includes(track)===true;
     const timer=setInterval(()=>{if(!live())finish();},200);
     const finish=()=>{clearInterval(timer);resolve();};
+    endShare=finish;
     if(!live())finish();
     track.addEventListener('ended',finish,{once:true});
     signal.addEventListener('abort',finish,{once:true});
@@ -34,10 +37,27 @@ export async function runRowScannerInternal(options:{video:HTMLVideoElement;sign
   update({status:'인식 엔진 준비 중',percent:0,sampled:0,stable:0,expected:null,capacity:null,cards:[],
     located:false,unreadable:0,queued:0,droppedFrames:0,liveInput:'track',workPhase:'capture',unidentified:[]});
   let last:RowScanSnapshot|undefined;
+  // As the scanner does: when everything is confirmed and stays so for a second, the share is
+  // ended here, and the scan finishes from what it has.
+  let readySince:number|null=null,autoStopped=false;
+  const state=(snapshot:RowScanSnapshot)=>({...rowScannerState(snapshot),...(autoStopped?{autoStopped:true}:{})});
   await runRowScan({target:video,signal,relativeTime:true,
     input:{start:()=>ended,dispose:()=>{}},
     onReady:options.onReady,onLocated:options.onLocated,
-    onSnapshot:snapshot=>{last=snapshot;if(!signal.aborted)update(rowScannerState(snapshot));}});
+    onSnapshot:snapshot=>{
+      last=snapshot;
+      if(signal.aborted)return;
+      if(!autoStopped){
+        if(!rowCanStopSharing(snapshot))readySince=null;
+        else if(readySince===null)readySince=performance.now();
+        else if(performance.now()-readySince>=1000){
+          autoStopped=true;
+          const stream=video.srcObject as MediaStream|null;
+          if(stream)stopCompletedShare(stream,endShare);else endShare();
+        }
+      }
+      update(state(snapshot));
+    }});
   signal.throwIfAborted();
-  if(last&&last.phase!=='done')update(rowScannerState({...last,phase:'done'}));
+  if(last&&last.phase!=='done')update(state({...last,phase:'done'}));
 }
