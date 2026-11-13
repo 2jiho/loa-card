@@ -1,6 +1,7 @@
-import type {ScannerState} from './scanner';
+import type {ScannerState} from './scanner-state';
 import {runRowScan} from './row-scan';
 import type {RowScanSnapshot} from './row-scan';
+import type {PreparedScanner} from '../session/scanner-preparation';
 import {rowCanStopSharing,rowScannerState} from './row-scanner-state';
 import {stopCompletedShare} from '../session/auto-completion';
 import {inputScale} from '../acquisition/detector';
@@ -21,7 +22,9 @@ import {smallScreenNotice} from './row-scanner-state';
 export async function runRowScannerInternal(options:{video:HTMLVideoElement;signal:AbortSignal;
   update:(state:ScannerState)=>void;onReady?:()=>void;
   /** A frame the card window was found in (the development recorder keeps those spans). */
-  onLocated?:()=>void}):Promise<void> {
+  onLocated?:()=>void;
+  /** Readers prepared before the share; their owner releases them. */
+  prepared?:PreparedScanner}):Promise<void> {
   const {video,signal,update}=options;
   const track=(video.srcObject as MediaStream|null)?.getVideoTracks()[0];
   if(!track)throw Error('공유 화면의 비디오 트랙을 확인할 수 없습니다.');
@@ -48,7 +51,9 @@ export async function runRowScannerInternal(options:{video:HTMLVideoElement;sign
     const notice=smallScreenNotice(video.videoWidth,video.videoHeight,inputScale(video.videoWidth,video.videoHeight));
     return {...rowScannerState(snapshot),...(autoStopped?{autoStopped:true}:{}),...(notice?{resolutionNotice:notice}:{})};
   };
+  const pool=options.prepared;
   await runRowScan({target:video,signal,relativeTime:true,
+    ...(pool&&pool.readers[0]?{prepared:{acquisition:pool.acquisition,visuals:pool.visuals,recognizer:pool.readers[0]}}:{}),
     input:{start:()=>ended,dispose:()=>{}},
     onReady:options.onReady,onLocated:options.onLocated,
     onSnapshot:snapshot=>{

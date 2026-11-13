@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { growthInput, resultCardsKey } from '../src/features/live-results';
+import { growthInput, resultCardsKey } from '../src/features/growth/live-results';
 import { currentBookProgress } from '../src/features/growth/optimizer';
 import type { GrowthMaster } from '../src/features/growth/optimizer';
 import type { ScannedCard } from '../src/features/card-scanner/recognition/recognizer';

@@ -2,20 +2,15 @@ import {useEffect,useState} from 'react';
 import {CardThumbnail} from '../../../shared/ui/CardThumbnail';
 import type {ScannedCard} from '../recognition/recognizer-types';
 import type {ScannerState} from '../orchestration/scanner';
-import type {PendingCardFields} from '../session/current-scan-fields';
 import {attentionCardImage} from './attention-card-image';
 import {scrollLocationLabel} from '../session/scroll-card-location';
-import {attentionCardAdvice,attentionCountAdvice,attentionScanMode,unidentifiedAttention,unidentifiedDisplayKey,unidentifiedReferenceAdvice,unmatchedPendingFields} from './scan-attention-guidance';
-import {recognitionNeededSlotLabel,type RecognitionNeededSlot} from '../session/recognition-needed';
+import {attentionCardAdvice,attentionScanMode,unidentifiedAttention,unidentifiedDisplayKey,unidentifiedReferenceAdvice} from './scan-attention-guidance';
 import {ListPositionMap} from './ListPositionMap';
 import type {ListGuidanceMap} from '../session/list-guidance';
 import '../scan-activity.css';
 
-export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pendingFields=[],evidenceLost=false,recognitionNeeded=[],guidance,sharing,busy,queued,activeReadings}:{
+export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,guidance,sharing,busy,queued,activeReadings}:{
   cards:ScannedCard[];unknown:ScannerState['unidentified'];discarded?:ScannerState['unidentified'];missing:{id:string;name:string}[];artworkById:Map<string,string|undefined>;
-  pendingFields?:PendingCardFields[];
-  evidenceLost?:boolean;
-  recognitionNeeded?:readonly RecognitionNeededSlot[];
   /** Where to show the list again, from the list table (row-centred scan only). */
   guidance?:{readonly asks:readonly string[];readonly notes:readonly string[];readonly map?:ListGuidanceMap};
   sharing:boolean;busy:boolean;queued?:number;activeReadings?:number;
@@ -24,13 +19,10 @@ export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pe
   const {unresolved,advice,hasLocation}=unidentifiedAttention(unknown,mode,sharing);
   const missingReference=unresolved.some(item=>(!item.reason||item.reason==='이름 확인 필요')&&
     unidentifiedReferenceAdvice(item.portraitDiagnostics)!==null);
-  const pendingById=new Map(pendingFields.map(item=>[item.id,item]));
-  const hasCountConflict=cards.some(card=>pendingById.get(card.id)?.reason==='각성·장수 판독 확인');
-  const unmatched=unmatchedPendingFields(pendingFields,[...cards,...missing]);
   // While sharing, rows not yet seen are progress, not something to check: the progress window
   // shows them on its list map. What is still missing after the share is asked for here.
   const asks=sharing?[]:guidance?.asks??[];
-  const count=cards.length+unresolved.length+discarded.length+recognitionNeeded.length+missing.length+unmatched.length+(asks.length?1:0),hasAttention=count>0||evidenceLost;
+  const count=cards.length+unresolved.length+discarded.length+missing.length+(asks.length?1:0),hasAttention=count>0;
   // Keep the panel briefly after the last item clears, without retaining stale
   // cards or delaying newly observed issues. A new issue cancels the close.
   const [linger,setLinger]=useState(false);
@@ -40,35 +32,22 @@ export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pe
   },[hasAttention]);
   if(!hasAttention&&!linger)return null;
   return <section id="scan-attention" className="scan-attention panel" aria-labelledby="scan-attention-title" tabIndex={0}>
-    <div className="scan-strip-heading"><h2 id="scan-attention-title">추가 확인 항목 <span>{evidenceLost?(count?`${count}+`:'미확인'):count}</span></h2></div>
-    {evidenceLost&&<p role="alert">카드 확인에 필요한 근거가 누락됐거나 서로 충돌했습니다. {sharing?'화면 공유를 종료한 뒤 처음부터 다시 스캔해 주세요.':busy?'현재 처리가 끝나면 화면 공유를 다시 시작해 처음부터 스캔해 주세요.':'화면 공유를 다시 시작해 처음부터 스캔해 주세요.'}</p>}
+    <div className="scan-strip-heading"><h2 id="scan-attention-title">추가 확인 항목 <span>{count}</span></h2></div>
     {!hasAttention&&<p>현재 표시할 확인 항목이 없습니다.</p>}
     {/* First in the panel, above the card pictures: where to scroll is what is needed while sharing. */}
     {!!asks.length&&guidance?.map&&<ListPositionMap map={{...guidance.map,currentRow:null,direction:null}}/>}
     {!!cards.length&&<div className="scan-attention-group">
       <h3>값 확인이 필요한 카드 <span>{cards.length}종</span></h3>
       <p>{attentionCardAdvice(mode)}</p>
-      {hasCountConflict&&<p>일부 카드의 각성 또는 장수가 다르게 읽혔어요. 다시 보여 주고, 계속 남으면 게임에서 확인한 뒤 새 스캔을 시작해 주세요.</p>}
       <div className="scan-attention-grid">
         {cards.map(card=>{
-          const pending=pendingById.get(card.id),artwork=artworkById.get(card.id);
-          const image=attentionCardImage(card.image,pending?.image,!!pending,artwork?`${import.meta.env.BASE_URL}scanner/artwork/${artwork}`:undefined);
-          const countAdvice=attentionCountAdvice(card,pending);
+          const artwork=artworkById.get(card.id);
+          const image=attentionCardImage(card.image,undefined,false,artwork?`${import.meta.env.BASE_URL}scanner/artwork/${artwork}`:undefined);
           return <figure key={card.id}>
             <CardThumbnail src={image.src} alt={`${card.name} · ${image.label}`} width={68} height={102}/>
-            <figcaption><strong title={card.name}>{card.name}</strong><span>{card.review.join(' · ')}</span>{pending?.reason==='각성·장수 판독 확인'&&<span>각성·장수 확인</span>}{countAdvice&&<span>{countAdvice}</span>}<span>{image.label}</span></figcaption>
+            <figcaption><strong title={card.name}>{card.name}</strong><span>{card.review.join(' · ')}</span><span>{image.label}</span></figcaption>
           </figure>;
         })}
-      </div>
-    </div>}
-    {!!unmatched.length&&<div className="scan-attention-group">
-      <h3>다시 보여 줄 카드 <span>{unmatched.length}건</span></h3>
-      <p>{attentionCardAdvice(mode)}</p>
-      <div className="scan-attention-grid">
-        {unmatched.map(item=><figure key={`pending-${item.id}`}>
-          <CardThumbnail src={item.image||''} alt="확인 필요한 카드 · 최근 화면" width={68} height={102}/>
-          <figcaption><strong>카드 확인 필요</strong><span>{mode==='processing'?'판독 후 확인':'카드 화면 확인'}</span><span>{item.image?'최근 확인 화면':'최신 화면 이미지 없음'}</span></figcaption>
-        </figure>)}
       </div>
     </div>}
     {!!unresolved.length&&<div className="scan-attention-group">
@@ -95,11 +74,6 @@ export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pe
           <figcaption><strong>인식 필요</strong><span>{item.reason||'판독 불가'}</span><span>{scrollLocationLabel(item.location)||'위치 확인 불가'}</span></figcaption>
         </figure>)}
       </div>
-    </div>}
-    {!!recognitionNeeded.length&&<div className="scan-attention-group">
-      <h3>인식이 필요한 칸 <span>{recognitionNeeded.length}칸</span></h3>
-      <p>툴팁이나 커서가 카드를 가려 판독하지 못했어요. 최근 수집 화면의 해당 칸을 다시 보여 주세요. 이대로 스캔을 종료해도 됩니다.</p>
-      <ul>{recognitionNeeded.map(item=><li key={item.slot}>{recognitionNeededSlotLabel(item.slot)} · {item.reason}</li>)}</ul>
     </div>}
     {/* Where, not why: the map shows the rows; the reasons stay in the diagnostic report. */}
     {!!asks.length&&<div className="scan-attention-group">

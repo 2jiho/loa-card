@@ -118,6 +118,9 @@ if(complete){
 }else check('an incomplete scan says where to look',(lastMap?.targets.length??0)>0||last.header!=='판독 완료',
   `read ${last.read}/${last.expected}, header ${last.header}, targets ${lastMap?.targets.length??0}`);
 
+// 10. After the share, every card read carries its own picture from the screen (the card list shows it).
+if(typeof last.pictures==='number')check('every card has a screen picture',last.pictures===last.names,`${last.pictures} of ${last.names} cards`);
+
 const failed=checks.filter(item=>!item.ok);
 if(json)console.log(JSON.stringify({id,run:name,entries:entries.length,dropped:report.monitorTimeline.dropped,checks},null,1));
 else{

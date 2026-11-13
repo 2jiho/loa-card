@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {consensus} from '../src/features/card-scanner/recognition/consensus';
-import {CURRENT_FIELD_REVIEW,MAX_UNRESOLVED_FIELD_CHANGES,boundedCountDiagnostics,boundedUnresolvedFieldChanges,carryUnattributedFieldReviews,hasCurrentFieldProof,pendingScanFields,projectCurrentScanFields,unattributedFieldReviewCount} from '../src/features/card-scanner/session/current-scan-fields';
+import {CURRENT_FIELD_REVIEW,MAX_UNRESOLVED_FIELD_CHANGES,boundedCountDiagnostics,boundedUnresolvedFieldChanges,hasCurrentFieldProof,pendingScanFields,projectCurrentScanFields,unattributedFieldReviewCount} from '../src/features/card-scanner/session/current-scan-fields';
 import {confirmedReadingCount} from '../src/features/card-scanner/session/recovery-completion';
 import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
 import {inventoryCsv,inventoryCsvIssues} from '../src/inventory-csv';
@@ -152,36 +152,6 @@ test('legacy aggregate deficits remain visible without inventing an affected ID'
   assert.equal(unattributedFieldReviewCount({cards,currentRunRead:0}),0,'unknown name count is not evidence of a deficit');
   assert.equal(unattributedFieldReviewCount({cards,currentRunNames:NaN,currentRunRead:0}),0);
   assert.deepEqual(cards,before);
-});
-
-test('legacy proof gaps survive partial rescans and backup until the whole inventory is freshly confirmed', () => {
-  const initial = {cards:[original,{...original,id:'other'}],expected:2,currentRunNames:2,currentRunRead:1};
-  const gap = unattributedFieldReviewCount(initial);
-  assert.equal(gap,1);
-  const partial = {...initial,currentRunNames:1,currentRunRead:1};
-  const carried = carryUnattributedFieldReviews(gap,partial);
-  assert.equal(carried,1);
-  const restored = inventoryBackupState({...partial,unattributedFieldReviews:carried} as ScannerState);
-  assert.equal(restored.unattributedFieldReviews,1);
-  assert.equal(unattributedFieldReviewCount(restored),1);
-  const fresh = {...initial,currentRunRead:2};
-  assert.equal(carryUnattributedFieldReviews(gap,fresh),0);
-  for (const change of [{expected:null},{expected:3},{currentRunRead:1},{currentRunNames:1},
-    {cards:[original,{...original,id:'other',countReliable:false}]},
-    {cards:[original,{...original,id:'other',review:['추가 장수 확인']}]}])
-    assert.equal(carryUnattributedFieldReviews(gap,{...fresh,...change}),1);
-  assert.equal(unattributedFieldReviewCount({cards:[original],unattributedFieldReviews:1}),1,'run initialization cannot hide the carry');
-});
-
-test('unidentified changed fields block global use even when every retained card is confirmed', () => {
-  const fresh={cards:[original],expected:1,currentRunNames:1,currentRunRead:1,unresolvedFieldChanges:2};
-  const before=structuredClone(fresh);
-  assert.equal(unattributedFieldReviewCount(fresh),2);
-  assert.equal(unattributedFieldReviewCount({...fresh,unattributedFieldReviews:1}),2,'overlapping aggregate warnings are not added');
-  assert.equal(carryUnattributedFieldReviews(0,fresh),2,'a new unresolved source must not require a pre-existing carry');
-  assert.equal(carryUnattributedFieldReviews(3,fresh),3);
-  assert.equal(carryUnattributedFieldReviews(2,{...fresh,unresolvedFieldChanges:0}),0,'fresh complete proof can clear a carried warning');
-  assert.deepEqual(fresh,before,'no affected identity or field is invented');
 });
 
 test('changed-field summaries accept only bounded integers and never invoke optional getters', () => {

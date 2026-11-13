@@ -18,7 +18,7 @@ async function matchingFixture(run:(fixture:{preparation:typeof import('../src/f
   const resource=(kind:string):Resource=>{
     const result:Resource={kind,disposals:0,async ready(){},async dispose(){
       result.disposals++;state.onDispose?.(kind);await state.block?.(kind);
-      if(kind==='detector'&&state.failure)throw state.failure;
+      if(kind==='acquisition'&&state.failure)throw state.failure;
     }};state.resources.push(result);return result;
   };
   globals[bridgeKey]={detector:async()=>resource('detector'),recognizer:async()=>resource('reader'),
@@ -68,7 +68,7 @@ test('mismatched registered pools finish teardown before a cold fallback can beg
   await matchingFixture(async({prepare,takeMatching,state})=>{
     const pool=await prepare(()=>{},new AbortController().signal);let began!:()=>void,release!:()=>void,cold=false;
     const started=new Promise<void>(resolve=>{began=resolve;}),gate=new Promise<void>(resolve=>{release=resolve;});
-    state.onDispose=kind=>{if(kind==='detector')began();};state.block=async kind=>{if(kind==='detector')await gate;};
+    state.onDispose=kind=>{if(kind==='acquisition')began();};state.block=async kind=>{if(kind==='acquisition')await gate;};
     const operation=takeMatching(()=>pool,continued).then(result=>{cold=true;return result;});
     try{
       await started;await Promise.resolve();assert.equal(cold,false);assert.ok(state.resources.every(value=>value.disposals===1));
@@ -92,7 +92,7 @@ test('a trusted old HMR handle is disposed without inspecting its obsolete resou
 
 test('cleanup rejection propagates and never authorizes an overlapping cold fallback',async()=>{
   await matchingFixture(async({prepare,takeMatching,state})=>{
-    const pool=await prepare(()=>{},new AbortController().signal);state.failure=Error('detector teardown failed');let cold=false;
+    const pool=await prepare(()=>{},new AbortController().signal);state.failure=Error('acquisition teardown failed');let cold=false;
     const operation=takeMatching(()=>pool,continued).then(result=>{cold=true;return result;});
     await assert.rejects(operation,AggregateError);assert.equal(cold,false);
     assert.ok(state.resources.every(value=>value.disposals===1));

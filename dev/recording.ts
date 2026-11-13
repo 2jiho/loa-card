@@ -1,9 +1,10 @@
 import {runScanner} from '../src/features/card-scanner/orchestration/scanner';
+import {prepareScanner} from '../src/features/card-scanner/session/scanner-preparation';
 import type {ScannerState} from '../src/features/card-scanner/orchestration/scanner';
 import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../src/features/card-scanner/session/scanner-name-configuration';
 import {prepareRecordedShareInput} from './recorded-share-input';
 import type {RecordedShareInput} from './recorded-share-input';
-import {analyzeReads,comparabilityIssues,diffRuns,summarizeRun,summarizeUnresolved} from './recording-runs';
+import {comparabilityIssues,diffRuns,summarizeRun,summarizeUnresolved} from './recording-runs';
 import type {RunCard,RunDeliveryLike,RunReport,RunSummary} from './recording-runs';
 import {compareLean,runLeanScan} from './lean-scan';
 import {runRowScan} from './row-scan';
@@ -261,9 +262,13 @@ async function run():Promise<void> {
     }
     const until=Number(new URLSearchParams(location.search).get('until'));
     input=await prepareRecordedShareInput({recordingId,target:share,signal,...(Number.isFinite(until)&&until>0?{untilSeconds:until}:{})});
+    // As the app: the readers are prepared before the share and handed to the scan (?prepared=0: the
+    // scan loads its own, for comparison).
+    const preparedPool=new URLSearchParams(location.search).get('prepared')==='0'?undefined:
+      await prepareScanner(text=>{statusLine.textContent=`엔진 준비 · ${text}`;},signal,NORMAL_SCANNER_NAME_CONFIGURATION);
     statusLine.textContent='실시간 재실행 중…';
     await runScanner(share,signal,onState,()=>{if(cpuProfile&&profiling==='idle'){profiling='on';console.profile('share');}void input!.start().catch(()=>{});},
-      {nameConfiguration:NORMAL_SCANNER_NAME_CONFIGURATION,shareRecording:'off'});
+      {nameConfiguration:NORMAL_SCANNER_NAME_CONFIGURATION,shareRecording:'off'},preparedPool);
     delivery={...input.delivery(),mode:'realtime'};
     // A share ended early is a different input from the whole recording; say so in the report.
     if(input.recordedFrames>delivery.declaredFrames)subsetOf={run:`share ended at ${until}s`,frames:delivery.declaredFrames,of:input.recordedFrames};
@@ -273,16 +278,14 @@ async function run():Promise<void> {
       kind:'recording-replay',version:1,startedAt,finishedAt:new Date().toISOString(),
       recording:{id:recordingId,sha256:delivery.recordingSha256,complete:delivery.recordingComplete,frames:delivery.declaredFrames},
       delivery,status:latest.status,cards,usedFrameTimes:[],locatedFrameTimes:[],liveReplay:{recordingMode:'off',timeline,recoveryProbe:summarizeProbe([]),
-        inputPipeline:latest.liveInputPipeline??null,performance:latest.livePerformance??null},
+        inputPipeline:null,performance:null},
       countReview:latest.cards.filter(card=>card.extraCopies===null||peek.has(card.name)).slice(0,12).map(card=>({name:card.name,awakening:card.awakening,
         review:card.review,countReliable:card.countReliable??null,time:card.time??null,observations:card.observations??null,diagnostics:card.countDiagnostics??null,
         ...(card.image?{image:card.image}:{})})),
-      unresolved:{unidentified:summarizeUnresolved(latest.unidentified),discarded:summarizeUnresolved(latest.discardedObservations),
-        recognitionNeeded:(latest.recognitionNeeded??[]).map(item=>({slot:item.slot,captureTime:item.captureTime,reason:item.reason}))},...(subsetOf?{subsetOf}:{}),
+      unresolved:{unidentified:summarizeUnresolved(latest.unidentified),discarded:summarizeUnresolved(undefined),recognitionNeeded:[]},...(subsetOf?{subsetOf}:{}),
       // The build label is the commit at server start; the source signature also tells
       // uncommitted versions apart.
-      ...(latest.ledger?.traces.length?{readAnalysis:analyzeReads(latest.ledger.traces)}:{}),
-      rejectedSamples:(latest.captureDiagnostics?.samples??[]).filter(sample=>!sample.accepted).map(({image,time,slot,reason,sharpness})=>({image,time,slot,reason,sharpness})),
+      rejectedSamples:[],
       sourceSignature:String(import.meta.env.VITE_REPLAY_SIGNATURE??'').slice(0,16),
       summary:summarizeRun({build:import.meta.env.VITE_BUILD_REVISION??'local',read:latest.currentRunRead??0,expected:latest.expected,
         unidentified:latest.unidentified?.length??0,delivery}),

@@ -81,7 +81,7 @@ node scripts/run-recording-replay.mjs --id <기록 id> --mode realtime --port 51
 node scripts/run-recording-replay.mjs --id <기록 id> --mode rowlive --port 5173
 ```
 
-- `realtime`: 앱과 같은 스캔(`runScanner` → 줄 중심 스캔)을 기록의 원래 속도로 실행한다. 공유 종료 시점과 최종 결과를 함께 남긴다.
+- `realtime`: 앱과 같은 스캔(`runScanner` → 줄 중심 스캔)을 기록의 원래 속도로 실행한다. 앱처럼 판독기를 먼저 준비해 넘긴다(`?prepared=0`이면 스캔이 직접 불러온다). 공유 종료 시점과 최종 결과를 함께 남긴다.
 - `rowlive`: 줄 중심 스캔을 직접 실행하고 진행 창이 보여 준 상태(`monitorTimeline`)를 보고서에 남긴다.
 - 같은 페이지(`/dev/recording.html`)의 `rowread`·`rowlight`·`rows`·`lean`·`artfail`·`gridfit`·`cardmap`은 측정 도구이며 스캔 결과가 아니다.
 - 실행 속도는 이 PC의 부하에 따라 달라진다. 같은 기록을 여러 번 실행해 공유 종료 시점과 최종 결과를 따로 비교하고, 한 번의 결과를 실시간 보장으로 보고하지 않는다.

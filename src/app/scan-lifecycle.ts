@@ -6,7 +6,6 @@ import {createLatestPublisher} from '../latest-publisher';
 import {createScannerFeedback} from '../features/card-scanner/ui/scanner-feedback';
 import {feedbackProbeEnabled} from '../features/card-scanner/ui/feedback-probe-setting';
 import type {ScanMonitorInput, ScanMonitorStore} from '../features/card-scanner/ui/scan-monitor-store';
-import {carryUnattributedFieldReviews,unattributedFieldReviewCount} from '../features/card-scanner/session/current-scan-fields';
 import {clearScanProgress, saveScanProgress} from '../features/card-scanner/persistence/progress-backup';
 import {takeMatchingPreparedScanner} from '../features/card-scanner/session/matching-scanner-preparation';
 import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../features/card-scanner/session/scanner-name-configuration';
@@ -66,7 +65,6 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
   clearScanIncomplete();
   setProgressRestored(false);
   void clearScanProgress().catch(() => {});
-  let unattributedFields = unattributedFieldReviewCount(state);
   const preparedCandidate = preparation.current?.take();
   setPreparationState('loading');
   controller.current?.abort();
@@ -108,8 +106,7 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
       abort.signal,
       (result) => {
         if (controller.current === abort) {
-          unattributedFields = carryUnattributedFieldReviews(unattributedFields, result);
-          const next = unattributedFields ? {...result, unattributedFieldReviews: unattributedFields} : result;
+          const next = result;
           publishMonitor(next);
           if (next.autoStopped) setSharing(false);
           inventory.current = next.cards;

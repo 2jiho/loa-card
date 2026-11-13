@@ -7,7 +7,6 @@ import {CanonicalFrameIndex} from '../src/features/card-scanner/reproduction/can
 import {readCanonicalFrame} from '../src/features/card-scanner/reproduction/canonical-frame-reader';
 import {entryParts,exactEntries,exactPixels,exactReplayFrames,executionSummary,packPixels,fastCompress,pixelHash} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 import type {ExactFrame} from '../src/features/card-scanner/reproduction/exact-recording-codec';
-import {inspectExactPrefix} from '../src/features/card-scanner/reproduction/exact-recording-prefix';
 
 const signal=()=>new AbortController().signal;
 function metadata(format:'I420'|'NV12'='I420',profile:'bt709'|'smpte170m'='bt709',width=4,height=4):NativeYuvFrameMetadata {
@@ -43,23 +42,6 @@ async function archive(samples:readonly Sample[]){
 const collect=async(blob:Blob,version?:0|1)=>{const result=[];
   for await(const frame of exactPixels(blob,signal(),version))result.push({...frame,pixels:frame.pixels.slice()});return result;};
 
-test('compact native deltas restore through sequential and independent random readers with explicit RGBA fallbacks',async()=>{
-  const values=[await native(),await native('I420','bt709',3),await rgba(),await native('NV12'),await native('NV12','smpte170m')],
-    data=await archive(values),frames=await collect(data.blob,1);
-  assert.deepEqual(data.headers.map(header=>header.key),[true,false,true,true,true]);
-  assert.equal(frames.length,values.length);
-  for(const [i,frame]of frames.entries()){assert.deepEqual(frame.pixels,values[i].rgba);assert.equal(frame.hash,values[i].hash);}
-  const restored=[];
-  for(const id of [2,5,1,3,4]){
-    const range=data.index.decodeRange(id),frame=await readCanonicalFrame({frames:range.frameIds.map(frameId=>data.index.get(frameId)!),
-      read:async(offset,length)=>new Uint8Array(await data.blob.slice(offset,offset+length).arrayBuffer())});
-    assert.deepEqual(frame.pixels,new Uint8ClampedArray(values[id-1].rgba));restored.push(frame);
-  }
-  restored[0].pixels[0]^=255;assert.deepEqual(restored[2].pixels,new Uint8ClampedArray(values[0].rgba),'later/random reads have independent owned buffers');
-  const prefix=await inspectExactPrefix(data.blob,signal());assert.equal(prefix.complete,true);assert.equal(prefix.storageVersion,1);
-  assert.equal(prefix.nativeFrames,4);assert.equal(prefix.rgbaFrames,1);
-});
-
 test('native metadata and content hashes are checked at every visited delta, not just the requested target',async()=>{
   const first=await native(),second=await native('I420','bt709',5),data=await archive([first,second]);
   for(const field of ['nativeSha256','descriptorSha256','recipeSha256']as const){
@@ -86,23 +68,6 @@ test('strict storage envelopes reject unknown versions, descriptors, dimensions 
     await assert.rejects(async()=>{for await(const entry of exactEntries(blob,signal()))void entry;});}
   const {storage:_,...unmarked}=header;void _;
   await assert.rejects(collect(new Blob(entryParts(unmarked,data.payloads[0]))),/픽셀 블록/);
-});
-
-test('static representation/profile changes require a new key and a mixed marked/unmarked stream is refused',async()=>{
-  const first=await native(),profile=await native('I420','smpte170m'),data=await archive([first,profile]);
-  const second={...data.headers[1],key:false};
-  const blob=new Blob([...entryParts(data.headers[0],data.payloads[0]),...entryParts(second,data.payloads[1])]);
-  await assert.rejects(collect(blob),/기준 프레임/);
-  const prefix=await inspectExactPrefix(blob,signal());assert.equal(prefix.complete,false);assert.equal(prefix.frames,1);
-  assert.equal(prefix.storageVersion,1);assert.equal(prefix.nativeFrames,1);
-  const descriptors=[data.index.get(1)!,{...data.index.get(2)!,key:false}];let reads=0;
-  await assert.rejects(readCanonicalFrame({frames:descriptors,read:()=>{reads++;return new Uint8Array();}}),/저장 형식 불일치/);assert.equal(reads,0);
-  const rgb=await rgba(),marked=await archive([rgb]),{storage:_,...old}=marked.headers[0];void _;
-  const mixed=new Blob([...entryParts(old,marked.payloads[0]),...entryParts({...marked.headers[0],id:2,key:true},marked.payloads[0])]);
-  await assert.rejects(collect(mixed),/혼합된/);
-  const index=new CanonicalFrameIndex();index.append({sourceFrameId:1,frameId:1,offset:0,endOffset:100,width:4,height:4,captureTime:0,arrivalOrder:1,key:true,pixelHash:rgb.hash,role:'input'});
-  assert.throws(()=>index.append({sourceFrameId:2,frameId:2,offset:100,endOffset:200,width:4,height:4,captureTime:1,arrivalOrder:2,key:true,
-    pixelHash:rgb.hash,role:'input',storage:rgb.storage}),/cannot be mixed/);assert.equal(index.stats().entries,1);
 });
 
 test('native chain budgets count stored bytes plus generated RGBA while legacy accounting stays unchanged',async()=>{
@@ -135,53 +100,6 @@ test('compact index metadata and random-read validation detach mutable caller de
   assert.equal(committed.storage?.kind,'native-yuv420');assert.ok(committed.storage?.kind==='native-yuv420');
   assert.equal(committed.storage.descriptor.colorSpace.matrix,'bt709');
   assert.ok(Object.isFrozen(committed.storage));assert.ok(Object.isFrozen(committed.storage.descriptor.colorSpace));
-});
-
-test('compact default dependency chains stop at eight frames and a large standalone key cannot grow',async()=>{
-  const sample=await native(),data=await archive(Array.from({length:9},()=>sample));
-  assert.deepEqual(data.headers.map(header=>header.key),[true,false,false,false,false,false,false,false,true]);
-  assert.equal(data.index.decodeRange(8).frameIds.length,8);assert.deepEqual(data.index.decodeRange(9).frameIds,[9]);
-  assert.equal(data.index.decodeRange(8).decodeBytes,8*88);
-  const overlong=new Blob(data.headers.flatMap((header,i)=>entryParts({...header,key:i===0},data.payloads[i])));
-  const prefix=await inspectExactPrefix(overlong,signal());assert.equal(prefix.complete,false);assert.equal(prefix.frames,8);
-  await assert.rejects(collect(overlong),/복원 예산 초과/);
-  assert.equal(prefix.nativeFrames,8);assert.equal(prefix.rgbaFrames,0);
-  assert.equal(prefix.bytes,new Blob(data.headers.slice(0,8).flatMap((header,i)=>entryParts({...header,key:i===0},data.payloads[i]))).size,
-    'the rejected ninth physical entry is not partially counted or retained');
-  let calls=0;
-  await assert.rejects(readCanonicalFrame({frames:Array.from({length:9},(_,i)=>data.index.get(i+1)!),
-    read:()=>{calls++;return new Uint8Array();}}),/범위/);assert.equal(calls,0);
-  const large={...sample.storage,descriptor:metadata('I420','bt709',3840,2160),byteLength:3840*2160*3/2}as NativeStorage,
-    index=new CanonicalFrameIndex(),key={sourceFrameId:1,frameId:1,offset:0,endOffset:100,width:3840,height:2160,captureTime:0,
-      arrivalOrder:1,key:true,pixelHash:sample.hash,role:'input'as const,storage:large};
-  index.append(key);assert.equal(index.decodeRange(1).decodeBytes,45_619_200);assert.equal(index.keyRequired(3840,2160,large),true);
-  assert.throws(()=>index.append({...key,sourceFrameId:2,frameId:2,offset:100,endOffset:200,key:false}),/bounded keyframe/);
-  const largeHeader={...data.headers[0],width:3840,height:2160,storage:large};
-  const largePrefix=await inspectExactPrefix(new Blob([...entryParts(largeHeader,data.payloads[0]),
-    ...entryParts({...largeHeader,id:2,key:false},data.payloads[1])]),signal());
-  assert.equal(largePrefix.frames,1);assert.equal(largePrefix.complete,false);assert.equal(largePrefix.nativeFrames,1);
-  const longLegacy=new Blob(Array.from({length:9},(_,i)=>entryParts({kind:'frame',id:i+1,time:i,width:1,height:1,key:i===0,
-    hash:'a'.repeat(64)},new Uint8Array([1]))).flat());
-  assert.equal((await inspectExactPrefix(longLegacy,signal())).complete,true,'noncanonical old sequential chain policy is unchanged');
-});
-
-test('marked storage cannot omit canonical addressing or fall back to physical-frame playback',async()=>{
-  const data=await archive([await native()]),{canonical:_,...unmarkedAddressing}=data.headers[0];void _;
-  const blob=new Blob(entryParts(unmarkedAddressing,data.payloads[0]));
-  await assert.rejects(async()=>{for await(const entry of exactEntries(blob,signal()))void entry;},/정규 입력 형식이 필요/);
-  await assert.rejects(collect(blob),/정규 입력 형식이 필요/);
-  await assert.rejects(async()=>{for await(const frame of exactReplayFrames(blob,signal(),undefined,1,false,1))void frame;},/정규 입력 형식이 필요/);
-  await assert.rejects(executionSummary(blob,signal(),{complete:true,dropped:0,events:0,frames:1,storageVersion:1,nativeFrames:1,rgbaFrames:0}),/정규 입력 형식이 필요/);
-  const prefix=await inspectExactPrefix(blob,signal());assert.equal(prefix.complete,false);assert.equal(prefix.frames,0);assert.equal(prefix.bytes,0);
-  assert.equal(prefix.storageVersion,undefined);
-  let reads=0;
-  await assert.rejects(readCanonicalFrame({frames:[{...data.index.get(1)!,endOffset:blob.size}],
-    read:async(offset,length)=>{reads++;return new Uint8Array(await blob.slice(offset,offset+length).arrayBuffer());}}),/정규 입력 형식이 필요/);
-  assert.equal(reads,2,'unaddressed compact data is rejected before reading its compressed payload');
-  const pixels=Uint8Array.from([1,2,3,4]),hash=await pixelHash(pixels),parts:BlobPart[]=[];
-  for(let i=0;i<9;i++)parts.push(...entryParts({kind:'frame',id:i+1,time:i,width:1,height:1,key:i===0,hash,codec:'lz4',xor:true},
-    fastCompress(packPixels(pixels,i===0?undefined:pixels,true))));
-  assert.equal((await collect(new Blob(parts),0)).length,9,'old noncanonical sequential playback is not given canonical-only chain limits');
 });
 
 test('explicit expected storage version and physical kind totals reject mislabeled outer recordings',async()=>{

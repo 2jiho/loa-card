@@ -9,22 +9,19 @@ import type {ScannedCard} from '../recognition/recognizer-types';
 import {packCount} from '../recognition/count-pattern';
 import {PREVIEW_ZERO_REASON,needsPreviewZeroProof,previewZeroReading,selectZeroPreview} from './preview-zero';
 
-/** Development prototype (docs/scanner-live-redesign.md 13.9, step 4). Not a scanner.
+/** Acceptance and merge for the row-centred scan (docs/scanner-pipeline.md, section 5): every crop
+ * the row reading names goes through the shared field acceptance (session/field-acceptance.ts) and
+ * into an InventoryEvidence (empty seed, the recorded-name consensus and count-conflict policies).
+ * "Confirmed" is `confirmedReadingCount` over the projected cards: values this scan's observations
+ * confirm, latest by capture time.
  *
- * The scanner's own acceptance and merge for the row-centred reading: every crop the row
- * reading names goes through the shared field acceptance (session/field-acceptance.ts) and
- * into an InventoryEvidence set up as the scanner sets up its own (empty seed, same consensus
- * and count-conflict policies). "Confirmed" is the scanner's `confirmedReadingCount` over the
- * projected cards, so the number can be compared with the scanner's "read" count.
+ * It also runs the end-of-scan check of kept crops (`confirmZeros`): a card whose count is still
+ * missing or an unconfirmed zero is confirmed as zero only when a kept crop of it shows an explicit
+ * empty counter and no later kept crop shows a positive count (up to 8 crops kept per card not yet
+ * confirmed). And it keeps one small screen picture per card for the card list.
  *
- * After the share it can run the scanner's end-of-scan check of stored previews (`confirmZeros`):
- * a card whose count is still missing or an unconfirmed zero is confirmed as zero only when a
- * kept crop of it shows an explicit empty counter and no later kept crop shows a positive count.
- * The scanner re-reads its saved preview pictures; this keeps the crops themselves (up to 8 per
- * card not yet confirmed), so the pixels read are not the same bytes.
- *
- * What it leaves out of the scanner: the header total, sort, positions, unknown-observation
- * lifecycle, freshness proofs, recovery and completion. It decides nothing about a finished scan. */
+ * It decides nothing about a finished scan: the header total and completion are
+ * orchestration/row-scanner-state.ts. */
 export interface RowEvidenceIdentity {
   readonly id:string;readonly name:string;readonly review:readonly string[];readonly maxAwakening?:number;
   readonly nameEvidence?:ScannedCard['nameEvidence'];
@@ -76,9 +73,9 @@ export interface RowEvidence {
   /** `detail`: add the diagnosis of unconfirmed cards (their accepted crops and a picture). */
   /** The merged cards as the scanner projects them (values as accepted; a zero the check confirmed
    * is shown as zero), and how many are confirmed, computed now. */
-  /** The cards so far. With `pictures`, a card still to check carries the screen crop it was last
-   * read from (encoding it costs main-thread time, so the caller asks for it once frames are no
-   * longer being taken). */
+  /** The cards so far. With `pictures`, each card carries a picture from the screen: a card still to
+   * check the crop it was last read from, the others their own small picture (the caller asks for
+   * them once frames are no longer being taken, as encoding costs main-thread time). */
   cards(pictures?:boolean):{readonly cards:readonly ScannedCard[];readonly confirmed:number};
   /** For the card strip of the interface: the cards as they were first read, newest last (at most
    * 16), with a small picture of the crop and whether its values were read. Presentation only. */
@@ -98,11 +95,15 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
   const previews=new Map<string,{canvas:HTMLCanvasElement;order:number;stable:boolean;url?:string}[]>(),PREVIEWS=8;
   /** The interface's card strip (activity()). */
   const strip:{id:number;image:string;name:string;status:'read'|'review'}[]=[];let stripId=0;
+  // One small picture per card (the card list's tile size), made when the card is first read and
+  // made again once from a still frame if the first was taken while the list moved: the card list
+  // shows the card as it was on screen, not the game's artwork.
   const thumbnail=(image:HTMLCanvasElement)=>{
-    const small=Object.assign(document.createElement('canvas'),{width:68,height:102});
-    small.getContext('2d')!.drawImage(image,0,0,68,102);
+    const small=Object.assign(document.createElement('canvas'),{width:80,height:120});
+    small.getContext('2d')!.drawImage(image,0,0,80,120);
     const url=small.toDataURL('image/jpeg',.85);small.width=0;return url;
   };
+  const cardPictures=new Map<string,{url:string;stable:boolean}>();
   const accepts=new Map<string,unknown[]>();
   const resolvedZero=new Map<string,NonNullable<ScannedCard['countDiagnostics']>>();
   /** Observations accepted per card, to notice one arriving while the zero check reads that card's crops. */
@@ -145,8 +146,10 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
       // A new observation of the card replaces what the zero check concluded from older crops.
       resolvedZero.delete(identity.id);
       // The strip shows each card once, when it is first read.
-      if(!acceptCount.has(identity.id)&&input.image&&input.image.width){
-        strip.push({id:++stripId,image:thumbnail(input.image),name:identity.name,
+      const picture=cardPictures.get(identity.id);
+      if(input.image&&input.image.width&&(!picture||(!picture.stable&&stable)))cardPictures.set(identity.id,{url:thumbnail(input.image),stable});
+      if(!acceptCount.has(identity.id)&&cardPictures.has(identity.id)){
+        strip.push({id:++stripId,image:cardPictures.get(identity.id)!.url,name:identity.name,
           status:values.awakening!==null&&values.extraCopies!==null?'read':'review'});
         if(strip.length>16)strip.shift();
       }
@@ -211,11 +214,13 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
     cards(pictures=false){
       refresh(true);
       if(!pictures)return {cards:projected,confirmed:confirmedIds.size};
-      // A card still to check shows the screen crop it was last read from (the newest kept one).
+      // A card still to check shows the screen crop it was last read from (the newest kept one);
+      // every other card its own small picture from the screen.
       return {confirmed:confirmedIds.size,cards:projected.map(card=>{
-        if(confirmedIds.has(card.id))return card;
+        const own=cardPictures.get(card.id)?.url;
+        if(confirmedIds.has(card.id))return own?{...card,image:own}:card;
         const newest=[...(previews.get(card.id)??[])].sort((a,b)=>b.order-a.order)[0];
-        if(!newest?.canvas.width)return card;
+        if(!newest?.canvas.width)return own?{...card,image:own}:card;
         newest.url??=newest.canvas.toDataURL('image/jpeg',.9);
         return {...card,image:newest.url};
       })};

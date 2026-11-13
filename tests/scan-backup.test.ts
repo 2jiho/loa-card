@@ -23,16 +23,16 @@ test('a new tab restores the same inventory and XP without sessionStorage', asyn
   assert.deepEqual(await createScanBackup(() => factory, () => null).load(), state());
 });
 
-test('header conflict survives backup alongside another warning and rejects invalid state',async()=>{
+test('the earlier scanner\'s warnings are not restored, and a malformed header-conflict flag still rejects the state',async()=>{
  const factory=new IDBFactory(),backup=createScanBackup(()=>factory,()=>null);
- await backup.load();await backup.save({...state(),headerConflict:true,captureWarning:'기록 실패'});
- const restored=await backup.load();
- assert.equal(restored?.headerConflict,true);assert.equal(restored?.captureWarning,'기록 실패');
+ await backup.load();await backup.save({...state(),headerConflict:true,captureWarning:'기록 실패'} as unknown as ScannerState);
+ const restored=await backup.load() as Record<string,unknown>|null;
+ assert.equal(restored?.headerConflict,undefined);assert.equal(restored?.captureWarning,undefined);
  for(const invalid of [null,'true',1])
   await assert.rejects(backup.save({...state(),headerConflict:invalid} as unknown as ScannerState),/목록 형식/);
  const accessor=Object.defineProperty({...state()},'headerConflict',{get(){throw Error('must not invoke getter');}});
  await assert.rejects(backup.save(accessor),/목록 형식/);
- assert.equal((await backup.load())?.headerConflict,true);
+ assert.equal((await backup.load() as Record<string,unknown>|null)?.headerConflict,undefined);
 });
 
 test('live thumbnail activity is not persisted with the inventory',async()=>{
@@ -43,7 +43,7 @@ test('live thumbnail activity is not persisted with the inventory',async()=>{
   assert.equal(input.activity.length,1);
 });
 
-test('historical monitor grid survives backup without live frame state',async()=>{
+test('the earlier scanner\'s monitor grid is not restored from a backup',async()=>{
   const factory=new IDBFactory(),backup=createScanBackup(()=>factory,()=>null);
   const grid={located:true,cells:Array.from({length:40},(_,i)=>({status:i===0?'read':i===1?'review':'unknown',...(i===0?{row:2}:{})})),
     inventory:Array.from({length:550},()=>({status:'unknown' as const})),
@@ -51,15 +51,9 @@ test('historical monitor grid survives backup without live frame state',async()=
     recentFrame:{frame:7,cells:Array.from({length:40},()=>({status:'unknown' as const}))},liveTracking:true,liveTop:4};
   const input={...state(),grid} as unknown as ScannerState;
   await backup.load();await backup.save(input);
-  const restored=(await backup.load())!;
-  assert.equal(restored.grid?.cells.length,40);
-  assert.equal(restored.grid?.cells[0].status,'read');
-  assert.equal(restored.grid?.cells[0].historical,true);
-  assert.equal(restored.grid?.inventory?.length,550);
-  assert.equal(restored.grid?.recent,undefined);
-  assert.equal(restored.grid?.recentFrame,undefined);
-  assert.equal(restored.grid?.liveTracking,undefined);
-  assert.equal(input.grid?.recent?.captured,40,'live input state is not mutated');
+  const restored=(await backup.load())! as unknown as Record<string,unknown>;
+  assert.equal(Object.hasOwn(restored,'grid'),false);
+  assert.equal(grid.recent.captured,40,'live input state is not mutated');
 });
 
 test('unresolved changed-field counts survive backup while malformed counts cannot overwrite it',async()=>{
@@ -166,7 +160,7 @@ test('corrupt card fields are rejected before rendering or migrating and cannot 
 });
 
 
-test('inventory backups retain field proof, unknown values, thumbnails and growth undo but omit scan diagnostics',async()=>{
+test('inventory backups retain field proof, unknown values, thumbnails and growth undo but omit scan diagnostics and the earlier scanner\'s fields',async()=>{
  const factory=new IDBFactory(),backup=createScanBackup(()=>factory,()=>null);
  const card={id:'a',name:'카드',awakening:null,extraCopies:null,confidence:.8,review:['장수 확인'],image:'data:image/png;base64,card',time:1,observations:2,captureOrder:45,countReliable:false,nameConfirmedBy:'repeat' as const};
  const history=[{label:'성장',cardsBefore:[{...card,awakening:0,extraCopies:2}],pointsBefore:{current:2000,maximum:null},estimatedBefore:false}];
@@ -180,14 +174,12 @@ test('inventory backups retain field proof, unknown values, thumbnails and growt
  const restored=(await backup.load())!;
  assert.deepEqual(restored.cards,[card]);assert.deepEqual(restored.growthHistory,history);
  assert.deepEqual(restored.unidentified,input.unidentified);assert.equal(restored.currentRunRead,0);
- assert.deepEqual(restored.recognitionNeeded,input.recognitionNeeded);
- assert.deepEqual(restored.discardedObservations,input.discardedObservations);
- for(const key of ['ledger','captureDiagnostics','activity','grid','livePerformance'])assert.equal(Object.hasOwn(restored,key),false,key);
+ for(const key of ['ledger','captureDiagnostics','activity','grid','livePerformance','recognitionNeeded','discardedObservations'])assert.equal(Object.hasOwn(restored,key),false,key);
  assert.equal(restored.queued,0);assert.equal(restored.droppedFrames,4,'capture loss remains visible after restore');
- assert.equal(input.ledger!.traces.length,1000,'original runtime state is untouched');
+ assert.equal((input as unknown as {ledger:{traces:unknown[]}}).ledger.traces.length,1000,'original runtime state is untouched');
  // Old full-state storage is read through the same projection.
  await seed(factory,[['current',{version:1,revision:'legacy-full',savedAt:1,state:input}]]);
- assert.equal((await backup.load())?.ledger,undefined);
+ assert.equal((await backup.load() as Record<string,unknown>|null)?.ledger,undefined);
 });
 
 test('a stalled storage open times out, closes a late connection, and does not poison queued retries',async()=>{

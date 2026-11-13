@@ -68,19 +68,6 @@ export function unattributedFieldReviewCount(state: {
   return Math.max(carried, state.currentRunNames! - state.currentRunRead! - reviewed);
 }
 
-/** A partial rescan cannot erase an old, unidentified proof gap. Only fresh
- * proof for every inventory row and the expected quantity can clear it. */
-export function carryUnattributedFieldReviews(count: number, state: {
-  cards: readonly ScannedCard[]; expected: number | null; currentRunNames?: number; currentRunRead?: number; unresolvedFieldChanges?: number;
-}): number {
-  const changes = changedFieldReviews(state);
-  if (changes) return Math.max(count, changes);
-  if (!count) return 0;
-  const size = state.cards.length;
-  return Number.isInteger(state.expected) && state.expected! > 0 && state.expected === size &&
-    state.currentRunNames === size && state.currentRunRead === size &&
-    state.cards.every(card => !card.review.length && card.countReliable === true) ? 0 : count;
-}
 
 export interface PendingCardFields {
   id: string;

@@ -123,3 +123,11 @@ test('while sharing, once every card is confirmed, the map asks for no row', asy
   const state=rowScannerState(snapshot({cards:[card(1),card(2)],confirmed:2,expected:2,phase:'capture',guidance:{asks:[],notes:[],map}} as never));
   assert.deepEqual(state.listGuidance?.map?.targets,[]);
 });
+
+test('the shown count may hold a brief dip, but the automatic end of the share uses the real count', async () => {
+  const {rowScannerState,rowCanStopSharing}=await import('../src/features/card-scanner/orchestration/row-scanner-state');
+  const held=snapshot({cards:[card(1),card(2)],confirmed:1,displayConfirmed:2,expected:2,freshExpected:2,phase:'capture',waitingReads:0} as never);
+  assert.equal(rowScannerState(held).currentRunRead,2,'the window keeps the count through a brief dip');
+  assert.equal(rowCanStopSharing(held),false,'the share is not ended while a card is unconfirmed');
+  assert.equal(rowScannerState({...held,phase:'done'}).currentRunRead,1,'the final count is never held');
+});

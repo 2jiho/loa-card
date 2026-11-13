@@ -70,14 +70,14 @@ async function fakePreparation(run:(fixture:{module:typeof import('../src/featur
   }
 }
 
-for(const [cores,readers,visuals] of [[1,1,1],[4,2,1],[8,4,2]])test(`prepared ${cores}-core lanes all use one snapshotted configuration`,async()=>{
+for(const cores of [1,4,8])test(`a ${cores}-core machine prepares what the row scan reads with, under one snapshotted configuration`,async()=>{
   await fakePreparation(async({prepare,module,state})=>{
-    let release!:()=>void;state.detectorGate=new Promise<void>(resolve=>{release=resolve;});
     const input={version:1,rawResultPolicy:'continue'} as {version:1;rawResultPolicy:'resample'|'continue'};
-    const preparing=prepare(()=>{},new AbortController().signal,input);input.rawResultPolicy='resample';release();
+    const preparing=prepare(()=>{},new AbortController().signal,input);input.rawResultPolicy='resample';
     const pool=await preparing;
-    assert.equal(pool.readers.length,readers);assert.equal(pool.visuals.length,visuals);
-    assert.deepEqual(state.options,Array.from({length:readers},()=>({nameRawResultPolicy:'continue'})));
+    assert.equal(pool.readers.length,1);assert.equal(pool.visuals.length,module.PREPARED_VISUALS);
+    assert.deepEqual(state.options,[{nameRawResultPolicy:'continue'}]);
+    assert.ok(!state.resources.some(value=>value.kind==='detector'),'the row scan has no main-thread detector');
     const configuration=module.preparedScannerConfiguration(pool);assert.deepEqual(configuration,continued);assert.ok(Object.isFrozen(configuration));
     assert.notEqual(configuration,input);await module.disposePreparedScanner(pool);
     assert.ok(state.resources.every(value=>value.disposals===1));
@@ -98,35 +98,11 @@ test('ordinary preparation keeps the normal policy and invalid or pre-aborted in
 
 test('failed owned cleanup reports uncertainty while preserving the original setup error',async()=>{
  await fakePreparation(async({prepare,state})=>{
-  state.readerFailure=2;state.disposeFailure='reader-1';const reports:unknown[]=[];
+  state.acquisitionFailure=true;state.disposeFailure='reader-1';const reports:unknown[]=[];
   await assert.rejects(prepare(()=>{},new AbortController().signal,NORMAL_SCANNER_NAME_CONFIGURATION,
-   {onCleanupUncertain:error=>{reports.push(error);}}),/reader setup failed/);
+   {onCleanupUncertain:error=>{reports.push(error);}}),/acquisition setup failed/);
   assert.equal(reports.length,1);assert.ok(reports[0] instanceof AggregateError);
   assert.ok(state.resources.every(resource=>resource.disposals===1));
- });
-});
-
-test('late detector cleanup after cancellation reports failure but cancellation remains primary',async()=>{
- await fakePreparation(async({prepare,state})=>{
-  let release!:()=>void;state.detectorGate=new Promise<void>(resolve=>{release=resolve;});
-  state.disposeFailure='detector';const abort=new AbortController();let report!:()=>void;
-  const reported=new Promise<void>(resolve=>{report=resolve;});
-  const pending=prepare(()=>{},abort.signal,NORMAL_SCANNER_NAME_CONFIGURATION,{onCleanupUncertain:()=>report()});
-  abort.abort();await assert.rejects(pending,{name:'AbortError'});release();
-  await Promise.race([reported,new Promise<never>((_,reject)=>setTimeout(()=>reject(Error('late cleanup was not reported')),500))]);
-  assert.equal(state.resources.find(resource=>resource.kind==='detector')?.disposals,1);
- });
-});
-
-test('cancelled preparation exposes pending late detector cleanup until it actually settles',async()=>{
- await fakePreparation(async({prepare,state})=>{
-  let release!:()=>void;state.detectorGate=new Promise<void>(resolve=>{release=resolve;});
-  const abort=new AbortController();const fences:Promise<void>[]=[];
-  const pending=prepare(()=>{},abort.signal,NORMAL_SCANNER_NAME_CONFIGURATION,{onCleanupPending:fence=>fences.push(fence)});
-  abort.abort();await assert.rejects(pending,{name:'AbortError'});
-  assert.equal(fences.length,1);let settled=false;void fences[0].then(()=>{settled=true;});
-  await new Promise(resolve=>setTimeout(resolve,0));assert.equal(settled,false);
-  release();await fences[0];assert.equal(state.resources.find(resource=>resource.kind==='detector')?.disposals,1);
  });
 });
 
@@ -135,7 +111,7 @@ test('claim validates configuration without consuming a mismatched pool and tran
     const pool=await prepare(()=>{},new AbortController().signal,continued);
     assert.throws(()=>module.claimPreparedScanner(pool,NORMAL_SCANNER_NAME_CONFIGURATION),/일치/);
     const claimed=module.claimPreparedScanner(pool,continued);
-    assert.equal(claimed.detector,pool.detector);assert.notEqual(claimed.readers,pool.readers);assert.deepEqual(claimed.readers,pool.readers);
+    assert.notEqual(claimed.readers,pool.readers);assert.deepEqual(claimed.readers,pool.readers);
     assert.notEqual(claimed.visuals,pool.visuals);assert.ok(Object.isFrozen(claimed)&&Object.isFrozen(claimed.readers)&&Object.isFrozen(claimed.visuals));
     assert.throws(()=>module.claimPreparedScanner(pool,continued),/한 번/);assert.throws(()=>module.claimPreparedScanner(claimed,continued),/한 번/);
     const first=module.disposePreparedScanner(pool);assert.equal(module.disposePreparedScanner(claimed),first);assert.equal(claimed.dispose(),first);await first;
@@ -182,10 +158,9 @@ test('tampered public getters and resource methods cannot redirect known cleanup
 test('claimed top-level snapshot survives later changes to the original containers',async()=>{
   await fakePreparation(async({prepare,module,state})=>{
     const pool=await prepare(()=>{},new AbortController().signal),claimed=module.claimPreparedScanner(pool,NORMAL_SCANNER_NAME_CONFIGURATION);
-    const readers=[...claimed.readers],visuals=[...claimed.visuals],detector=claimed.detector;
+    const readers=[...claimed.readers],visuals=[...claimed.visuals];
     (pool.readers as unknown[]).length=0;(pool.visuals as unknown[]).length=0;
-    Object.defineProperty(pool,'detector',{value:{},configurable:true});
-    assert.deepEqual(claimed.readers,readers);assert.deepEqual(claimed.visuals,visuals);assert.equal(claimed.detector,detector);
+    assert.deepEqual(claimed.readers,readers);assert.deepEqual(claimed.visuals,visuals);
     assert.deepEqual(module.preparedScannerConfiguration(claimed),NORMAL_SCANNER_NAME_CONFIGURATION);
     await module.disposePreparedScanner(claimed);assert.ok(state.resources.every(value=>value.disposals===1));
   });
@@ -239,15 +214,15 @@ test('preparation failure joins every allocated cleanup and preserves the origin
     assert.ok(state.resources.length>0);assert.ok(state.resources.every(value=>value.disposals===1));
   });
   await fakePreparation(async({prepare,state})=>{
-    state.readerFailure=2;await assert.rejects(prepare(()=>{},new AbortController().signal),/reader setup failed/);
-    assert.deepEqual(state.resources.map(value=>value.kind),['detector','reader-1']);
+    state.readerFailure=1;await assert.rejects(prepare(()=>{},new AbortController().signal),/reader setup failed/);
+    assert.deepEqual(state.resources.map(value=>value.kind),[]);
     assert.ok(state.resources.every(value=>value.disposals===1));
   });
 });
 
 test('failed known cleanup is memoized and does not skip other resources',async()=>{
   await fakePreparation(async({prepare,module,state})=>{
-    const pool=await prepare(()=>{},new AbortController().signal);state.disposeFailure='detector';
+    const pool=await prepare(()=>{},new AbortController().signal);state.disposeFailure='acquisition';
     const first=module.disposePreparedScanner(pool);await assert.rejects(first,AggregateError);
     assert.equal(module.disposePreparedScanner(pool),first);await assert.rejects(module.disposePreparedScanner(pool),AggregateError);
     assert.ok(state.resources.every(value=>value.disposals===1));

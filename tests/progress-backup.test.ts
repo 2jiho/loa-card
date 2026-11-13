@@ -39,7 +39,7 @@ async function seed(factory: IDBFactory, row: unknown) {
   db.close();
 }
 
-test('progress checkpoints restore as an interrupted display state without images or live-frame claims',async()=>{
+test('progress checkpoints restore as an interrupted display state without images, live-frame claims or the earlier grid',async()=>{
   const factory = new IDBFactory(), progress = createProgressBackup(()=>factory);
   assert.equal(await progress.load(),undefined);
   await progress.save(state());
@@ -53,14 +53,8 @@ test('progress checkpoints restore as an interrupted display state without image
   assert.equal(restored!.state.cards[0].image,'');
   assert.equal(restored!.state.unidentified?.[0].image,'');
   assert.equal(restored!.state.growthHistory,undefined);
-  assert.equal(restored!.state.grid?.cells.length,40);
-  assert.equal(restored!.state.grid?.cells[0].status,'read');
-  assert.equal(restored!.state.grid?.cells[0].historical,true);
-  assert.equal(restored!.state.grid?.inventory?.length,30);
-  assert.equal(restored!.state.grid?.recent,undefined);
-  assert.equal(restored!.state.grid?.recentFrame,undefined);
-  assert.equal(restored!.state.grid?.liveTracking,undefined);
-  assert.equal(restored!.state.grid?.liveTop,undefined);
+  // The earlier scanner's monitor grid is not restored.
+  assert.equal(Object.hasOwn(restored!.state,'grid'),false);
 });
 
 test('progress checkpoint saves replace the previous checkpoint and clear removes it',async()=>{

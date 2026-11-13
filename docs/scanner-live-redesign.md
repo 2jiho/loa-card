@@ -1,6 +1,6 @@
 # 실시간 스캐너 재설계안 (초안)
 
-상태: 제안. 구현·채택 전이며, 현재 앱의 동작을 바꾸지 않는다. 기존 계약과 불변 조건은 [scanner-session-design.md](scanner-session-design.md), [scanner-pipeline.md](scanner-pipeline.md), `AGENTS.md`를 따른다.
+상태: 13절(줄 중심 판독)은 v0.3.0에서 기본 스캔으로 구현됐다([스캐너 구조](scanner-pipeline.md)). 나머지 절은 당시의 제안 기록이다. 기존 계약과 불변 조건은 [scanner-session-design.md](scanner-session-design.md), [scanner-pipeline.md](scanner-pipeline.md), `AGENTS.md`를 따른다.
 
 ## 1. 문제
 

@@ -11,17 +11,15 @@ import type {ReadFieldValues} from '../session/field-acceptance';
 export interface LeanObservation {readonly time:number;readonly awakening:number|null;readonly extraCopies:number|null}
 export interface LeanCard {readonly id:string;readonly name:string;readonly firstTime:number;readonly observations:readonly LeanObservation[]}
 
-/** Development prototype (docs/scanner-live-redesign.md 13.9, step 2). Not a scanner.
+/** The row reading of one scan (docs/scanner-pipeline.md, section 4). It reads only what the list
+ * table does not have yet: two probe slots per visible row decide whether the row is known
+ * (session/row-read-plan.ts), then only the missing slots of a known row, or the whole of an
+ * unknown row, are read by the visual workers (artwork identity, awakening, count). Slots the
+ * artwork does not name go to the one background name lane (the text reader).
  *
- * Replays a server recording frame by frame and reads only what the list table does not have
- * yet: two probe slots per visible row decide whether the row is known (dev/row-read-plan.ts),
- * then only the missing slots of a known row, or the whole of an unknown row, are read.
- *
- * Reading is the visual worker alone (artwork identity, awakening, count), as in
- * dev/lean-scan.ts: raw single observations WITHOUT the scanner's reliability checks, name
- * reading, merge or completion. The card values are measurements to compare, never results.
- * The acquisition worker still crops all 40 slots of every frame; this step measures how
- * much READING the row policy saves and whether the values stay the same, not the frame cost. */
+ * Named crops are accepted and merged by session/row-evidence.ts (the scanner's field acceptance
+ * and merge); the list table (session/list-table.ts) places them. This module decides no value
+ * and no completion. */
 export interface RowReadResult {
   readonly frames:number;readonly locatedFrames:number;readonly wallMs:number;
   /** Usable crops offered / crops read as probes / read because the row or slot needed it. */

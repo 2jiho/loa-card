@@ -19,13 +19,14 @@ export function ScanConveyor({items,queued,reading}:{items:readonly ScanActivity
   const reduced=useReducedMotion();
   const seen=useRef(new Set<number>()),backlog=useRef<ScanActivityItem[]>([]);
   const [belt,setBelt]=useState<ScanActivityItem[]>([]);
-  // New cards join the backlog in the order they were read; a card's later status updates the belt.
+  // New cards join the backlog in the order they were read.
   useEffect(()=>{
     for(const item of items)if(!seen.current.has(item.id)){seen.current.add(item.id);backlog.current.push(item);}
     if(backlog.current.length>MAX_BACKLOG)backlog.current.splice(0,backlog.current.length-MAX_BACKLOG);
-    const latest=new Map(items.map(item=>[item.id,item]));
-    setBelt(previous=>previous.some(item=>latest.get(item.id)&&latest.get(item.id)!==item)?previous.map(item=>latest.get(item.id)??item):previous);
   },[items]);
+  // A card's later status (read, to check) shows on the belt as it is now.
+  const latest=new Map(items.map(item=>[item.id,item]));
+  const shown=belt.map(item=>latest.get(item.id)??item);
   // One step at a time: the next card enters the window and the belt moves right by one slot.
   useEffect(()=>{
     let timer=0;
@@ -46,7 +47,7 @@ export function ScanConveyor({items,queued,reading}:{items:readonly ScanActivity
     <div className={`scan-conveyor-belt${reduced?' is-still':''}`}>
       <div className={`scan-conveyor-window${busy?' is-busy':''}`} aria-hidden="true"/>
       <ol aria-label="방금 읽은 카드">
-        {belt.map((item,index)=><li key={item.id} className={`is-${item.status}${index===0?' is-entering':''}${index>=SLOTS?' is-leaving':''}`}
+        {shown.map((item,index)=><li key={item.id} className={`is-${item.status}${index===0?' is-entering':''}${index>=SLOTS?' is-leaving':''}`}
           style={{transform:`translateX(${index*PITCH}px)`}}>
           <CardThumbnail src={item.image} alt={item.name??'카드'} width={44} height={66}/>
           <span title={item.name}>{item.name??''}</span><small>{labels[item.status]}</small>

@@ -69,7 +69,7 @@ test('normal effective configuration and claimed resources settle once after cap
     const pool=await prepare(),order:string[]=[];
     const operation=create({prepared:pool,development:false,input:{},run:async(_signal,configuration,claimed)=>{
       assert.deepEqual(configuration,NORMAL_SCANNER_NAME_CONFIGURATION);assert.equal(Object.isFrozen(configuration),true);
-      assert.notEqual(claimed,pool);assert.equal(claimed?.detector,pool.detector);order.push('run');
+      assert.notEqual(claimed,pool);assert.equal(claimed?.acquisition,pool.acquisition);order.push('run');
     },onSettled:()=>{assert.equal(state.finished,state.resources.length);order.push('settled');}});
     await guardScan({signal:new AbortController().signal,update:()=>{},sharing:()=>false,
       run:signal=>operation.run(signal),cancelResources:operation.cancel,onRunSettled:operation.settled});
@@ -160,7 +160,7 @@ test('primary failure survives a failed joined cleanup and observers cannot repl
 
 test('pre-abort cleanup rejection is observed and leaves settlement gated without an unhandled rejection',async()=>{
   await fixture(async({create,prepare,state})=>{
-    const pool=await prepare();state.cleanupFailure='detector';let diagnostics=0,settled=0,uncertain=0;
+    const pool=await prepare();state.cleanupFailure='acquisition';let diagnostics=0,settled=0,uncertain=0;
     const operation=create({prepared:pool,development:false,input:{},run:async()=>assert.fail('started'),
       diagnostic:async()=>{diagnostics++;throw Error('asynchronous diagnostic observer');},
       onSettled:async()=>{settled++;throw Error('asynchronous settlement observer');},onCleanupUncertain:()=>{uncertain++;}});
@@ -172,7 +172,7 @@ test('pre-abort cleanup rejection is observed and leaves settlement gated withou
 
 test('a successful operation reports a cleanup failure and cannot be invoked again',async()=>{
   await fixture(async({create,prepare,state})=>{
-    const pool=await prepare();state.cleanupFailure='detector';let runs=0;
+    const pool=await prepare();state.cleanupFailure='acquisition';let runs=0;
     const operation=create({prepared:pool,development:false,input:{},run:async()=>{runs++;}});
     await assert.rejects(operation.run(new AbortController().signal),AggregateError);
     await assert.rejects(operation.run(new AbortController().signal),/한 번/);

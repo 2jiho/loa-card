@@ -165,7 +165,7 @@ export function useScannerPreparation(options: {
       setPreparationState('loading');
       setPreparationMessage('');
       slot = createPreparedSlot(signal => prepareScanner(feedback.update, signal, NORMAL_SCANNER_NAME_CONFIGURATION,
-        {onCleanupUncertain: markPreparationCleanupUncertain, onCleanupPending: trackPreparationSettlement}), {onCleanupError: markPreparationCleanupUncertain});
+        {onCleanupUncertain: markPreparationCleanupUncertain}), {onCleanupError: markPreparationCleanupUncertain});
       preparation.current = slot;
       void slot.ready.then(() => {
         feedback.dispose();

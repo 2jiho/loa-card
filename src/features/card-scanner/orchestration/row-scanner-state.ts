@@ -1,4 +1,4 @@
-import type {ScannerState} from './scanner';
+import type {ScannerState} from './scanner-state';
 import type {RowScanSnapshot} from './row-scan';
 import type {ScannedCard} from '../recognition/recognizer-types';
 
@@ -111,15 +111,17 @@ export function rowScannerState(snapshot:RowScanSnapshot):ScannerState {
     :snapshot.phase==='verifying'?'판독 결과 검증 중'
     :queued>0?`카드 스캔 중 · ${queued}개 판독 대기`:'카드 스캔 중';
   const expected=snapshot.expected;
+  // What the window shows; completion, the automatic end and `allConfirmed` use `confirmed`.
+  const shown=done?snapshot.confirmed:snapshot.displayConfirmed??snapshot.confirmed;
   return {
     status,
-    percent:done?100:expected?Math.min(99,Math.floor(snapshot.confirmed/expected*100))
-      :snapshot.cards.length?Math.min(99,Math.floor(snapshot.confirmed/snapshot.cards.length*100)):0,
+    percent:done?100:expected?Math.min(99,Math.floor(shown/expected*100))
+      :snapshot.cards.length?Math.min(99,Math.floor(shown/snapshot.cards.length*100)):0,
     sampled:snapshot.frames,stable:snapshot.locatedFrames,
     expected,capacity:snapshot.capacity,
     ...(snapshot.growthPoints?{growthPoints:{current:snapshot.growthPoints.current,maximum:snapshot.growthPoints.maximum}}:{}),
     cards:shownCards(snapshot.cards),
-    currentRunNames:snapshot.cards.length,currentRunRead:snapshot.confirmed,
+    currentRunNames:snapshot.cards.length,currentRunRead:shown,
     // Cells seen but not named are unresolved observations (there are no pictures of them to list)
     // while cards are missing; once every card is named they are repeats of cards already read.
     unresolvedObservations:covered>0?0:snapshot.unidentifiedCells,unresolvedFieldChanges:0,

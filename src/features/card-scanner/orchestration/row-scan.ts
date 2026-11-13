@@ -12,23 +12,22 @@ import {createRowEvidence} from '../session/row-evidence';
 import type {RowEvidence} from '../session/row-evidence';
 import type {RowReadNames,RowReadResult,RowReadVisual} from './row-session';
 
-/** Development prototype (docs/scanner-live-redesign.md 13.9, step 4, first part). Not a scanner.
+/** The row-centred scan of a shared screen (docs/scanner-pipeline.md): the app's scan since v0.3.0,
+ * and the same code a recording replay runs (dev/recording.ts).
  *
- * The row-centred reading of dev/row-read.ts, fed in REAL TIME: the recording plays into a video
- * at its recorded pace (dev/recorded-share-input.ts, as the scanner's `realtime` replay). Frames
- * are taken from the share's track itself (MediaStreamTrackProcessor), not from the video element:
- * the element shows at most one frame per screen refresh, so of two frames a few ms apart it
- * never presents one, and a row that was on screen for that one frame is lost. Each
- * frame waits in a short line (12 by default) and the loop reads them in order, taking
- * the next frame while the one before is still being read; a frame the line has no room for is
- * dropped and counted. Frames captured before the share ended are read to the end; nothing is
- * recovered from frames that were dropped.
+ * Frames are taken from the share's track itself (MediaStreamTrackProcessor, in
+ * capture/track-line-worker.ts), not from the video element: the element shows at most one frame
+ * per screen refresh, so of two frames a few ms apart it never presents one, and a row that was on
+ * screen for that one frame is lost. Each frame waits in a short line (12 by default) and the loop
+ * reads them in order, taking the next frame while the one before is still being read; a frame the
+ * line has no room for is dropped and counted (a missed frame). Frames captured before the share
+ * ended are read to the end; nothing is recovered from frames that were dropped.
  *
- * It answers one question: how many cards does the row-centred reading have when the share
- * ends, on this machine at this load. Its values are raw single observations without the
- * scanner's reliability checks, merge or completion, so a run is a measurement to compare with
- * the scanner's own real-time replay, never a result. Like every real-time replay it differs
- * from run to run. */
+ * Every frame: acquisition (worker), scrollbar position, the row reading (row-session.ts), and the
+ * storage header (read early, and again at the end). Snapshots go to the caller about every 0.2 s
+ * while frames are taken. Completion is decided by the caller from the snapshot
+ * (row-scanner-state.ts), never here. Real-time runs differ from run to run with the machine's
+ * load. */
 export interface RowLiveResult extends RowReadResult {
   readonly live:{
     /** Seconds from the first frame taken to the end of the share. */
@@ -118,6 +117,10 @@ export interface RowScanSnapshot {
   readonly waitingReads:number;
   /** The merged cards (with the evidence merge) and how many are confirmed. */
   readonly cards:readonly ScannedCard[];readonly confirmed:number;
+  /** The confirmed count to show: until the scan is done a dip shorter than COUNT_DIP_HOLD_MS (a
+   * newer view of a confirmed card waiting to be read) is not shown. Display only: completion and
+   * the automatic end of the share use `confirmed`. */
+  readonly displayConfirmed?:number;
   /** The displayed total and capacity of the storage header ("398 / 450") as first read, and the
    * total read again from the last frame after everything else (null until then, or when unread). */
   readonly expected:number|null;readonly capacity:number|null;readonly finalExpected:number|null;
@@ -138,6 +141,9 @@ export interface RowScanSnapshot {
 const SNAPSHOT_MS=200;
 /** Until the scan is done, a card highlight is drawn once it has lasted this long (holdNewCardTargets). */
 const CARD_TARGET_HOLD_MS=1500;
+/** Until the scan is done, a dip of the shown confirmed count is shown once it has lasted this long
+ * (a newer view of a confirmed card can take two seconds to be read on a 5120x2880 share). */
+const COUNT_DIP_HOLD_MS=3000;
 export async function runRowScan(options:{
   /** The share: the caller has already put its stream on `target`. `start` resolves when the share ends. */
   input:{start():Promise<void>;dispose():void};
@@ -150,11 +156,16 @@ export async function runRowScan(options:{
   onSnapshot?:(snapshot:RowScanSnapshot)=>void;
   /** Frame times count from the first frame taken (a live track's timestamps start anywhere). */relativeTime?:boolean;
   target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** After the share, run the scanner's zero check on kept crops (default; needs evidence). */zeroCheck?:boolean|'diagnose'|'end';/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
+  /** Readers prepared before the share (session/scanner-preparation.ts): used instead of loading
+   * new ones, and released by their owner, not here. */
+  prepared?:{readonly acquisition:ReturnType<typeof createAcquisitionClient>;readonly visuals:readonly ReturnType<typeof createVisualClient>[];
+    readonly recognizer:Awaited<ReturnType<typeof createRecognizer>>};
   onProgress?:(text:string)=>void}):Promise<RowLiveResult> {
   const {signal}=options,scrollSteps=options.scrollSteps??51,video=options.target as FrameCallbackVideo;
   if(typeof video.requestVideoFrameCallback!=='function')throw Error('이 브라우저는 requestVideoFrameCallback을 지원하지 않습니다.');
-  const acquisition=createAcquisitionClient(signal);
-  const visuals=Array.from({length:Math.min(8,Math.max(1,Math.round(options.readers??2)))},()=>createVisualClient(signal));
+  const prepared=options.prepared;
+  const acquisition=prepared?.acquisition??createAcquisitionClient(signal);
+  const visuals=prepared?[...prepared.visuals]:Array.from({length:Math.min(8,Math.max(1,Math.round(options.readers??2)))},()=>createVisualClient(signal));
   if(visuals.some(visual=>!visual))throw Error('이 브라우저는 시각 판독 워커를 지원하지 않습니다.');
   const strip=Object.assign(document.createElement('canvas'),{width:16,height:942}),stripContext=strip.getContext('2d',{willReadFrequently:true})!;
   // The frame canvas is only drawn to, frozen for the worker and sampled for the thin scrollbar
@@ -165,11 +176,13 @@ export async function runRowScan(options:{
   const input=options.input;
   try{
     await Promise.all([acquisition.ready(),...visuals.map(visual=>visual!.ready())]);
-    if(options.names!==false)recognizer=await createRecognizer(()=>{},signal);
+    if(prepared)recognizer=prepared.recognizer;
+    else if(options.names!==false)recognizer=await createRecognizer(()=>{},signal);
     const reader=recognizer;
     // The first name reading loads the text reader (seconds). Do it on a blank crop before the
     // share starts, so the first real reading does not hold the one name lane that long.
-    if(reader&&options.warmNames!==false){
+    // A prepared reader was warmed when it was prepared.
+    if(reader&&!prepared&&options.warmNames!==false){
       const blank=Object.assign(document.createElement('canvas'),{width:140,height:210});
       blank.getContext('2d',{willReadFrequently:true})!.fillRect(0,0,140,210);
       try{await reader.identify(blank,true,true);}catch{/* Warm-up only. */}
@@ -290,8 +303,8 @@ export async function runRowScan(options:{
       finally{copy.width=0;}
     };
     const cardTargetSince=new Map<number,number>();
-    // Until the scan is done, a dip of the confirmed count (a newer view of a confirmed card, not read yet)
-    // is shown once it has lasted CARD_TARGET_HOLD_MS; the final count is never held.
+    // Until the scan is done, a dip of the shown confirmed count (a newer view of a confirmed card, not read yet)
+    // is shown once it has lasted COUNT_DIP_HOLD_MS (displayConfirmed); the final count is never held.
     let shownConfirmed={value:0,dipSince:null as number|null};
     const publishSnapshot=(phase:RowScanSnapshot['phase'])=>{
       if(!options.onSnapshot)return;
@@ -311,11 +324,11 @@ export async function runRowScan(options:{
       try{options.onSnapshot({phase,frames,locatedFrames:located,located:lastLocated,
         waitingFrames:Math.max(waiting.length,workerLine?workerLine.received-workerLine.dropped-workerLine.passed-frames:0),
         droppedFrames:dropped+(workerLine?.dropped??0),waitingReads:session.waitingReads(),
-        cards:merged.cards,confirmed:(()=>{
+        cards:merged.cards,confirmed:merged.confirmed,displayConfirmed:(()=>{
           const now=performance.now();
           if(phase==='done'||merged.confirmed>=shownConfirmed.value){shownConfirmed={value:merged.confirmed,dipSince:null};return merged.confirmed;}
           shownConfirmed.dipSince??=now;
-          if(now-shownConfirmed.dipSince>=CARD_TARGET_HOLD_MS)shownConfirmed={value:merged.confirmed,dipSince:null};
+          if(now-shownConfirmed.dipSince>=COUNT_DIP_HOLD_MS)shownConfirmed={value:merged.confirmed,dipSince:null};
           return shownConfirmed.value;})(),expected:header.expected,capacity:header.capacity,finalExpected:header.finalExpected,freshExpected:header.fresh,
         growthPoints:growth.points,
         activity:evidence?.activity()??[],
@@ -476,7 +489,8 @@ export async function runRowScan(options:{
         stages:{draw:share(stage.draw),freeze:share(stage.freeze),detect:share(stage.detect),crop:share(stage.crop),transfer:share(stage.transfer),materialize:share(stage.materialize),thumb:share(stage.thumb),read:share(stage.read)},atShareEnd,afterNames,...(afterZeroCheck?{afterZeroCheck}:{}),
         ...(zeroLive.runs?{zeroDuringShare:{runs:zeroLive.runs,ms:Math.round(zeroLive.ms),previewReads:zeroLive.previewReads,resolved:zeroLive.resolved}}:{})}};
   }finally{
-    closeWaiting();stopLag();endWorker();input.dispose();acquisition.dispose();for(const visual of visuals)visual?.dispose();await recognizer?.dispose();
+    closeWaiting();stopLag();endWorker();input.dispose();
+    if(!prepared){acquisition.dispose();for(const visual of visuals)visual?.dispose();await recognizer?.dispose();}
     frame.width=0;strip.width=0;
   }
 }

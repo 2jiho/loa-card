@@ -1,5 +1,4 @@
-import type { ScannerState } from '../orchestration/scanner';
-import type { ScanGridCell, ScanGridSnapshot } from '../session/scan-grid';
+import type {ScannerState} from '../orchestration/scanner';
 import {boundedUnresolvedFieldChanges} from '../session/current-scan-fields';
 
 const SLOT = 'current';
@@ -44,60 +43,17 @@ function validUnresolvedObservations(state:ScannerState):boolean {
 /** Persist inventory and its proof, never capture queues, raw diagnostics or the
  * live grid. Keep null values and card evidence unchanged; they decide whether a
  * restored field may be used by calculations. Legacy full states use the same
- * projection when loaded so obsolete diagnostics are not restored into React. */
-/** Restore the last map as a historical receipt, never as a live frame or a
- * completion proof. Live recent-frame cells and tracking are dropped. */
-const GRID_STATUSES = new Set(['unknown','waiting','reading','read','review','empty']);
-function boundedGridCell(value: unknown): ScanGridCell | undefined {
-  if (!value || typeof value !== 'object') return;
-  const cell = value as { status?: unknown; reason?: unknown; row?: unknown };
-  if (typeof cell.status !== 'string' || !GRID_STATUSES.has(cell.status)) return;
-  return Object.freeze({
-    status: cell.status as ScanGridCell['status'],
-    ...(typeof cell.reason === 'string' && cell.reason.length <= 300 ? { reason: cell.reason.slice(0, 300) } : {}),
-    ...(Number.isSafeInteger(cell.row) && (cell.row as number) > 0 ? { row: cell.row as number } : {}),
-    historical: true as const,
-  });
-}
-function boundedGridCells(value: unknown, exact?: number): ScanGridCell[] | undefined {
-  if (!Array.isArray(value) || (exact !== undefined && value.length !== exact) ||
-    value.length > 550) return;
-  const cells: ScanGridCell[] = [];
-  for (const item of value) {
-    const cell = boundedGridCell(item);
-    if (!cell) return;
-    cells.push(cell);
-  }
-  return cells;
-}
-function boundedGrid(value: unknown): ScanGridSnapshot | undefined {
-  if (!value || typeof value !== 'object') return;
-  const grid = value as ScanGridSnapshot;
-  if (typeof grid.located !== 'boolean') return;
-  const cells = boundedGridCells(grid.cells, 40);
-  if (!cells) return;
-  const inventory = grid.inventory === undefined ? undefined : boundedGridCells(grid.inventory);
-  if (grid.inventory !== undefined && !inventory) return;
-  return Object.freeze({
-    located: grid.located,
-    cells,
-    ...(inventory ? { inventory } : {}),
-    ...(Number.isSafeInteger(grid.totalRows) && (grid.totalRows as number) > 0 ? { totalRows: grid.totalRows } : {}),
-    ...(Number.isFinite(grid.estimatedTop) ? { estimatedTop: grid.estimatedTop } : {}),
-  });
-}
-
+ * projection when loaded so obsolete diagnostics (and the earlier scanner's grid,
+ * warnings and scroll gaps) are not restored into React. */
 export function inventoryBackupState(state: ScannerState): ScannerState {
   if (boundedUnresolvedFieldChanges(state).unresolvedFieldChangesUnavailable) throw new Error('저장할 최신 필드 상태가 올바르지 않습니다.');
   if (!validUnresolvedObservations(state)) throw new Error('저장할 미식별 입력 상태가 올바르지 않습니다.');
   const keys = ['status','percent','sampled','stable','expected','capacity','cards','seededCards',
-    'growthPoints','growthPointsEstimated','growthHistory','sort','located','unreadable','unidentified','recognitionNeeded','discardedObservations',
-    'currentRunNames','currentRunRead','unattributedFieldReviews','unresolvedFieldChanges','unresolvedObservations','duplicateUnidentifiedObservations','resolvedUnidentifiedObservations','autoStopped','interrupted','droppedFrames','liveMissedFrames',
-    'captureWarning','headerConflict','processingWarning','scrollGaps','recoverySkipped'] as const;
+    'growthPoints','growthPointsEstimated','growthHistory','sort','located','unreadable','unidentified',
+    'currentRunNames','currentRunRead','unresolvedFieldChanges','unresolvedObservations','duplicateUnidentifiedObservations','autoStopped','interrupted','droppedFrames','liveMissedFrames',
+    'processingWarning'] as const;
   const inventory: Partial<ScannerState> = {};
   for (const key of keys) if (Object.hasOwn(state,key)) Object.assign(inventory,{[key]:state[key]});
-  const grid = boundedGrid(state.grid);
-  if (grid) inventory.grid = grid;
   if (Object.hasOwn(state,'queued')) inventory.queued = 0;
   return structuredClone(inventory) as ScannerState;
 }

@@ -3,7 +3,7 @@ import type {ListTableSnapshot} from './list-table';
 /** What to show the list again for, worked out from the list table (docs/scanner-live-redesign.md,
  * section 13.6).
  *
- * Proposal stage: only the development prototype uses this. It is a pure function of the table's
+ * The row-centred scan's guidance and progress-window map. It is a pure function of the table's
  * snapshot and of which cards are still unconfirmed, so a live scan and a replay give the same
  * guidance.
  *

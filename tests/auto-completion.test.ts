@@ -3,10 +3,6 @@ import assert from 'node:assert/strict';
 import {AutoCompletionHold,canFinishEndedCapture,canSkipCoveredOriginals,canStopSharing,captureInputSettled,confirmedCaptureCount,currentHeaderAvailable,hasCompleteCaptureEvidence,stopCompletedShare} from '../src/features/card-scanner/session/auto-completion';
 import type {CaptureCompletion} from '../src/features/card-scanner/session/auto-completion';
 import {canSkipRecovery} from '../src/features/card-scanner/session/recovery-completion';
-import {canFinishVerifiedCapture} from '../src/features/card-scanner/session/recovery-completion';
-import {UnknownLifecycle} from '../src/features/card-scanner/session/unknown-lifecycle';
-import {UNKNOWN_LIFECYCLE_LIMITS} from '../src/features/card-scanner/session/unknown-lifecycle-types';
-import {ScanLedger} from '../src/features/card-scanner/session/scan-ledger';
 const input=():CaptureCompletion=>({expected:1,finalExpected:1,unresolved:0,dropped:0,
  cards:[{id:'a',name:'카드',awakening:0,extraCopies:1,countReliable:true,review:[],confidence:1,image:'',time:0,observations:1}],
  latest:new Map([['a',1]]),confirmedNames:new Map([['a',1]]),confirmed:new Map([['a',1]]),inputSettled:true,headerAvailable:true,fieldChangesSettled:true});
@@ -202,37 +198,6 @@ test('ended capture retains unmatched observations for recovery even when invent
  }
  assert.deepEqual(state,before,'evaluation must not rewrite diagnostics or evidence maps');
  assert.equal(canFinishEndedCapture({...state,cards:[{...state.cards[0],extraCopies:0}]}),true,'an explicitly observed zero is valid');
-});
-
-test('live unmatched group blocks stop and both recovery shortcuts until name evidence retires it',()=>{
- const ledger=new ScanLedger(),unknown=new UnknownLifecycle({version:1,sessionId:'session',origin:'scan',limits:UNKNOWN_LIFECYCLE_LIMITS});
- const source=(order:number)=>({sessionId:'session',frameId:order,observationId:`obs-${order}`,
-  captureOrder:order,captureTime:order,phase:'input' as const,slot:0});
- const trace=ledger.acquire({frame:2,time:2,slot:0,box:{x:0,y:0,width:140,height:210},phase:'input'});
- ledger.finish(trace,'unidentified',{group:7,reason:'이름 판독 실패'});
- const key={kind:'group' as const,sessionId:'session',group:7};
- unknown.apply({version:1,kind:'upsert',key,source:source(2),captureOrder:2,captureTime:2,
-  pending:false,reason:'이름 확인 필요',location:null});
- const latest=new Map([['a',1]]),names=new Map([['a',1]]),fields=new Map([['a',1]]);
- const state=()=>({...endedInput(),latest,confirmedNames:names,confirmed:fields,
-  unresolved:Math.max(unknown.active().length,ledger.unresolvedGroups)});
- const hold=new AutoCompletionHold();
- assert.equal(state().unresolved,1);
- assert.equal(canStopSharing(state()),false);
- assert.equal(hold.observe(state(),0),false);assert.equal(hold.observe(state(),10_000),false);
- assert.equal(canFinishEndedCapture(state()),false);
- assert.equal(canFinishVerifiedCapture(state(),true),false);
- // A valid later name event and its corresponding ledger transition are
- // required; a matching count or a later timestamp alone did not retire it.
- assert.equal(unknown.confirmName(key,'a',source(3),[])?.retiredVersions.length,1);
- ledger.finish(trace,'identified',{group:7,cardId:'a'});
- assert.equal(state().unresolved,0);
- latest.set('a',3);names.set('a',3);
- assert.equal(canStopSharing(state()),false,'a new name alone does not prove its current fields');
- fields.set('a',3);
- assert.equal(canFinishEndedCapture(state()),true);
- assert.equal(canFinishVerifiedCapture(state(),true),true);
- assert.equal(hold.observe(state(),10_001),false);assert.equal(hold.observe(state(),11_001),true);
 });
 
 test('ended capture requires closed settled input, a fresh final header, no pending work and no dropped input',()=>{

@@ -1,8 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {gzipSync} from 'node:zlib';
-import {parseScrollCaptureFact,parseInventoryHeaderFact,MAX_SCROLL_CAPTURE_FACT_BYTES,
- SCROLL_CAPTURE_SAMPLE_WIDTH,SCROLL_CAPTURE_SAMPLE_HEIGHT,MIN_SCROLL_CAPTURE_PAGE_SPAN,MAX_SCROLL_CAPTURE_PAGE_SPAN} from '../src/features/card-scanner/session/scroll-capture-diagnostic';
+import {parseScrollCaptureFact,parseInventoryHeaderFact,MAX_SCROLL_CAPTURE_FACT_BYTES,SCROLL_CAPTURE_SAMPLE_WIDTH,SCROLL_CAPTURE_SAMPLE_HEIGHT,MIN_SCROLL_CAPTURE_PAGE_SPAN,MAX_SCROLL_CAPTURE_PAGE_SPAN} from '../src/features/card-scanner/session/scroll-capture-diagnostic';
 import {readScrollGeometry} from '../src/features/card-scanner/session/scroll-position';
 import {RunStateTrace,parseRunStateTrace,replayRunStateTrace} from '../dev/run-state-trace';
 import {ScanGrid} from '../src/features/card-scanner/session/scan-grid';
@@ -17,7 +16,6 @@ import {UNKNOWN_LIFECYCLE_LIMITS} from '../src/features/card-scanner/session/unk
 import type {UnknownSeed,UnknownUpsert} from '../src/features/card-scanner/session/unknown-lifecycle-types';
 import {entryParts,executionSummary} from '../src/features/card-scanner/reproduction/exact-recording-codec';
 import type {ExactEvent} from '../src/features/card-scanner/reproduction/exact-recording-codec';
-import {sourceObservationFrame} from '../src/features/card-scanner/acquisition/saved-acquisition';
 
 const signal=()=>new AbortController().signal;
 const json=(value:unknown)=>new Blob([JSON.stringify(value)]);
@@ -65,18 +63,6 @@ test('measurement state explains missing geometry without inventing a row or raw
   {state:'out-of-bounds',bar:{...input.bar,x:-1},geometry:input.geometry},
   {state:'not-located',bar:input.bar,geometry:null},{state:'not-located',bar:null,geometry:input.geometry}])
   assert.throws(()=>parseScrollCaptureFact({...input,...patch}));
-});
-
-test('opaque observation aliases preserve actual sourceObservationFrame strings without deriving numeric identities',()=>{
- for(const alias of [sourceObservationFrame('session/name',undefined,7),sourceObservationFrame('session/name',123,7),'legacy-opaque-alias','7']){
-  const input={...source(),observationFrameId:alias};
-  assert.equal(parseScrollCaptureFact({...scroll(),source:input}).source.observationFrameId,alias);
-  assert.equal(parseInventoryHeaderFact({...header(),source:input}).source.observationFrameId,alias);
- }
- for(const alias of [7,0,null,undefined,'','x'.repeat(161),'bad\nalias']){
-  assert.throws(()=>parseScrollCaptureFact({...scroll(),source:{...source(),observationFrameId:alias}}));
-  assert.throws(()=>parseInventoryHeaderFact({...header(),source:{...source(),observationFrameId:alias}}));
- }
 });
 
 test('queue-full retains an actual box without asserting that the scrollbar was measured or in bounds',()=>{

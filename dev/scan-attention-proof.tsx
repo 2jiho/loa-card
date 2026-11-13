@@ -3,7 +3,6 @@ import {createRoot} from 'react-dom/client';
 import {ScanAttention} from '../src/features/card-scanner/ui/ScanAttention';
 import {AppTheme,ThemeToggle} from '../src/ui/AppTheme';
 import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer';
-import type {PendingCardFields} from '../src/features/card-scanner/session/current-scan-fields';
 import type {ScannerState} from '../src/features/card-scanner/orchestration/scanner';
 import '../src/App.css';
 
@@ -18,22 +17,10 @@ const unknownImageB=svg('미식별 B','#6b5a41');
 const beskal:ScannedCard={id:'3200813',name:'베스칼',awakening:0,extraCopies:null,confidence:98.4,
  review:['장수 확인','최신 각성·장수 확인'],image:beskalImage,time:4.96,observations:3,captureOrder:130};
 
-// Mirrors the run-750fbfb6 beskal field issues: count read failed (unconfirmed),
-// pattern value null with the occlusion-or-unclear reason -> count stays unknown.
-const beskalPending:PendingCardFields={id:'3200813',name:'베스칼',image:beskalImage,time:4.9,
- captureOrder:130,reason:'각성·장수 판독 확인',countReason:'숫자 획 부족',stable:true,borderAlignment:1,
- countDiagnostics:{maximum:15,reason:'추가 장수 확인',iconPresent:false,reliability:'unconfirmed',readings:[],
-  pattern:{value:null,candidate:null,score:0,gap:0,reason:'장수 숫자 미검출 또는 불명확'}}};
-
 const unknown:ScannerState['unidentified']=[
  {image:unknownImageA,time:2.95,group:25,pending:false,reason:'카드 판독 시간 초과 · 다시 보여 주세요',
   location:{percent:0,column:5,row:3}},
  {image:unknownImageB,time:3.9,group:64,pending:false,reason:'이름 확인 필요'},
-];
-
-const recognitionNeeded=[
- {slot:3,captureTime:2.9,reason:'툴팁 패널 가림 · 가림 해제 후 재관측'},
- {slot:14,captureTime:3.4,reason:'이름 영역에 글자 대비 없음 · 가림 해제 후 재관측'},
 ];
 
 // The row-centred scan's guidance (session/list-guidance.ts), as the 816e and a04e recordings ended with.
@@ -55,10 +42,9 @@ const modes:ModeFixture[]=[
 // oxlint-disable-next-line react/only-export-components -- standalone dev proof entry.
 function Proof(){
  const [mode,setMode]=useState<ModeFixture>(modes[1]);
- const [evidenceLost,setEvidenceLost]=useState(false);
  const ended=!mode.sharing&&!mode.busy;
  const panel=<ScanAttention cards={[beskal]} unknown={ended?[]:unknown} discarded={ended?unknown:[]} missing={[{id:'3200999',name:'샘플 카드'}]}
-  artworkById={new Map()} pendingFields={[beskalPending]} evidenceLost={evidenceLost} recognitionNeeded={recognitionNeeded}
+  artworkById={new Map()}
   guidance={new URLSearchParams(window.location.search).has('guidance')?listGuidance:undefined}
   sharing={mode.sharing} busy={mode.busy} queued={mode.queued} activeReadings={mode.activeReadings}/>;
  if(new URLSearchParams(window.location.search).has('narrow'))
@@ -69,7 +55,6 @@ function Proof(){
   <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:16}}>
    <ThemeToggle/>
    {modes.map(m=><button key={m.label} aria-pressed={m.label===mode.label} onClick={()=>setMode(m)}>{m.label}</button>)}
-   <button aria-pressed={evidenceLost} onClick={()=>setEvidenceLost(value=>!value)}>근거 누락 표시</button>
   </div>
   {panel}
   <h2 style={{fontSize:14}}>좁은 화면(380px) 미리보기</h2>

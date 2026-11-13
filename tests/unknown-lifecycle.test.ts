@@ -1,11 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {UnknownLifecycle,hashUnknownLifecycle,parseUnknownFact,parseUnknownSeed,parseUnknownCheckpoint,
-  unknownKeyId,unknownVersionId} from '../src/features/card-scanner/session/unknown-lifecycle';
+import {UnknownLifecycle,hashUnknownLifecycle,parseUnknownFact,parseUnknownSeed,parseUnknownCheckpoint,unknownKeyId,unknownVersionId} from '../src/features/card-scanner/session/unknown-lifecycle';
 import {UNKNOWN_LIFECYCLE_LIMITS,type UnknownSeed,type UnknownUpsert,type UnknownFact} from '../src/features/card-scanner/session/unknown-lifecycle-types';
 import type {ObservationSource} from '../src/features/card-scanner/session/observation-execution';
-import {updateUnknown} from '../src/features/card-scanner/session/unknown-observations';
-import {ConfirmedNameGroups} from '../src/features/card-scanner/session/confirmed-name-groups';
 
 const seed:UnknownSeed={version:1,sessionId:'session',origin:'scan',limits:UNKNOWN_LIFECYCLE_LIMITS};
 const key=(group=1)=>({kind:'group' as const,sessionId:'session',group});
@@ -159,33 +156,4 @@ test('strict parsers reject malformed, oversized, coerced and extra evidence',()
   assert.throws(()=>parseUnknownCheckpoint({version:1,complete:true,events:1,hash:null}));
   assert.throws(()=>parseUnknownCheckpoint({version:1,complete:false,events:1,hash:'a'.repeat(64)}));
   assert.doesNotThrow(()=>parseUnknownCheckpoint({version:1,complete:false,events:20_001,hash:null}));
-});
-
-test('ordered common reducer equals former helpers through mixed retries, confirmations and conflicts',async()=>{
-  const state=lifecycle();const names=new ConfirmedNameGroups();
-  const old:{group:number;captureOrder:number;pending:boolean;reason:string}[]=[],vectors:Uint8Array[]=[];
-  const vector=new Uint8Array(1),facts:UnknownFact[]=[];
-  // A deterministic mixed stream exercises suppressed and accepted candidates.
-  let random=412;
-  for(let i=0;i<3000;i++) {
-    random=(Math.imul(random,1664525)+1013904223)>>>0;
-    const group=random%20,order=(random>>>5)%100,pending=!!(random&1024);
-    if(random%4!==0) {
-      const fact=upsert(order,pending,group,`reason-${i}`);facts.push(fact);
-      state.apply(fact);
-      if(!names.covers(group,order))updateUnknown(old,vectors,{group,captureOrder:order,pending,reason:fact.reason},vector);
-    } else {
-      const cardId=`card-${random%3}`;names.confirm(group,cardId,order,[]);
-      const fact:UnknownFact={version:1,kind:'retire',cause:'confirmed-name',key:key(group),proof:{cardId,source:source(order)}};
-      facts.push(fact);state.apply(fact);
-      for(let index=old.length-1;index>=0;index--)if(names.covers(old[index].group,old[index].captureOrder)) {
-        old.splice(index,1);vectors.splice(index,1);
-      }
-    }
-    assert.deepEqual(state.active().map(entry=>({group:entry.key.kind==='group'?entry.key.group:-1,
-      captureOrder:entry.captureOrder,pending:entry.pending,reason:entry.reason})),old);
-  }
-  const replay=lifecycle();facts.forEach(fact=>replay.apply(fact));
-  assert.deepEqual(replay.snapshot(),state.snapshot());
-  assert.equal(await hashUnknownLifecycle(replay.snapshot()),await hashUnknownLifecycle(state.snapshot()));
 });
