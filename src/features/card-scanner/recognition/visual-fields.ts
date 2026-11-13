@@ -1,4 +1,4 @@
-import { packCount, matchCountPattern, COUNT_UNEXPLAINED_TRAILING_GLYPH } from './count-pattern';
+import { packCount, matchCountPattern, countContrastFloor, COUNT_UNEXPLAINED_TRAILING_GLYPH } from './count-pattern';
 import type { ContrastPattern } from './count-pattern';
 import { readStarObservation } from './star-pattern';
 import { hasNameBand } from './text-mask';
@@ -94,6 +94,6 @@ export function readVisual(canvas: Raster, context: RasterContext, fields: Retur
    ...(fields.emptyEvidence?{emptyEvidence:fields.emptyEvidence}:{})} as CountDiagnostics};
  const maximum=level===null?15:15-level*(level+1)/2;
  if(!snapshot)drawVisualRaster(canvas,context);
- const pattern=matchCountPattern(snapshot??context.getImageData(0,0,140,210).data,patterns,fields.offsetY,maximum);
+ const pattern=matchCountPattern(snapshot??context.getImageData(0,0,140,210).data,patterns,fields.offsetY,maximum,true,countContrastFloor(canvas.width));
  return {awakening:level,extraCopies:pattern.value,countDiagnostics:{maximum,reason:fields.hasIcon===null?'장수 숫자 미검출 또는 불명확':pattern.reason,readings:[],pattern,iconPresent:fields.hasIcon??undefined} as CountDiagnostics};
 }

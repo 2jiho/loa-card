@@ -3,7 +3,8 @@ import { rasterContext } from './acquisition-raster';
 import type { Raster } from './acquisition-raster';
 import { ExactPixelCache } from './exact-pixel-cache';
 import { createDetectorTemplateCache } from './detector-template-cache';
-import {normalizeLayoutGeometry} from './layout-geometry';
+import {DEFAULT_LAYOUT, normalizeLayoutGeometry} from './layout-geometry';
+import {fitGridScale} from './grid-scale';
 import type {Layout} from './layout-geometry';
 export type {Box, Layout, NormalizedGeometry, ObservedGrid} from './layout-geometry';
 type CV = typeof OpenCV;
@@ -99,6 +100,29 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
     catch(error){template.delete();throw error;}
   });
   const growthCanvas = makeCanvas();
+  // Made on first use and emptied after each measurement: it keeps no frame pixels between frames.
+  let gridCanvas: ReturnType<typeof makeCanvas> | undefined;
+  /** The grid scale measured from the cards for an anchor scale, kept while the window is tracked. */
+  let gridFit: {anchorScale:number;width:number;height:number;scale:number} | null = null;
+  const measureGridScale = (video: HTMLVideoElement | HTMLImageElement | Raster, x:number, y:number, scale:number, mediaWidth:number, mediaHeight:number) => {
+    // The card area with a margin, drawn 1:1 from the frame.
+    const margin = 12;
+    const left = Math.max(0, Math.floor(x + DEFAULT_LAYOUT.area.x * scale - margin));
+    const top = Math.max(0, Math.floor(y + DEFAULT_LAYOUT.area.y * scale - margin));
+    const width = Math.min(mediaWidth - left, Math.ceil(DEFAULT_LAYOUT.area.width * scale + 2 * margin));
+    const height = Math.min(mediaHeight - top, Math.ceil(DEFAULT_LAYOUT.area.height * scale + 2 * margin));
+    if (!dimension(width) || !dimension(height)) return scale;
+    gridCanvas ??= makeCanvas();
+    gridCanvas.width = width; gridCanvas.height = height;
+    const context = rasterContext(gridCanvas);
+    context.globalCompositeOperation = 'copy';
+    context.drawImage(video, left, top, width, height, 0, 0, width, height);
+    const rgba = context.getImageData(0, 0, width, height).data;
+    gridCanvas.width = gridCanvas.height = 0;
+    const gray = new Float32Array(width * height);
+    for (let i = 0, p = 0; p < gray.length; i += 4, p++) gray[p] = .299 * rgba[i] + .587 * rgba[i + 1] + .114 * rgba[i + 2];
+    return fitGridScale({gray, width, height, originX: x - left, originY: y - top, scale})?.scale ?? scale;
+  };
   const canvas = makeCanvas();
   // This canvas is read back by OpenCV every frame. Keep it on the CPU;
   // repeatedly uploading the full source to the GPU stalls live delivery.
@@ -371,7 +395,13 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
       // The coarse scale (one of the search scales) is what a later search reuses.
       if(!tracked)knownScale={scale:coarseScale,width:mediaWidth,height:mediaHeight};
       restrictedMisses=0;
-      const { x, y, scale: s } = best;
+      const { x, y } = best;
+      // The anchor gives the scale to about 0.01; the cards give it exactly (grid-scale.ts). It is
+      // measured when the window is found and kept while it is tracked at the same anchor scale.
+      if (!tracked || !gridFit || gridFit.anchorScale !== best.scale || gridFit.width !== mediaWidth || gridFit.height !== mediaHeight)
+        gridFit = {anchorScale: best.scale, width: mediaWidth, height: mediaHeight, scale: measureGridScale(video, x, y, best.scale, mediaWidth, mediaHeight)};
+      const s = gridFit.scale;
+      trace?.({stage:'grid-scale',cached:false,elapsedMs:0,anchorScale:best.scale,gridScale:s});
       const layout = normalizeLayoutGeometry({x, y, scale: s}, mediaWidth, mediaHeight);
       // Preserve logical slot indices even when the window is partially offscreen.
       // Acquisition checks each card's bounds instead of requiring all 40 slots.
@@ -384,6 +414,7 @@ export async function createDetector(platform?: DetectorPlatform, reuseExact = f
       growthAnchor.delete();
       growthCanvas.width = 0;
       growthCanvas.height = 0;
+      if (gridCanvas) gridCanvas.width = gridCanvas.height = 0;gridFit = null;
       canvas.width=canvas.height=0;previous=null;knownScale=null;restrictedMisses=0;
       globalCache = new ExactPixelCache(1);
     },

@@ -142,7 +142,10 @@ function sampleGray(gray:ArrayLike<number>,x:number,y:number) {
 /** Only controls whether to spend more registration work. It cannot confirm a
  * card or replace the independent region/margin/text acceptance gates. */
 const nearPortrait=(p:PortraitEvidence)=>p.upper>=.85&&p.lower>=.85&&p.correlation>=.90;
-export interface PortraitMatcherOptions {fractionalRegistration?:boolean;competitors?:Record<string,string>}
+export interface PortraitMatcherOptions {fractionalRegistration?:boolean;competitors?:Record<string,string>;
+ /** Further trusted references per card (public/scanner/screen-artwork-extra.json): each is one
+  * more reference of that card, ranked like the others; none replaces another. */
+ extra?:readonly Record<string,string>[]}
 /** Independent upper/lower portrait regions. Excludes name, count and jewels.
  * Every catalog artwork receives the same bounded registration search. */
 export function createPortraitMatcher(cards: Reference[], atlas: Record<string,string>, supplement: Record<string,string> = {},options:PortraitMatcherOptions={}) {
@@ -150,8 +153,8 @@ export function createPortraitMatcher(cards: Reference[], atlas: Record<string,s
  // Competitor-only references may rank as alternatives, but can never by
  // themselves identify their own card. Existing trusted references win if a
  // future catalog supplies both kinds for the same identity.
- const competitorsOnly=new Set(Object.keys(options.competitors??{}).filter(id=>!atlas[id]&&!supplement[id]));
- const refs=cards.flatMap(card=>[...new Set([atlas[card.id],supplement[card.id],competitorsOnly.has(card.id)?options.competitors?.[card.id]:undefined].filter((value):value is string=>typeof value==='string'&&!!value))].flatMap(encoded=>{const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));if(bytes.length!==200)return [];
+ const competitorsOnly=new Set(Object.keys(options.competitors??{}).filter(id=>!atlas[id]&&!supplement[id]&&!(options.extra??[]).some(more=>more[id])));
+ const refs=cards.flatMap(card=>[...new Set([atlas[card.id],supplement[card.id],...(options.extra??[]).map(more=>more[card.id]),competitorsOnly.has(card.id)?options.competitors?.[card.id]:undefined].filter((value):value is string=>typeof value==='string'&&!!value))].flatMap(encoded=>{const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));if(bytes.length!==200)return [];
   const upper=unit(bytes.subarray(0,100)),lower=unit(bytes.subarray(100)),middle=unit(bytes.subarray(100,140));
   const left=unit(Array.from({length:50},(_,i)=>bytes[Math.floor(i/10)*20+i%10]));
   const right=unit(Array.from({length:50},(_,i)=>bytes[Math.floor(i/10)*20+i%10+10]));
@@ -264,4 +267,15 @@ export function createPortraitMatcher(cards: Reference[], atlas: Record<string,s
   publishDiagnostic(onDiagnostic,stages,refinedMaskedAccepted?'accepted':'rejected',refinedMaskedAccepted?'accepted':missingCompetitor?'missing-competitor-reference':'all-stages-rejected',fractionalRegistration,identities,text);
   return refinedMaskedAccepted?{card:refinedCandidate.card,portrait:{...refinedEvidence,registration:'quarter-cell-v1' as const}}:null;
  };
+}
+
+/** The extra references file as matcher input: one record per position in the per-card lists
+ * (a card with two references appears in the first two records). Invalid entries are left out. */
+export function screenExtraReferences(file:{cards?:Record<string,unknown>}|null|undefined):Record<string,string>[] {
+ const out:Record<string,string>[]=[];
+ for(const [id,list] of Object.entries(file?.cards??{})){
+  if(!Array.isArray(list))continue;
+  list.filter((value):value is string=>typeof value==='string').forEach((value,index)=>{(out[index]??={})[id]=value;});
+ }
+ return out;
 }

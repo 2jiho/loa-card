@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { matchCountPattern, prepareContrastPattern, packCount, emptyCounterProof, stablePreviewEmptyCandidate } from "../src/features/card-scanner/recognition/count-pattern.ts";
+import { matchCountPattern, countContrastFloor, prepareContrastPattern, packCount, emptyCounterProof, stablePreviewEmptyCandidate } from "../src/features/card-scanner/recognition/count-pattern.ts";
 import type { EmptyPreviewEvidence } from "../src/features/card-scanner/recognition/count-pattern.ts";
 import { countReliability } from "../src/features/card-scanner/recognition/count-confidence.ts";
 import { readFullAwakening, readVisual } from "../src/features/card-scanner/recognition/visual-fields.ts";
@@ -475,4 +475,12 @@ test('one observation of a clean empty counter is enough for zero; more only fir
   assert.equal(emptyCounterProof(numeric,5,false),null,'a numeric stroke vetoes zero');
   const explicitEmpty={...beskalEvidence,hasIcon:false};
   assert.equal(emptyCounterProof(explicitEmpty,1,true),null,'explicit empty uses the existing path');
+});
+
+test('only crops from a smaller screen get the lower contrast floor', () => {
+  assert.equal(countContrastFloor(140),.30);   // 2560x1440 full screen
+  assert.equal(countContrastFloor(137),.30);   // a 2560x1440 window drawn at 0.98
+  assert.equal(countContrastFloor(105),.22);   // 1920x1080
+  assert.equal(countContrastFloor(undefined),.30);
+  assert.equal(countContrastFloor(0),.30);
 });

@@ -65,6 +65,7 @@ test('recognizer policies preserve evidence and isolate invocation diagnostics a
     '/scanner/cards.json':{cards:[{id:'saika',name:'사이카',rarity:2},{id:'belu',name:'벨루마테',rarity:2}]},
     '/scanner/artwork-details.json':{},
     '/scanner/screen-artwork-details.json':{cards:{}},
+    '/scanner/screen-artwork-extra.json':{cards:{}},
     '/scanner/portrait-competitors.json':{version:1,kind:'client-atlas-competitor-only',cards:{}},
     '/scanner/stars.json':{gray:[new Array(170).fill(0)],gold:[new Array(170).fill(255)]},
     '/scanner/counter-patterns.json':{patterns:[]},

@@ -7,9 +7,9 @@ import type { Layout } from "../acquisition/detector";
 import type { Box } from "../acquisition/detector";
 import { createNameReader } from "./name-reader";
 import type {NameOcrMetrics,NameRawResultPolicy,NameReading} from './name-reader';
-import { prepareContrastPattern, matchCountPattern } from "./count-pattern";
+import { prepareContrastPattern, matchCountPattern, countContrastFloor } from "./count-pattern";
 import type { CountPattern } from "./count-pattern";import { nameMask } from "./name-pattern";
-import { createPortraitMatcher } from "./portrait-matcher";
+import { createPortraitMatcher, screenExtraReferences } from "./portrait-matcher";
 import {loadPortraitCompetitors} from './portrait-competitors';
 import type {PortraitMatchDiagnostic} from './portrait-matcher';
 import type {PortraitDiagnosticCall,PortraitDiagnostics} from './portrait-diagnostics';
@@ -122,8 +122,9 @@ export async function createRecognizer(status: (message: string) => void, signal
   const byId = new Map(cards.map((card) => [card.id, card]));
   const portraitAtlas = await loadScannerJson<Record<string,string>>('artwork-details.json', initializationSignal);
   const screen = await loadScannerJson<{cards:Record<string,string>}>('screen-artwork-details.json', initializationSignal);
+  const extraReferences = screenExtraReferences(await loadScannerJson<{cards:Record<string,string[]>}>('screen-artwork-extra.json', initializationSignal));
   const competitors=await loadPortraitCompetitors(import.meta.env.BASE_URL,initializationSignal);
-  const matchPortrait = createPortraitMatcher(cards,portraitAtlas,screen.cards,{competitors});
+  const matchPortrait = createPortraitMatcher(cards,portraitAtlas,screen.cards,{competitors,extra:extraReferences});
   let refinePortrait:ReturnType<typeof createPortraitMatcher>|undefined;
   const portraits = new WeakMap<HTMLCanvasElement, ReturnType<typeof matchPortrait>>();
   const cachedPortraitDiagnostics=new WeakMap<HTMLCanvasElement,PortraitMatchDiagnostic>();
@@ -225,7 +226,7 @@ export async function createRecognizer(status: (message: string) => void, signal
       if(full&&allowPortraitRefinement&&structural){
         budget?.check();
         const pixels=canvas.getContext('2d',{willReadFrequently:true})!.getImageData(0,0,canvas.width,canvas.height).data;
-        const refined=(refinePortrait??=createPortraitMatcher(cards,portraitAtlas,screen.cards,{fractionalRegistration:true,competitors}))(
+        const refined=(refinePortrait??=createPortraitMatcher(cards,portraitAtlas,screen.cards,{fractionalRegistration:true,competitors,extra:extraReferences}))(
           areaGray(pixels,canvas.width,canvas.height),undefined,diagnostic=>notePortrait(canvas,'refined','computed',diagnostic));
         budget?.check();
         if(refined)return portraitIdentity(refined);
@@ -355,7 +356,7 @@ export async function createRecognizer(status: (message: string) => void, signal
             readings: [], iconPresent: false,...(fields.emptyEvidence?{emptyEvidence:fields.emptyEvidence}:{}) } satisfies CountDiagnostics };
       const maximum = level === null ? 15 : 15 - (level * (level + 1)) / 2;
       drawVisualRaster(canvas, context);
-      const pattern = matchCountPattern(context.getImageData(0, 0, 140, 210).data, countPatterns, fields.offsetY, maximum);
+      const pattern = matchCountPattern(context.getImageData(0, 0, 140, 210).data, countPatterns, fields.offsetY, maximum, true, countContrastFloor(canvas.width));
       const diagnostic: CountDiagnostics = { maximum, reason: fields.hasIcon === null ? '장수 숫자 미검출 또는 불명확' : pattern.reason, readings: [], pattern, iconPresent: fields.hasIcon ?? undefined };
       if (pattern.value !== null && !corroborate)
         return { awakening: level, extraCopies: pattern.value, countDiagnostics: diagnostic };

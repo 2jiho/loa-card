@@ -58,6 +58,7 @@
 |---|---|---|
 | `public/scanner/cards.json` | 420종 이름·ID·등급·출처와 원화에서 만든 `feature` | 우선 검토. 단순 카드 목록만 있는 파일이 아님. 클라이언트 DB로 검증한 메타데이터와 원화 파생값을 분리해서 판단. 미사용 뒷면 특징과 외부 아이콘 경로는 제거 |
 | `public/scanner/artwork-details.json` | 388종 클라이언트 원화 영역을 20×10 회색조 픽셀로 만든 base64 | 우선 검토. 클라이언트 atlas 기반. 파일 확장자가 JSON이어도 작은 이미지를 복원할 수 있음 |
+| `public/scanner/screen-artwork-extra.json` | 사용자의 화면 공유에서 얻은 3종 20×10 회색조 원화 영역 4개 | 위와 같은 게임 화면 파생 자료 |
 | `public/scanner/screen-artwork-details.json` | 사용자가 제공한 보정 스크린샷에서 얻은 384종 20×10 회색조 원화 영역 | 게임 화면 파생 자료. 전체 화면은 아니지만 사용자 촬영만으로 게임 원화 권리가 사라지지 않음 |
 | `public/scanner/growth-tab.png`, `header-anchor.png` | 게임 UI 조각 256×48, 138×24 | 최소 UI 식별 자료로서 UGC 적용 범위 확인. 필요하면 도형·레이아웃 기반 검출로 대체 검토 |
 | `public/scanner/counter-patterns.json`, `stars.json` | 숫자/장수 패턴 224개(2560×1440 화면 89개, 1920×1080 화면 135개), 비각성·각성 보석 각 1개 | 화면의 글자·보석에서 유래한 인식 템플릿. 실제 사용하는 표본만 보존. 원화와 동일한 표현상 가치를 가진다고 단정하지 않되 게임 유래 자료로 별도 고지 |

@@ -52,10 +52,22 @@ export function prepareContrastPattern(pattern: CountPattern): ContrastPattern {
 export function readContrastCount(rgba: ArrayLike<number>, patterns: ContrastPattern[]) {
   return matchCountPattern(rgba, patterns).value;
 }
+/** The contrast a count pattern needs, for a crop of this width before it is drawn at 140x210.
+ *
+ * The digits are drawn white with a dark outline. A crop taken from a smaller screen (1920x1080
+ * draws a card 105 pixels wide) is enlarged to 140 before it is read, which blurs the outline into
+ * the artwork behind it: on three 1080p shares the right value scored 0.22..0.30 where 2560x1440
+ * crops score above 0.30 (of 267 such readings 263 had the right first candidate and the other 4
+ * scored 0). Crops narrower than 120 pixels therefore need 0.22; every other crop keeps 0.30.
+ * The gap to the runner-up, the trailing-stroke veto and the awakening limit are unchanged, and a
+ * pattern reading is still only one observation for the acceptance rules. */
+export function countContrastFloor(cropWidth:number|undefined):number {
+  return typeof cropWidth==='number'&&cropWidth>0&&cropWidth<120?.22:.30;
+}
 /** Rank all 15 values before applying the awakening limit: never turn an
  * out-of-range winner into a plausible but wrong second choice. Scores are
  * foreground/outline contrast, not calibrated recognition probabilities. */
-export function matchCountPattern(rgba: ArrayLike<number>, patterns: ContrastPattern[], offsetY = 0, maximum = 15, requireIcon = true): CountPatternReading {
+export function matchCountPattern(rgba: ArrayLike<number>, patterns: ContrastPattern[], offsetY = 0, maximum = 15, requireIcon = true, minContrast = .30): CountPatternReading {
   const rejected = (reason: string): CountPatternReading => ({ value: null, candidate: null, score: 0, gap: 0, reason });
   if (!Number.isInteger(offsetY) || Math.abs(offsetY) > 6 || rgba.length !== 140 * 210 * 4)
     return rejected("장수 영역 크기 또는 위치 확인 필요");
@@ -95,7 +107,7 @@ export function matchCountPattern(rgba: ArrayLike<number>, patterns: ContrastPat
   const best = ranked[0];
   if (!best || ranked.length < 15) return rejected("1~15 장수 템플릿 누락");
   const gap = best[1] - ranked[1][1];
-  const reason = best[1] < .30 ? "숫자 획과 외곽선 대비 부족"
+  const reason = best[1] < minContrast ? "숫자 획과 외곽선 대비 부족"
     : best[0] > maximum ? "각성별 장수 상한 초과"
     : best[0] < 10 && placements.has(best[0]) && hasTrailingCountStroke(gray,placements.get(best[0])!)
       ? COUNT_UNEXPLAINED_TRAILING_GLYPH

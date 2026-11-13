@@ -1,4 +1,4 @@
-import { createPortraitMatcher } from './portrait-matcher';
+import { createPortraitMatcher,screenExtraReferences } from './portrait-matcher';
 import {loadPortraitCompetitors} from './portrait-competitors';
 import { areaGray } from '../acquisition/area-gray';
 import { prepareContrastPattern } from './count-pattern';
@@ -12,9 +12,9 @@ let preparing:ReturnType<typeof prepare>|undefined;
 async function prepare() {
  const base=new URL(import.meta.env.BASE_URL,self.location.href).href;
  const load=async(name:string)=>{const r=await fetch(base+'scanner/'+name);if(!r.ok)throw new Error('시각 판독 자료 로드 실패: '+name);return r.json();};
- const [catalog,atlas,stars,counts,screen,competitors]=await Promise.all([load('cards.json'),load('artwork-details.json'),load('stars.json'),load('counter-patterns.json'),load('screen-artwork-details.json'),loadPortraitCompetitors(base)]);
+ const [catalog,atlas,stars,counts,screen,competitors,extra]=await Promise.all([load('cards.json'),load('artwork-details.json'),load('stars.json'),load('counter-patterns.json'),load('screen-artwork-details.json'),loadPortraitCompetitors(base),load('screen-artwork-extra.json')]);
  const cards=catalog.cards as Reference[];
- return {match:createPortraitMatcher(cards,atlas,screen.cards,{competitors}),templates:[stars.gray[0],stars.gold[0]],patterns:(counts.patterns as CountPattern[]).map(prepareContrastPattern)};
+ return {match:createPortraitMatcher(cards,atlas,screen.cards,{competitors,extra:screenExtraReferences(extra)}),templates:[stars.gray[0],stars.gold[0]],patterns:(counts.patterns as CountPattern[]).map(prepareContrastPattern)};
 }
 /** One crop: the same reading whether it arrives alone or in a batch. */
 function readOne(engine:Awaited<ReturnType<typeof prepare>>,bitmap:ImageBitmap) {
