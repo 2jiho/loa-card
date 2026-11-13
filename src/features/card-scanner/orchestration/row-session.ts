@@ -137,6 +137,9 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
   evidence?:RowEvidence) {
   const BACKLOG=16;
   const table=createListTable(),nameHold=createNameHold(nameHoldSeconds);
+  /** List rows shown with something usable in a frame read, by the scrollbar of that frame (moving
+   * or not). For the guidance map only: a moving thumb can be a row ahead, so never a card's place. */
+  const viewed=new Set<number>();
   let nameLane:Promise<void>|null=null;
   /** Crops waiting for the one background name lane, oldest first. Each is a copy, so it can be
    * read after its row has scrolled away. `cell` finds its list cell again through a card the
@@ -470,12 +473,17 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
     /** What to show again, from the table and the cards not confirmed yet (session/list-guidance.ts).
      * `totalRows`: rows of the whole list. Without the evidence merge a card counts as confirmed
      * once it has an observation with both values. */
-    guidance(totalRows:number){
+    /** `capacity`, `owned`: the storage header ("398 / 450"), when read. */
+    /** Marks the rows a frame shows, as soon as the frame is taken (before it is read), so that the
+     * map follows the scroll: `shown[row]` is whether that grid row had a usable or empty cell. */
+    view(topRow:number,shown:readonly boolean[]){shown.forEach((on,row)=>{if(on)viewed.add(topRow+row);});},
+    guidance(totalRows:number,capacity?:number|null,owned?:number|null){
       const unconfirmed=new Map<number,{name:string;reasons:readonly string[]}>();
       if(evidence){
         for(const card of evidence.summary().cards)if(!card.confirmed){const code=codes.get(card.id);if(code!==undefined)unconfirmed.set(code,{name:card.name,reasons:card.review});}
       }else cards.forEach((card,code)=>{if(!complete.has(code))unconfirmed.set(code,{name:card.name,reasons:['각성·장수 확인']});});
-      return listGuidance(table.snapshot(),{totalRows,unconfirmed});
+      return listGuidance(table.snapshot(),{totalRows,unconfirmed,...(capacity?{slotRows:Math.ceil(capacity/COLUMNS)}:{}),
+        ...(owned?{cardRows:Math.ceil(owned/COLUMNS)}:{}),viewedRows:viewed});
     },
     summary(){
       const snapshot=table.snapshot();

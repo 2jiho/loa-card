@@ -3,6 +3,7 @@ import {scanMonitorInputFacts} from '../session/scan-monitor-outcome';
 import type {ScannerFeedback} from './scanner-feedback';
 import type {AutoCompletionDiagnostic} from '../session/auto-completion-diagnostics';
 import type {LiveObstructionHint} from '../session/live-obstruction-hint';
+import type {ListGuidanceMap} from '../session/list-guidance';
 
 interface MonitorStateSource {
   grid?: ScanGridSnapshot;
@@ -22,11 +23,15 @@ interface MonitorStateSource {
   sampled?: number;
   unidentified?: readonly unknown[];
   unresolvedObservations?: number;
+  located?: boolean;
+  listGuidance?: {readonly map?: ListGuidanceMap};
 }
 
 export type ScanMonitorState=Pick<MonitorStateSource,'grid'|'currentRunRead'|'currentRunNames'|'review'|'expected'|'capacity'|'interrupted'> &
-  Partial<Pick<MonitorStateSource,'queued'|'activeReadings'|'unresolvedFieldChanges'|'autoCompletionDiagnostic'|'droppedFrames'|'headerConflict'>> & {unresolvedCount?:number;unresolvedCountUnavailable?:true;hasInput?:boolean;unresolvedFieldChangesUnavailable?:true;liveObstructionHint?:LiveObstructionHint};
-export type ScanMonitorInput=ScanMonitorState & Partial<Pick<MonitorStateSource,'sampled'|'unidentified'|'unresolvedObservations'|'cards'>>;
+  Partial<Pick<MonitorStateSource,'queued'|'activeReadings'|'unresolvedFieldChanges'|'autoCompletionDiagnostic'|'droppedFrames'|'headerConflict'>> & {unresolvedCount?:number;unresolvedCountUnavailable?:true;hasInput?:boolean;unresolvedFieldChangesUnavailable?:true;liveObstructionHint?:LiveObstructionHint;
+  /** Whether the card window is in the latest frame, and the list map (row-centred scan). */
+  located?:boolean;map?:ListGuidanceMap};
+export type ScanMonitorInput=ScanMonitorState & Partial<Pick<MonitorStateSource,'sampled'|'unidentified'|'unresolvedObservations'|'cards'|'listGuidance'>>;
 
 /** Raw scanner state and lightweight feedback share the same image-free view. */
 export function projectScanMonitorState(state:ScanMonitorInput):ScanMonitorState {
@@ -36,7 +41,9 @@ export function projectScanMonitorState(state:ScanMonitorInput):ScanMonitorState
   ...(state.currentRunNames===undefined?{}:{currentRunNames:state.currentRunNames}),...(review===undefined?{}:{review}),
   expected:state.expected,capacity:state.capacity,interrupted:state.interrupted,
   queued:state.queued,activeReadings:state.activeReadings,...(state.autoCompletionDiagnostic?{autoCompletionDiagnostic:state.autoCompletionDiagnostic}:{}),
-  ...(state.liveObstructionHint?{liveObstructionHint:state.liveObstructionHint}:{}),...scanMonitorInputFacts(state)};
+  ...(state.liveObstructionHint?{liveObstructionHint:state.liveObstructionHint}:{}),
+  ...(typeof state.located==='boolean'?{located:state.located}:{}),
+  ...(state.listGuidance?.map?{map:state.listGuidance.map}:state.map?{map:state.map}:{}),...scanMonitorInputFacts(state)};
 }
 
 function sameCell(a:ScanGridCell|undefined,b:ScanGridCell|undefined) {
@@ -71,6 +78,16 @@ function shareGrid(previous:ScanGridSnapshot|undefined,next:ScanGridSnapshot|und
     next.located===previous.located&&next.totalRows===previous.totalRows&&next.estimatedTop===previous.estimatedTop&&
     next.liveTop===previous.liveTop&&next.liveTracking===previous.liveTracking)return previous;
   return {...next,cells,inventory,recent,...(recentFrame?{recentFrame}:{})};
+}
+
+/** Same rows to show again and the same screen row: nothing to redraw on the list map. */
+export function sameListMap(a:ListGuidanceMap|undefined,b:ListGuidanceMap|undefined):boolean {
+  if(a===b)return true;
+  if(!a||!b||a.totalRows!==b.totalRows||a.currentRow!==b.currentRow||a.targets.length!==b.targets.length)return false;
+  if(a.emptyFrom!==b.emptyFrom||a.lockedFrom!==b.lockedFrom)return false;
+  const ad=a.done??[],bd=b.done??[];
+  if(ad.length!==bd.length||ad.some((run,index)=>run.from!==bd[index].from||run.to!==bd[index].to))return false;
+  return a.targets.every((target,index)=>target.row===b.targets[index].row&&target.kind===b.targets[index].kind);
 }
 
 /** The small progress window publishes independently of the card-list transition.
@@ -141,7 +158,9 @@ export function createScanMonitorStore(options:{notifyIntervalMs?:number}={}) {
         (value.queued??0)===(next.queued??0)&&(value.activeReadings??0)===(next.activeReadings??0)&&
         value.unresolvedCount===next.unresolvedCount&&value.unresolvedCountUnavailable===next.unresolvedCountUnavailable&&
         value.droppedFrames===next.droppedFrames&&value.hasInput===next.hasInput&&value.headerConflict===next.headerConflict&&
-        value.unresolvedFieldChanges===next.unresolvedFieldChanges&&value.unresolvedFieldChangesUnavailable===next.unresolvedFieldChangesUnavailable){
+        value.unresolvedFieldChanges===next.unresolvedFieldChanges&&value.unresolvedFieldChangesUnavailable===next.unresolvedFieldChangesUnavailable&&
+        // The list map and whether the window is found change while scrolling with no new read.
+        value.located===next.located&&sameListMap(value.map,next.map)){
         try{feedback?.publish(value,grid,true);}catch{/* Diagnostics do not create notifications. */}
         return;
       }

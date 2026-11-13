@@ -22,7 +22,7 @@ export function ScanQuickStart({ onHelp }: { onHelp: () => void }) {
     <div className="scan-guide-heading"><h2 id="scan-guide-heading">처음이라면 이렇게 시작하세요</h2>
       <Button color="inherit" onClick={onHelp} startIcon={<HelpOutline />}>사용법</Button></div>
     <ScanSteps />
-    <p className="scan-guide-footnote">PC의 Chrome·Edge에서 이용하세요. 게임 창이 보이지 않으면 게임이 표시된 화면을 선택하세요.</p>
+    <p className="scan-guide-footnote">PC의 Chrome·Edge에서 이용하세요. 게임 창이 보이지 않으면 게임이 표시된 화면을 선택하세요. 게임 해상도는 1920×1080 이상을 권장합니다.</p>
   </section>;
 }
 

@@ -1,6 +1,6 @@
 import type {TrackLineReply,TrackLineRequest,TrackLineStats} from '../capture/track-line-worker';
 import type {ScannedCard} from '../recognition/recognizer-types';
-import {describeListGuidance,listGuidanceMap} from '../session/list-guidance';
+import {describeListGuidance,listGuidanceMap,holdNewCardTargets} from '../session/list-guidance';
 import type {ListGuidance,ListGuidanceMap} from '../session/list-guidance';
 import {createAcquisitionClient} from '../acquisition/acquisition-client';
 import {createVisualClient} from '../recognition/visual-client';
@@ -127,11 +127,17 @@ export interface RowScanSnapshot {
   readonly growthPoints:{readonly current:number;readonly maximum:number|null}|null;
   /** Cells seen but not named (in anchored rows and in rows without a place). */
   readonly unidentifiedCells:number;
+  /** The interface's card strip: cards as first read (session/row-evidence.ts, activity()). */
+  readonly activity:readonly {readonly id:number;readonly image:string;readonly name:string;readonly status:'read'|'review'}[];
   readonly guidance:{readonly asks:readonly string[];readonly notes:readonly string[];
     /** The same rows on a picture of the list, with the rows on screen now (session/list-guidance.ts). */
     readonly map?:ListGuidanceMap};
 }
 
+/** How often the scan state is published while frames are taken (the progress map follows the scroll). */
+const SNAPSHOT_MS=200;
+/** Until the scan is done, a card highlight is drawn once it has lasted this long (holdNewCardTargets). */
+const CARD_TARGET_HOLD_MS=1500;
 export async function runRowScan(options:{
   /** The share: the caller has already put its stream on `target`. `start` resolves when the share ends. */
   input:{start():Promise<void>;dispose():void};
@@ -283,10 +289,16 @@ export async function runRowScan(options:{
       }catch{header.failures++;return null;}
       finally{copy.width=0;}
     };
+    const cardTargetSince=new Map<number,number>();
+    // Until the scan is done, a dip of the confirmed count (a newer view of a confirmed card, not read yet)
+    // is shown once it has lasted CARD_TARGET_HOLD_MS; the final count is never held.
+    let shownConfirmed={value:0,dipSince:null as number|null};
     const publishSnapshot=(phase:RowScanSnapshot['phase'])=>{
       if(!options.onSnapshot)return;
       lastSnapshot=performance.now();
-      const merged=evidence?.cards()??{cards:[],confirmed:0},totalRows=scrollSteps+GRID_ROWS;
+      // Pictures of the cards to check once the share has ended (encoding them while frames are
+      // taken would cost the scan main-thread time).
+      const merged=evidence?.cards(phase!=='capture')??{cards:[],confirmed:0},totalRows=scrollSteps+GRID_ROWS;
       // While every card of the displayed total is confirmed, the total is read again (about once
       // a second) so that a caller may end the share on a total that is current.
       if(phase==='capture'&&header.expected!==null&&merged.cards.length===header.expected&&merged.confirmed===header.expected){
@@ -295,14 +307,22 @@ export async function runRowScan(options:{
           headerRun=readHeader().then(total=>{header.fresh=total?.owned??null;}).finally(()=>{headerRun=null;});
         }
       }else header.fresh=null;
+      const guidance=session.guidance(totalRows,header.capacity,header.expected);
       try{options.onSnapshot({phase,frames,locatedFrames:located,located:lastLocated,
         waitingFrames:Math.max(waiting.length,workerLine?workerLine.received-workerLine.dropped-workerLine.passed-frames:0),
         droppedFrames:dropped+(workerLine?.dropped??0),waitingReads:session.waitingReads(),
-        cards:merged.cards,confirmed:merged.confirmed,expected:header.expected,capacity:header.capacity,finalExpected:header.finalExpected,freshExpected:header.fresh,
+        cards:merged.cards,confirmed:(()=>{
+          const now=performance.now();
+          if(phase==='done'||merged.confirmed>=shownConfirmed.value){shownConfirmed={value:merged.confirmed,dipSince:null};return merged.confirmed;}
+          shownConfirmed.dipSince??=now;
+          if(now-shownConfirmed.dipSince>=CARD_TARGET_HOLD_MS)shownConfirmed={value:merged.confirmed,dipSince:null};
+          return shownConfirmed.value;})(),expected:header.expected,capacity:header.capacity,finalExpected:header.finalExpected,freshExpected:header.fresh,
         growthPoints:growth.points,
-        unidentifiedCells:(()=>{const guidance=session.guidance(totalRows);return guidance.cells.filter(cell=>cell.kind==='unidentified').length+guidance.unplaced.unidentified;})(),
-        guidance:(()=>{const guidance=session.guidance(totalRows);return {...describeListGuidance(guidance,{totalRows}),
-          map:listGuidanceMap(guidance,{totalRows,visibleRows:GRID_ROWS,currentRow:screenRow})};})()});}catch{/* A display callback cannot stop the scan. */}
+        activity:evidence?.activity()??[],
+        unidentifiedCells:guidance.cells.filter(cell=>cell.kind==='unidentified').length+guidance.unplaced.unidentified,
+        guidance:(()=>{return {...describeListGuidance(guidance,{totalRows}),
+          map:(()=>{const map=listGuidanceMap(guidance,{totalRows,visibleRows:GRID_ROWS,currentRow:screenRow});
+            return phase!=='done'?holdNewCardTargets(map,cardTargetSince,performance.now(),CARD_TARGET_HOLD_MS):map;})()};})()});}catch{/* A display callback cannot stop the scan. */}
     };
     const completion=input.start().finally(()=>{ended=true;shareEnd={at:performance.now(),...counts()};wake?.();publishSnapshot('reading');});
     const counts=()=>{const cards=session.cards();return {cards:cards.length,complete:cards.filter(card=>card.observations.some(observation=>observation.awakening!==null&&observation.extraCopies!==null)).length,
@@ -372,7 +392,8 @@ export async function runRowScan(options:{
         stripContext.drawImage(frame,bar.x,bar.y,bar.width,bar.height,0,0,16,942);
         const thumb=thumbClock(time,readScrollGeometry(stripContext.getImageData(0,0,16,942).data,16,942)?.position??null);
         stage.thumb.push(performance.now()-thumbStarted);thumbRow=thumb.position===null?null:Math.round(thumb.position*scrollSteps);
-        if(thumbRow!==null)screenRow=thumbRow;
+        if(thumbRow!==null){screenRow=thumbRow;
+          session.view(thumbRow,Array.from({length:GRID_ROWS},(_,row)=>acquired.cells.slice(row*COLUMNS,row*COLUMNS+COLUMNS).some(cell=>cell.quality.usable||cell.quality.reason===EMPTY_REASON)));}
         read=async()=>{
           const readStarted=performance.now();
           await session.processFrame(time,acquired.cells.map(cell=>({usable:cell.quality.usable,empty:cell.quality.reason===EMPTY_REASON,image:cell.image,feature:cell.feature,alignment:cell.alignment,fieldRevision:cell.fieldRevision})),thumb);
@@ -396,9 +417,9 @@ export async function runRowScan(options:{
             zeroLive.runs++;zeroLive.ms+=performance.now()-began;zeroLive.previewReads+=check.previewReads;zeroLive.resolved.push(...check.resolved);
           }).catch(()=>{}).finally(()=>{zeroRun=null;});
         }
-        if(options.onCounts)options.onCounts(tick,describeListGuidance(session.guidance(scrollSteps+GRID_ROWS),{totalRows:scrollSteps+GRID_ROWS}));}
+        if(options.onCounts)options.onCounts(tick,describeListGuidance(session.guidance(scrollSteps+GRID_ROWS,header.capacity,header.expected),{totalRows:scrollSteps+GRID_ROWS}));}
       lastLocated=!!acquired.layout;
-      if(performance.now()-lastSnapshot>=400)publishSnapshot(ended?'reading':'capture');
+      if(performance.now()-lastSnapshot>=SNAPSHOT_MS)publishSnapshot(ended?'reading':'capture');
       if(frames%10===0)options.onProgress?.(`줄 중심 실시간 · 읽은 프레임 ${frames} · 카드 ${session.cards().length}`);
     }
     await completion.catch(()=>{});
@@ -442,7 +463,7 @@ export async function runRowScan(options:{
         mainThread:{maxGapMs:Math.round(lagMax),gapsOver100Ms:lagOver100},
         growthPoints:growth.points,
         header:{expected:header.expected,capacity:header.capacity,finalExpected:header.finalExpected,firstAtSeconds:header.firstAt,reads:header.reads,failures:header.failures},
-        guidance:(()=>{const totalRows=scrollSteps+GRID_ROWS,guidance=session.guidance(totalRows);return {totalRows,...guidance,...describeListGuidance(guidance,{totalRows})};})(),
+        guidance:(()=>{const totalRows=scrollSteps+GRID_ROWS,guidance=session.guidance(totalRows,header.capacity,header.expected);return {totalRows,...guidance,...describeListGuidance(guidance,{totalRows})};})(),
         ...(typeof processor?.totalFrames==='number'?{sourceTotal:processor.totalFrames}:{}),
         ...(track?{track:{frameRate:track.getSettings().frameRate??null,stats:trackStats(track)}}:{}),...(typeof processor?.discardedFrames==='number'?{sourceDiscarded:processor.discardedFrames}:{}),
         frameMs:{median:at(.5),p95:at(.95),max:at(1)},timeline,

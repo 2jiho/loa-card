@@ -14,7 +14,7 @@ type MonitorStatus={busy:boolean;sharing:boolean;preparing?:boolean};
 function Preview({store,latency,busy,sharing,preparing,onStop}:{store:ScanMonitorStore;latency:MonitorLatencyProbe<ScanMonitorState>;onStop:()=>void}&MonitorStatus) {
   const state=useSyncExternalStore(store.subscribe,store.getSnapshot);
   useLayoutEffect(()=>{latency.commit(state);},[latency,state]);
-  return <><style>{styles}</style><ScanMonitorPanel state={state} busy={busy} sharing={sharing} engineReady={!preparing} onStop={onStop} feedback={store.getFeedback()}/></>;
+  return <><style>{styles}</style><ScanMonitorPanel state={state} busy={busy} sharing={sharing} engineReady={!preparing} onStop={onStop}/></>;
 }
 
 /** Dev-only view of the production monitor. clear() clears display data only;

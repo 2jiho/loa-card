@@ -3,17 +3,21 @@ import {runRowScan} from './row-scan';
 import type {RowScanSnapshot} from './row-scan';
 import {rowCanStopSharing,rowScannerState} from './row-scanner-state';
 import {stopCompletedShare} from '../session/auto-completion';
+import {inputScale} from '../acquisition/detector';
+import {smallScreenNotice} from './row-scanner-state';
 
 /** The row-centred scan behind the scanner's interface (docs/scanner-live-redesign.md, section 13).
  *
- * Development only for now: `runScanner` calls this instead of its own loop when asked to
- * (`debug.engine: 'row'`), so the app, the watchdog and the development recorder run unchanged
- * around it. It reads a live screen share and publishes the scanner's state shape.
+ * The scan of every screen share: `runScanner` calls this instead of its own loop (in
+ * development `?engine=classic` runs the previous loop for comparison), so the app, the watchdog
+ * and the development recorder run unchanged around it. It reads a live screen share and
+ * publishes the scanner's state shape.
  *
  * It reads the displayed total and issues the completion receipt under the conditions of
- * row-scanner-state.ts. What it does not do yet: it lists no pictures of unidentified observations
- * (only their count), passes no guidance to the app, and starts from an empty list (it is not
- * seeded with saved cards). */
+ * row-scanner-state.ts, and passes the list guidance (rows to show again, the list map) and a
+ * small-screen notice to the app. It lists no pictures of unidentified observations (only their
+ * count) and starts from an empty list: it is not seeded with saved cards, so this scan's result
+ * never rests on an earlier list (the app keeps the earlier list when the scan is not complete). */
 export async function runRowScannerInternal(options:{video:HTMLVideoElement;signal:AbortSignal;
   update:(state:ScannerState)=>void;onReady?:()=>void;
   /** A frame the card window was found in (the development recorder keeps those spans). */
@@ -40,7 +44,10 @@ export async function runRowScannerInternal(options:{video:HTMLVideoElement;sign
   // As the scanner does: when everything is confirmed and stays so for a second, the share is
   // ended here, and the scan finishes from what it has.
   let readySince:number|null=null,autoStopped=false;
-  const state=(snapshot:RowScanSnapshot)=>({...rowScannerState(snapshot),...(autoStopped?{autoStopped:true}:{})});
+  const state=(snapshot:RowScanSnapshot)=>{
+    const notice=smallScreenNotice(video.videoWidth,video.videoHeight,inputScale(video.videoWidth,video.videoHeight));
+    return {...rowScannerState(snapshot),...(autoStopped?{autoStopped:true}:{}),...(notice?{resolutionNotice:notice}:{})};
+  };
   await runRowScan({target:video,signal,relativeTime:true,
     input:{start:()=>ended,dispose:()=>{}},
     onReady:options.onReady,onLocated:options.onLocated,

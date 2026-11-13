@@ -445,7 +445,6 @@ function App() {
   const duplicateInputs=useMemo(()=>duplicateRescueObservationCount(
     state?.fixedRowRescue?.records??[],new Set((state?.cards??[]).map(card=>card.id)),1),
     [state?.fixedRowRescue?.records,state?.cards]);
-  const duplicateObservations=state?.duplicateUnidentifiedObservations??0;
   const inputWarnings=scanHasInputWarnings(state);
   const knownInputWarnings=nameIssues.length>0||(state?.unresolvedObservations??0)>0||(state?.droppedFrames??0)>0;
   const match = state?.expected !== null && state?.expected === cards.length;
@@ -555,13 +554,13 @@ function App() {
       {legacyChoices.length > 0 && <div className="notice" role="group" aria-label="이전 백업 선택">{legacyChoices.map((item, i) => <Button key={item.key} disabled={!backupReady || busy} onClick={() => void restoreBackup(item.key)} title={item.names}>백업 {i + 1} · {item.count}종 · 경험치 {item.xp?.toLocaleString('ko-KR') ?? '미확인'}</Button>)}</div>}
       {backupError && <div className="notice" role="alert"><p>{backupError}</p>{!!state && <button className="text-button" disabled={busy || !backupReady} onClick={() => setBackupAttempt(n => n + 1)}>저장 다시 시도</button>}<button className="text-button" disabled={busy || !backupReady} onClick={() => void restoreBackup()}>현재 목록 대신 저장 목록 불러오기</button><span> · 현재 목록은 먼저 CSV로 보관해 주세요.</span></div>}
       {error && <p className="error" role="alert">{error}<button className="text-button" onClick={() => setError("")}>닫기</button></p>}
+      {state?.resolutionNotice && <p className="notice" role="status">{state.resolutionNotice}</p>}
       {state?.captureWarning && <p className="notice" role="alert">{state.captureWarning}</p>}
       {state?.headerConflict && <p className="notice" role="alert">{HEADER_CONFLICT_WARNING}</p>}
       {busy && state?.processingWarning && <p className="notice" role="status">{state.processingWarning}</p>}
       {!!state?.droppedFrames && state.captureWarning!==LIVE_INPUT_LOSS_MESSAGE && <p className="notice" role="alert">일부 화면을 처리하지 못했습니다. 화면 공유를 종료한 뒤 처음부터 다시 스캔해 주세요.</p>}
       {!busy && !state?.droppedFrames && (state?.unresolvedObservations??0)>0 && nameIssues.length===0 && <p className="notice" role="alert">연결되지 않은 화면 입력이 남아 있습니다. 새로 스캔해 확인해 주세요.</p>}
       {scanSummary}
-      {duplicateObservations>0&&<p className="muted">같은 카드 중복 관측 {duplicateObservations}건은 카드 수에 더하지 않았습니다.</p>}
       {unattributedReview>0&&<section id="unattributed-attention" className="notice" role="alert">
         <strong>{state?.unresolvedFieldChanges ? '확인할 화면 관측이 남아 있습니다.' : '이전 목록의 최신 각성·장수 확인이 필요합니다.'}</strong>
         <p>저장된 판독 근거만으로는 해당 카드를 특정할 수 없습니다. 전체 목록을 다시 공유해 주세요. 확인 전에는 CSV 저장과 계산 메뉴를 사용할 수 없습니다.</p>

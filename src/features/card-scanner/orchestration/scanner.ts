@@ -253,6 +253,8 @@ export interface ScannerState {
     selector?:'arrival'|'coverage';coverage?:{complete:number;partial:number;none:number;chosen:number;dropped:number;scored:number}};
   sourceStore?:{kind:'canonical';preparation?:ReturnType<typeof createPreparedLiveSource>['stats']}&ReturnType<typeof createCanonicalCapture>['stats'];
   captureWarning?: string;
+  /** The shared picture is smaller than the supported size (row-scanner-state.ts, smallScreenNotice). */
+  resolutionNotice?: string;
   /** An independently displayed, unresolved storage header conflict. */
   headerConflict?: boolean;
   scrollCaptureDiagnosticError?:string;
@@ -363,9 +365,10 @@ export async function runScanner(...args:Parameters<typeof runScannerInternal>) 
     onSettled:()=>debug?.onInternalSettled?.(),
     isCleanupUncertain:()=>cleanupUncertain,onCleanupUncertain:()=>debug?.onInternalCleanupUncertain?.(),
     diagnostic:()=>{try{debug?.recordingError?.('인식 엔진 자원 종료에 실패했습니다.');}catch{/* Optional diagnostics. */}},
-    run:(guardSignal,nameConfiguration,transferred)=>import.meta.env.DEV&&debug?.engine==='row'&&source==='screen'
-      // Development only: the row-centred scan in place of this scanner's own loop (row-scanner.ts).
-      // It loads its own readers; the prepared ones are released by the operation as usual.
+    run:(guardSignal,nameConfiguration,transferred)=>source==='screen'&&debug?.engine!=='classic'
+      // Screen shares are read by the row-centred scan (row-scanner.ts); this scanner's own loop
+      // stays for still images and, in development, for ?engine=classic. The row scan loads its
+      // own readers; the prepared ones are released by the operation as usual.
       ?import('./row-scanner').then(({runRowScannerInternal})=>runRowScannerInternal({video,signal:guardSignal,update:publish,
         onReady:()=>{if(guardSignal.aborted)return;ready();onReady?.();},
         onLocated:()=>{try{debug?.onFrameLocated?.(0);locatedFrameSink?.();}catch{/* Development recording is optional. */}}}))
@@ -460,7 +463,7 @@ async function runScannerInternal(
   rowMode: "all" | "top" | "stable" = "all",
   stillImages?: StillImageSources,
   captureOnly = false,
-  debug: { /** Development only: which scan runs. `row`: the row-centred scan (row-scanner.ts) instead of this scanner's loop; screen shares only. */ engine?:'row';
+  debug: { /** Development only: which scan runs. `row`: the row-centred scan (row-scanner.ts) instead of this scanner's loop; screen shares only. */ engine?:'row'|'classic';
     /** Development only: server-side recording of a live share (docs/dev-recording.md). */ shareRecording?:'on'|'off';onShareRecording?:(id:string)=>void;unknownEvidenceImages?:boolean; recognitionNeededSlots?:readonly {slot:number;captureTime:number;reason:string}[]; rejectedTransport?:boolean; rejectedReplay?:'baseline'|'reduced'; freshnessVersion?:1|2; unknownSourcePolicy?:UnknownSourcePolicy; hiddenUnknownProbe?:boolean; onHiddenUnknownSummary?:(report:{supported:boolean;summary:HiddenDiagnosticSummary|null;summaryTraceAdmitted:boolean|null;error?:string})=>void; nameConfiguration?:ScannerNameConfiguration; feedbackProbe?:ScannerFeedback; comparisonInput?:boolean; preparedSource?:boolean; preparedSourceMode?:SourcePreparationMode; restoredHandoff?:boolean; preparedCropProof?:boolean; localCropPixels?:boolean; visualOverflow?:boolean; fastOcrAssist?:boolean; latestPixelGate?:boolean; completionDrain?:boolean; obstructionFence?:boolean; advisoryFence?:boolean; moveReuseProfile?:boolean; frameObstructionProbe?:boolean; frameObstructionHash?:boolean; countSourceProbe?:boolean; countSourceRecord?:(event:CountProvenanceEvent)=>boolean; frameObstructionEvent?:(event:FrameObstructionProbeEvent)=>void; nameRawResultPolicy?:'continue'|'resample'; grayNameFallback?:boolean; recognitionObserver?:RecognitionInputObserver; nativeAcquisition?: boolean; rgbaRecovery?:boolean; fractionalPortrait?:boolean; minInputIntervalMs?:number; inputOfferFloorMs?:number; exact?: ExactRecorder; journal?:RecordingJournal; trace?: (type:string,value:unknown,time:number)=>void; traceAck?:()=>boolean; parallelRecovery?: boolean; trackFrames?: boolean; replay?: DebugCapture; replayInputs?: AsyncIterable<ScannerInputFrame>; record?: (frame: DebugFrame) => void;
     continuous?: (recording: ContinuousRecording) => void;
     continuousRecording?: 'disabled'|'fail-start';

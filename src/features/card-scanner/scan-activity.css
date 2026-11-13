@@ -2,28 +2,11 @@
 .scan-strip-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:28px; }
 .scan-strip-heading strong { font-size:12px; font-weight:500; }
 .scan-strip-heading small { margin-left:8px; color:var(--muted); font-weight:400; font-size:11px; }
-.scan-strip-heading .text-button { padding:4px 8px; font-size:11px; white-space:nowrap; }
-.scan-film { position:relative; min-width:0; padding:8px 3px; height:136px; overflow:hidden; }
-.scan-film-window { width:100%; overflow:hidden; padding:3px 0; }
-.scan-film-track { display:flex; gap:10px; width:max-content; will-change:transform; }
-.scan-film:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:4px; }
-.scan-film-card { flex:0 0 68px; width:68px; min-width:0; margin:0; text-align:center;  }
-.scan-film-card>.card-thumbnail { border:1px solid var(--line); border-radius:4px; }
-.scan-film-card.is-reading>.card-thumbnail { outline:1px solid var(--accent); outline-offset:2px; }
-.scan-film-card.is-review>.card-thumbnail { outline:1px solid var(--danger); outline-offset:2px; }
-.scan-film-card figcaption { font-size:10px; color:var(--muted); padding-top:4px; line-height:1.5; }
-.scan-film-card figcaption>span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.scan-film-card small { display:flex; justify-content:center; align-items:center; gap:3px; font-size:10px; }
-.scan-film-card .scan-spinner { width:9px; height:9px; flex-basis:9px; }
-.scan-film-card.is-reading small { color:var(--accent); }
-.scan-film-card.is-review small { color:var(--danger); }
-.scan-film-empty { position:absolute; top:48px; margin:0; color:var(--muted); font-size:12px; }
 .scan-attention { box-sizing:border-box; height:240px; overflow:auto; overscroll-behavior:contain; padding:16px 20px; margin:0 0 20px; border-color:var(--accent-line); scroll-margin-top:20px; }
 .scan-attention:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .scan-attention h2 { font-size:14px; }
 .scan-attention h2 span { color:var(--accent); margin-left:6px; font-variant-numeric:tabular-nums; }
 .scan-attention-group { margin-top:12px; }
-.scan-attention-notes { color:var(--muted); }
 .scan-attention-group h3,.scan-missing h3 { font-size:12px; font-weight:600; margin:0 0 4px; }
 .scan-attention-group h3 span,.scan-missing h3 span { color:var(--muted); font-weight:400; margin-left:4px; }
 .scan-attention p { font-size:12px; color:var(--muted); margin:4px 0 12px; }
@@ -52,3 +35,28 @@
 .list-map-legend { display:flex; flex-wrap:wrap; gap:4px 12px; padding:0; margin:0; list-style:none; font-size:10px; color:var(--muted); }
 .list-map-legend li { display:flex; align-items:center; gap:4px; }
 .list-map-swatch { display:inline-block; width:10px; height:10px; border-radius:2px; }
+
+.scan-conveyor { grid-column:1/-1; min-width:0; border-top:1px solid var(--line); padding-top:12px; display:flex; align-items:center; gap:10px; }
+.scan-conveyor-queue { flex:0 0 auto; display:grid; justify-items:center; gap:2px; min-width:44px; }
+.scan-conveyor-queue strong { font-size:16px; font-variant-numeric:tabular-nums; }
+.scan-conveyor-queue small,.scan-conveyor-belt small { font-size:10px; color:var(--muted); }
+.scan-conveyor-stack { position:relative; width:30px; height:40px; }
+.scan-conveyor-stack span { position:absolute; inset:0; border:1px solid var(--line-strong); border-radius:3px; background:var(--surface-alt); }
+.scan-conveyor-stack span:nth-child(2) { transform:translate(3px,-3px); }
+.scan-conveyor-stack span:nth-child(3) { transform:translate(6px,-6px); }
+/* The belt: slot 0 is the scanner window at the left edge; cards slide right one slot per step. */
+.scan-conveyor-belt { position:relative; flex:1 1 auto; min-width:0; height:112px; overflow:hidden; border-radius:6px; background:linear-gradient(90deg,var(--surface-alt),transparent 85%); -webkit-mask-image:linear-gradient(90deg,#000 70%,transparent); mask-image:linear-gradient(90deg,#000 70%,transparent); }
+.scan-conveyor-belt ol { margin:0; padding:0; list-style:none; }
+.scan-conveyor-belt li { position:absolute; top:6px; left:6px; width:56px; display:grid; justify-items:center; gap:2px; text-align:center; transition:transform .2s cubic-bezier(.3,.6,.4,1),opacity .2s; }
+.scan-conveyor-belt li>span { max-width:56px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; }
+.scan-conveyor-belt li.is-review small { color:var(--danger); }
+.scan-conveyor-belt li.is-entering { animation:scan-conveyor-enter .2s cubic-bezier(.3,.6,.4,1); }
+.scan-conveyor-belt li.is-leaving { opacity:0; }
+.scan-conveyor-window { position:absolute; z-index:1; top:2px; left:2px; width:64px; height:88px; box-sizing:border-box; border:2px solid var(--line-strong); border-radius:6px; pointer-events:none; overflow:hidden; }
+.scan-conveyor-window.is-busy { border-color:var(--accent); }
+.scan-conveyor-window.is-busy::after { content:""; position:absolute; left:0; right:0; top:0; height:2px; background:var(--accent); box-shadow:0 0 6px var(--accent); animation:scan-conveyor-sweep .84s linear infinite; }
+.scan-conveyor-empty { position:absolute; left:80px; top:38px; margin:0; font-size:12px; color:var(--muted); }
+.scan-conveyor-belt.is-still li { transition:none; animation:none; }
+@keyframes scan-conveyor-sweep { from { top:0; } to { top:100%; } }
+@keyframes scan-conveyor-enter { from { transform:translateX(-56px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+@media (prefers-reduced-motion:reduce) { .scan-conveyor-window.is-busy::after,.scan-conveyor-belt li { animation:none; transition:none; } }

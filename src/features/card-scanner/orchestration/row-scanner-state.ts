@@ -64,14 +64,50 @@ export function rowCanStopSharing(snapshot:RowScanSnapshot):boolean {
     rowAllNamed(snapshot)&&snapshot.confirmed===snapshot.expected&&snapshot.waitingReads===0;
 }
 
+/** Below this interface scale (1920x1080 is 0.75) the count digits are about 8 pixels high and
+ * some cannot be read at all, even from a still frame (docs/dev-recording.md, 1600x900). */
+export const SMALL_SCREEN_SCALE=.75;
+/** What to tell the person when the shared picture is smaller than 1920x1080 at the interface
+ * scale, or null. Values that cannot be read stay unconfirmed; nothing is guessed. */
+export function smallScreenNotice(width:number,height:number,scale:number|null):string|null {
+  if(scale===null||scale>=SMALL_SCREEN_SCALE-.005)return null;
+  return `게임 화면이 작습니다(공유 화면 ${width}×${height}). 카드 숫자가 작아 일부 각성·장수를 읽지 못할 수 있어요. 게임 해상도를 1920×1080 이상으로 하면 모두 읽을 수 있습니다.`;
+}
+
+/** Once every card is named, cells seen but not named are repeats of cards already read (see
+ * `duplicateUnidentifiedObservations`): their rows are not asked for again and count as read on
+ * the map. Cards whose values are still open stay highlighted; a complete scan asks for nothing. */
+export function settledGuidance(guidance:RowScanSnapshot['guidance'],complete:boolean):NonNullable<ScannerState['listGuidance']> {
+  const map=guidance.map;
+  if(!map)return complete?{asks:[],notes:[]}:{asks:[...guidance.asks],notes:[...guidance.notes]};
+  const repeats=new Set(map.targets.filter(target=>target.kind==='cell').map(target=>target.row));
+  const rows=new Set<number>();
+  for(const run of map.done??[])for(let row=run.from;row<=run.to;row++)rows.add(row);
+  for(const row of repeats)rows.add(row);
+  // Every card of the displayed total is confirmed: all the rows holding cards were read, also the
+  // ones scrolled past too fast to be placed while sharing.
+  if(complete)for(let row=0;row<(map.emptyFrom??map.lockedFrom??map.totalRows);row++)rows.add(row);
+  const done:{from:number;to:number}[]=[];
+  for(const row of [...rows].sort((a,b)=>a-b)){const last=done[done.length-1];if(last&&last.to===row-1)last.to=row;else done.push({from:row,to:row});}
+  // Complete: every card is confirmed, so no row is left to show again.
+  const targets=complete?[]:map.targets.filter(target=>target.kind!=='cell');
+  return {asks:complete?[]:[...guidance.asks],notes:complete?[]:[...guidance.notes],
+    map:{...map,targets,done,direction:targets.length?map.direction:null}};
+}
+
 export function rowScannerState(snapshot:RowScanSnapshot):ScannerState {
   // One frame is always taken ahead of the one being read; it is not a backlog.
   const done=snapshot.phase==='done',queued=snapshot.waitingReads+(done?snapshot.waitingFrames:Math.max(0,snapshot.waitingFrames-1));
   const gaps=done?rowCompletionGaps(snapshot):[];
   const complete=done&&gaps.length===0;
   const covered=rowAllNamed(snapshot)?snapshot.unidentifiedCells:0;
-  const passed=(covered>0?` · 가려진 채 보인 칸 ${covered}개(이미 읽은 카드)`:'')+(snapshot.droppedFrames>0?` · 읽지 않고 넘긴 화면 ${snapshot.droppedFrames}장`:'');
-  const status=done?`입력 처리 완료 · ${complete?'표시 수량 일치':gaps.join(' · ')}${passed} · 줄 중심 경로(개발)`
+  // While the scan runs, every card of the displayed total is named and confirmed: no row is left to
+  // show again (the map says so at once; whether the scan is complete is still decided at the end).
+  const allConfirmed=!done&&snapshot.expected!==null&&snapshot.cards.length===snapshot.expected&&snapshot.confirmed===snapshot.expected;
+  // The person sees what is done or missing. Frames passed over and cells seen covered after
+  // everything was named are diagnostics: they stay in their own fields (liveMissedFrames,
+  // duplicateUnidentifiedObservations), not in the status line.
+  const status=done?`입력 처리 완료 · ${complete?'표시 수량 일치':gaps.join(' · ')}`
     :snapshot.phase==='verifying'?'판독 결과 검증 중'
     :queued>0?`카드 스캔 중 · ${queued}개 판독 대기`:'카드 스캔 중';
   const expected=snapshot.expected;
@@ -93,7 +129,9 @@ export function rowScannerState(snapshot:RowScanSnapshot):ScannerState {
     droppedFrames:0,liveMissedFrames:snapshot.droppedFrames,liveInput:'track',
     workPhase:snapshot.phase==='capture'?'capture':snapshot.phase==='reading'?'reading':snapshot.phase==='verifying'?'verifying':'cleanup',
     unidentified:[],
-    listGuidance:{asks:[...snapshot.guidance.asks],notes:[...snapshot.guidance.notes],...(snapshot.guidance.map?{map:snapshot.guidance.map}:{})},
+    activity:snapshot.activity.map(item=>({...item})),
+    listGuidance:covered>0||complete||allConfirmed?settledGuidance(snapshot.guidance,complete||allConfirmed)
+      :{asks:[...snapshot.guidance.asks],notes:[...snapshot.guidance.notes],...(snapshot.guidance.map?{map:snapshot.guidance.map}:{})},
     ...(complete&&expected!==null?{completionReceipt:{version:1 as const,mode:'ended' as const,expected,finalExpected:snapshot.finalExpected!}}:{}),
   };
 }

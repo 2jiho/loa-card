@@ -14,6 +14,7 @@ import {runArtFail} from './art-fail';
 import {runRowRead} from './row-read';
 import {runRowLight} from './row-light';
 import {runRowLive} from './row-live';
+import {createMonitorTimeline} from './monitor-timeline';
 import {analyzeRows} from './row-analysis';
 import type {LeanCard} from './lean-scan';
 import {parsePolicy} from '../src/features/card-scanner/capture/frame-similarity';
@@ -185,7 +186,9 @@ async function run():Promise<void> {
     if(modeValue==='rowread'||modeValue==='rowlight'||modeValue==='rowlive'){
       // Prototype measurements of the row-centred reading, not scans (dev/row-read.ts, dev/row-light.ts).
       const query=new URLSearchParams(location.search);
-      const result=modeValue==='rowlive'?await runRowLive({recordingId,target:share,signal,names:query.get('names')!=='0',backgroundNames:query.get('inline')!=='1',placeNames:query.get('place')!=='0',softwareFrame:query.get('soft')==='1',serial:query.get('serial')==='1',warmNames:query.get('warm')!=='0',zeroCheck:query.get('zero')==='diagnose'?'diagnose':query.get('zero')==='end'?'end':query.get('zero')!=='0',videoSource:query.get('source')==='video',mainReader:query.get('source')==='main',heldFrames:query.get('source')==='held',evidence:query.get('evidence')!=='0',...(query.has('queue')?{queue:Number(query.get('queue'))}:{}),...(query.has('readers')?{readers:Number(query.get('readers'))}:{}),
+      // What the progress window showed, entry by entry (scripts/check-monitor-timeline.mjs).
+      const monitor=createMonitorTimeline();
+      const result=modeValue==='rowlive'?await runRowLive({recordingId,target:share,signal,onSnapshot:monitor.onSnapshot,names:query.get('names')!=='0',backgroundNames:query.get('inline')!=='1',placeNames:query.get('place')!=='0',softwareFrame:query.get('soft')==='1',serial:query.get('serial')==='1',warmNames:query.get('warm')!=='0',zeroCheck:query.get('zero')==='diagnose'?'diagnose':query.get('zero')==='end'?'end':query.get('zero')!=='0',videoSource:query.get('source')==='video',mainReader:query.get('source')==='main',heldFrames:query.get('source')==='held',evidence:query.get('evidence')!=='0',...(query.has('queue')?{queue:Number(query.get('queue'))}:{}),...(query.has('readers')?{readers:Number(query.get('readers'))}:{}),
           ...(query.has('hold')?{nameHoldSeconds:Number(query.get('hold'))}:{}),onProgress:text=>{progress.textContent=text;}})
         :modeValue==='rowlight'?await runRowLight({recordingId,signal,...(Number(new URLSearchParams(location.search).get('handover'))>0?{handOverAfter:Number(new URLSearchParams(location.search).get('handover'))}:{}),onProgress:text=>{progress.textContent=text;}})
         :await runRowRead({recordingId,signal,names:new URLSearchParams(location.search).get('names')==='1',
@@ -203,8 +206,16 @@ async function run():Promise<void> {
       const status=`줄 중심 판독 · 카드 ${readCards.length} · 읽은 크롭 ${reads}/${measurement.usableCrops}`;
       const saved=await (await fetch(`${BASE}/${encodeURIComponent(recordingId)}/runs`,{method:'POST',body:JSON.stringify({
         kind:modeValue==='rowlive'?'row-live':modeValue==='rowlight'?'row-light':'row-read',version:1,startedAt,finishedAt:new Date().toISOString(),recording:{id:recordingId},status,
-        cards:readCards.map(card=>({id:card.id,name:card.name,awakening:latestRead(card,'awakening'),extraCopies:latestRead(card,'extraCopies'),observations:card.observations.length})),
+        // The values the scan settled on (after the zero check, latest capture first), when the
+        // evidence merge ran; otherwise the latest reading of each card.
+        cards:(()=>{type Settled={id:string;awakening:number|null;extraCopies:number|null;confirmed:boolean};
+          const live=(measurement as {live?:{evidence?:{cards:readonly Settled[]}}}).live;
+          const settled=new Map<string,Settled>((live?.evidence?.cards??[]).map(card=>[card.id,card]));
+          return readCards.map(card=>{const value=settled.get(card.id);
+            return {id:card.id,name:card.name,awakening:value?value.awakening:latestRead(card,'awakening'),extraCopies:value?value.extraCopies:latestRead(card,'extraCopies'),
+              ...(value?{confirmed:value.confirmed}:{}),observations:card.observations.length};});})(),
         measurement,observations:readCards,
+        ...(modeValue==='rowlive'?{monitorTimeline:{entries:monitor.entries,dropped:monitor.dropped}}:{}),
         comparison:baseline?{run:baseline.name,...compareLean(readCards,baseline.report.cards)}:null,
         sourceSignature:String(import.meta.env.VITE_REPLAY_SIGNATURE??'').slice(0,16),
         summary:{build:import.meta.env.VITE_BUILD_REVISION??'local',read:readCards.length,expected:null,unidentified:0,meanLateMs:0,maxLateMs:0,lateOver33Ms:0,deliveredRatio:1,mode:modeValue,faithful:true}})})).json() as {name:string};
@@ -356,7 +367,7 @@ async function run():Promise<void> {
           ...(nativeAcquisition?{nativeAcquisition:true}:{}),
           onFrameFlow:flow=>{frameFlow=flow;},
           // ?engine=row (live-path modes): the row-centred scan behind the scanner's interface.
-          ...(new URLSearchParams(location.search).get('engine')==='row'?{engine:'row' as const}:{}),
+          ...(new URLSearchParams(location.search).get('engine')==='classic'?{engine:'classic' as const}:{}),
           ...(batch?{frameBatchVisual:true,onVisualBatch:(stats:NonNullable<RunReport['visualBatch']>)=>{visualBatch=stats;}}:{}),
           ...(detailed?{recordingMode:'detailed' as const,
             // The scanner hands over its continuous recording and still decodes it for the recovery

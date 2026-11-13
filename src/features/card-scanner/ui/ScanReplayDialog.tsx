@@ -20,7 +20,7 @@ import type {ReproductionFile,ReproductionResult,ScanDiagnosticSummary,Reproduct
 import {runScanner} from '../public';
 import type {PreparedScanner} from '../session/scanner-preparation';
 import type {ScannerNameConfiguration} from '../session/scanner-name-configuration';
-import {ScanActivity} from './ScanActivity';
+import {ScanConveyor} from './ScanConveyor';
 import type {ScannerState} from '../public';
 import {ExecutionCompletenessNotice} from './ExecutionCompletenessNotice';
 import {InventoryReplayNotice} from './InventoryReplayNotice';
@@ -301,7 +301,7 @@ export function ScanReplayDialog({open,onClose,onBusy,takePrepared,beginEngineWo
         <p className="notice">{replayVersionNotice(file.metadata.signature,import.meta.env.VITE_REPLAY_SIGNATURE,import.meta.env.DEV)}</p>
         {replayBuildLabelNotice(file.metadata.build,import.meta.env.VITE_BUILD_REVISION)&&<p className="muted">{replayBuildLabelNotice(file.metadata.build,import.meta.env.VITE_BUILD_REVISION)}</p>}
       </>}
-      {busy&&<><p role="status"><span className="scan-spinner"/> {state?.status??'재현 준비 중'} · 입력 {Math.floor(state?.percent??0)}% · {state?.cards.length??0}종{file?.exact?` · 픽셀 검증 ${verified}/${file.metadata.exact?.frames}`:''}</p><ScanActivity items={state?.activity??[]} queued={state?.queued??0}/></>}
+      {busy&&<><p role="status"><span className="scan-spinner"/> {state?.status??'재현 준비 중'} · 입력 {Math.floor(state?.percent??0)}% · {state?.cards.length??0}종{file?.exact?` · 픽셀 검증 ${verified}/${file.metadata.exact?.frames}`:''}</p><ScanConveyor items={state?.activity??[]} queued={state?.queued??0} reading={(state?.activeReadings??0)>0}/></>}
       {result&&<div role="status">{file?.exact&&<p>입력 픽셀 검증 {verified} / {file.metadata.exact?.frames}프레임</p>}<strong>입력 재현 종료 · {result.cards.length}종 · 확인 필요 {result.cards.filter(c=>c.review.length).length}종</strong>
         {result.unidentified>0&&<p className="notice">미식별 입력 {result.unidentified}개 · 이미 읽은 카드의 중복 관측일 수 있습니다.</p>}
         {difference&&<><p>원래 결과와 비교: 추가 {difference.added.length} · 누락 {difference.missing.length} · 값/확인 상태 변경 {difference.changed.length}</p>

@@ -17,6 +17,11 @@ export interface ListGuidance {
   readonly missingRows:readonly {readonly from:number;readonly to:number}[];
   /** Whether `missingRows` are known to be unseen: no rows are waiting for an anchor. */
   readonly missingRowsUnseen:boolean;
+  /** Rows placed in the table (seen), in runs. */
+  readonly seenRows?:readonly {readonly from:number;readonly to:number}[];
+  /** Rows of islands without an anchor, at their likely place (moving-thumb majority), in runs.
+   * A hint for the map only: never where a card is. */
+  readonly likelyRows?:readonly {readonly from:number;readonly to:number}[];
   /** The first anchored row that showed an empty slot (a slot with no owned card), or null. Rows
    * after it were seen to start holding no cards; whether the rest of the list is empty too is
    * not known from the table. */
@@ -37,6 +42,8 @@ export interface ListGuidance {
   /** Cards whose values are not confirmed, with their place when the table has anchored it. */
   readonly cards:readonly {readonly code:number;readonly name:string;readonly reasons:readonly string[];
     readonly row:number|null;readonly column:number|null}[];
+  /** From the header, when read: rows holding cards, and rows holding slots (the rest are locked). */
+  readonly cardRows?:number;readonly slotRows?:number;
 }
 
 export function listGuidance(snapshot:ListTableSnapshot,options:{
@@ -44,6 +51,15 @@ export function listGuidance(snapshot:ListTableSnapshot,options:{
   readonly totalRows:number;
   /** Cards (by the table's card code) whose values are not confirmed. */
   readonly unconfirmed:ReadonlyMap<number,{readonly name:string;readonly reasons:readonly string[]}>;
+  /** Rows that can hold cards: the storage capacity over the columns (450 -> 45). The rows after
+   * them are the game's locked storage bar ("보관함 슬롯 확장"): never missing, never asked for. */
+  readonly slotRows?:number;
+  /** Rows the displayed total of owned cards fills (398 -> 40). The rows after them up to
+   * `slotRows` hold empty slots only, so they are not asked for either. Guidance only: this never
+   * decides that a card is owned or not. */
+  readonly cardRows?:number;
+  /** Rows shown in a frame read, by that frame's scrollbar (moving or not). Map only. */
+  readonly viewedRows?:ReadonlySet<number>;
 }):ListGuidance {
   const totalRows=Math.max(0,Math.floor(options.totalRows));
   const cells:{row:number;column:number;kind:'unidentified'|'unread'}[]=[];
@@ -61,11 +77,28 @@ export function listGuidance(snapshot:ListTableSnapshot,options:{
   for(const [row,rowCells] of snapshot.rows)if(rowCells.some(cell=>cell?.state==='empty')&&(emptyFromRow===null||row<emptyFromRow))emptyFromRow=row;
   let runs=0,before:number|null=null;
   for(const row of [...anchored].sort((a,b)=>a-b)){if(before===null||row!==before+1)runs++;before=row;}
+  const likely=new Set<number>();
+  for(const row of options.viewedRows??[])if(row>=0&&row<totalRows&&!anchored.has(row))likely.add(row);
+  for(const island of snapshot.floating)if(island.likelyTop!==null)
+    for(let row=Math.max(0,island.likelyTop);row<Math.min(totalRows,island.likelyTop+island.rows);row++)if(!anchored.has(row))likely.add(row);
   const missingRows:{from:number;to:number}[]=[];
-  for(let row=0;row<totalRows;row++){
-    if(anchored.has(row))continue;
+  const lockedFrom=typeof options.slotRows==='number'&&options.slotRows>0?Math.min(totalRows,Math.floor(options.slotRows)):totalRows;
+  const cardsTo=typeof options.cardRows==='number'&&options.cardRows>0?Math.min(lockedFrom,Math.floor(options.cardRows)):lockedFrom;
+  for(let row=0;row<cardsTo;row++){
+    // A row shown in a frame read was seen, even when its place is not anchored.
+    if(anchored.has(row)||likely.has(row))continue;
     const last=missingRows[missingRows.length-1];
     if(last&&last.to===row-1)last.to=row;else missingRows.push({from:row,to:row});
+  }
+  const seenRows:{from:number;to:number}[]=[];
+  for(const row of [...anchored].filter(row=>row<totalRows).sort((a,b)=>a-b)){
+    const last=seenRows[seenRows.length-1];
+    if(last&&last.to===row-1)last.to=row;else seenRows.push({from:row,to:row});
+  }
+  const likelyRows:{from:number;to:number}[]=[];
+  for(const row of [...likely].sort((a,b)=>a-b)){
+    const last=likelyRows[likelyRows.length-1];
+    if(last&&last.to===row-1)last.to=row;else likelyRows.push({from:row,to:row});
   }
   let rows=0,cards=0,unidentified=0,unread=0;
   for(const island of snapshot.floating){
@@ -79,8 +112,9 @@ export function listGuidance(snapshot:ListTableSnapshot,options:{
     return {code,name:card.name,reasons:[...card.reasons],row:at?.row??null,column:at?.column??null};
   }).sort((a,b)=>(a.row??Infinity)-(b.row??Infinity)||(a.column??0)-(b.column??0)||a.name.localeCompare(b.name,'ko'));
   const conflicts=snapshot.counts.overlapConflicts+snapshot.counts.anchorConflicts+snapshot.counts.cellConflicts;
-  return {missingRows,missingRowsUnseen:rows===0,emptyFromRow,conflicts,pieces:runs+snapshot.floating.length,unplaced:{islands:snapshot.floating.length,rows,cards,unidentified,unread},
-    cells:cells.sort((a,b)=>a.row-b.row||a.column-b.column),cards:cardList};
+  return {missingRows,missingRowsUnseen:rows===0,seenRows,likelyRows,emptyFromRow,conflicts,pieces:runs+snapshot.floating.length,unplaced:{islands:snapshot.floating.length,rows,cards,unidentified,unread},
+    cells:cells.sort((a,b)=>a.row-b.row||a.column-b.column),cards:cardList,
+    ...(cardsTo<totalRows?{cardRows:cardsTo}:{}),...(lockedFrom<totalRows?{slotRows:lockedFrom}:{})};
 }
 
 /** The guidance for a person. `asks` are things to show again, most useful first; `notes` are what
@@ -152,6 +186,10 @@ export interface ListGuidanceMap {
   readonly targets:readonly {readonly row:number;readonly kind:'card'|'cell'|'unseen'}[];
   /** Which way the nearest target is from the rows on screen. */
   readonly direction:{readonly kind:'here'|'up'|'down';readonly rows:number;readonly row:number}|null;
+  /** From the header: the first row of empty slots only, and the first locked row (when known). */
+  readonly emptyFrom?:number;readonly lockedFrom?:number;
+  /** Rows seen with nothing left to show again there, in runs (card rows only when known). */
+  readonly done?:readonly {readonly from:number;readonly to:number}[];
 }
 
 export function listGuidanceMap(guidance:ListGuidance,options:{readonly totalRows:number;readonly visibleRows:number;readonly currentRow:number|null}):ListGuidanceMap {
@@ -161,11 +199,13 @@ export function listGuidanceMap(guidance:ListGuidance,options:{readonly totalRow
     // A card to read again says most; an unseen row least.
     if(!was||(was==='unseen'&&kind!=='unseen')||(was==='cell'&&kind==='card'))kinds.set(row,kind);};
   for(const card of guidance.cards)if(card.row!==null)put(card.row,'card');
-  const unreadKnown=guidance.unplaced.rows===0;
-  for(const cell of guidance.cells)if(cell.kind==='unidentified'||unreadKnown)put(cell.row,'cell');
-  // As describeListGuidance: unseen rows are asked for only when no rows wait for a place, and
-  // never after the first empty slot.
-  if(guidance.missingRowsUnseen){
+  // Unread cells are drawn also while pieces without a place wait (drawing them only when no piece
+  // waits made them blink as pieces came and joined); showing the row again reads or places them.
+  for(const cell of guidance.cells)put(cell.row,'cell');
+  // Rows holding cards that no frame read showed are drawn as rows to look at, also while pieces
+  // without a place wait (they may be those rows: showing the rows again places them). Never
+  // after the first empty slot.
+  {
     const end=guidance.emptyFromRow;
     for(const run of guidance.missingRows)for(let row=run.from;row<=run.to&&(end===null||row<=end);row++)put(row,'unseen');
   }
@@ -183,5 +223,32 @@ export function listGuidanceMap(guidance:ListGuidance,options:{readonly totalRow
       direction=up<=down?{kind:'up',rows:up,row:above!.row}:{kind:'down',rows:down,row:below!.row};
     }
   }
-  return {totalRows,visibleRows,currentRow:current,targets,direction};
+  const doneTo=Math.min(totalRows,guidance.cardRows??guidance.slotRows??totalRows),done:{from:number;to:number}[]=[];
+  // Rows read in pieces whose place is only likely are shown as read too: the map shows progress.
+  for(const run of [...guidance.seenRows??[],...guidance.likelyRows??[]].sort((a,b)=>a.from-b.from))for(let row=run.from;row<=Math.min(run.to,doneTo-1);row++){
+    if(kinds.has(row))continue;
+    const last=done[done.length-1];
+    if(last&&last.to===row-1)last.to=row;else done.push({from:row,to:row});
+  }
+  return {totalRows,visibleRows,currentRow:current,targets,direction,done,
+    ...(guidance.cardRows!==undefined?{emptyFrom:guidance.cardRows}:{}),...(guidance.slotRows!==undefined?{lockedFrom:guidance.slotRows}:{})};
+}
+
+/** Until the scan is done, a highlight (values to check, or a cell not read) is drawn only once it
+ * has lasted `holdMs`: a newer view of a confirmed card leaves it unconfirmed for a moment until
+ * that view is read, a cell seen moving is read a frame later, and drawing those moments makes
+ * the map blink. `since` (row -> first time seen) is kept by the
+ * caller between calls. Display only: the card's state is unchanged. */
+export function holdNewCardTargets(map:ListGuidanceMap,since:Map<number,number>,now:number,holdMs:number):ListGuidanceMap {
+  const rows=new Set(map.targets.filter(target=>target.kind!=='unseen').map(target=>target.row));
+  for(const row of [...since.keys()])if(!rows.has(row))since.delete(row);
+  for(const row of rows)if(!since.has(row))since.set(row,now);
+  const held=map.targets.filter(target=>target.kind!=='unseen'&&now-since.get(target.row)!<holdMs).map(target=>target.row);
+  if(!held.length)return map;
+  const targets=map.targets.filter(target=>!held.includes(target.row));
+  // A held row stays drawn as it was: read.
+  const drawn=new Set<number>(held);for(const run of map.done??[])for(let row=run.from;row<=run.to;row++)drawn.add(row);
+  const done:{from:number;to:number}[]=[];
+  for(const row of [...drawn].sort((a,b)=>a-b)){const last=done[done.length-1];if(last&&last.to===row-1)last.to=row;else done.push({from:row,to:row});}
+  return {...map,targets,done,direction:targets.length?map.direction:null};
 }

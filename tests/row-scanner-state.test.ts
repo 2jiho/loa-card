@@ -8,7 +8,7 @@ import type {ScannedCard} from '../src/features/card-scanner/recognition/recogni
 const card=(index:number):ScannedCard=>({id:String(1000+index),name:`카드${index}`,awakening:1,extraCopies:2,confidence:1,review:[],image:'',time:index,
   observations:2,countReliable:true} as unknown as ScannedCard);
 const snapshot=(change:Partial<RowScanSnapshot>={}):RowScanSnapshot=>({phase:'done',frames:100,locatedFrames:90,located:true,waitingFrames:0,droppedFrames:0,
-  waitingReads:0,cards:[card(1),card(2),card(3)],confirmed:3,expected:3,capacity:450,finalExpected:3,freshExpected:null,growthPoints:null,unidentifiedCells:0,guidance:{asks:[],notes:[]},...change});
+  waitingReads:0,cards:[card(1),card(2),card(3)],confirmed:3,expected:3,capacity:450,finalExpected:3,freshExpected:null,growthPoints:null,unidentifiedCells:0,activity:[],guidance:{asks:[],notes:[]},...change});
 
 test('a finished scan with the total verified at the end and every card confirmed is complete', () => {
   const state=rowScannerState(snapshot());
@@ -47,7 +47,7 @@ test('frames passed over in the line are reported as missed frames and do not bl
   assert.deepEqual(state.completionReceipt,{version:1,mode:'ended',expected:3,finalExpected:3});
   assert.equal(state.droppedFrames,0);
   assert.equal(state.liveMissedFrames,337);
-  assert.ok(state.status.includes('읽지 않고 넘긴 화면 337장'));
+  assert.ok(!state.status.includes('337'),'a diagnostic, not part of the status line');
   assert.deepEqual(completionReasons(state),[]);
   // The other conditions still decide: passed-over frames never complete a scan by themselves.
   assert.equal(rowScannerState(snapshot({droppedFrames:337,confirmed:2})).completionReceipt,undefined);
@@ -84,8 +84,42 @@ test('once every card of the total is named and confirmed, a covered cell is rep
   assert.deepEqual(state.completionReceipt,{version:1,mode:'ended',expected:3,finalExpected:3});
   assert.equal(state.unresolvedObservations,0);
   assert.equal(state.duplicateUnidentifiedObservations,21);
-  assert.ok(state.status.includes('가려진 채 보인 칸 21개'));
+  assert.ok(!state.status.includes('21'),'a diagnostic, not part of the status line');
   assert.deepEqual(completionReasons(state),[]);
   // Named but one not confirmed: still incomplete, for that reason.
   assert.deepEqual(rowCompletionGaps(snapshot({unidentifiedCells:21,confirmed:2})),['1종 각성·장수 확인 필요']);
+});
+
+test('once every card is named, unnamed cells are repeats: not asked for, and read on the map', async () => {
+  const {settledGuidance}=await import('../src/features/card-scanner/orchestration/row-scanner-state');
+  const map={totalRows:55,visibleRows:4,currentRow:null,direction:{kind:'down' as const,rows:3,row:36},emptyFrom:40,lockedFrom:45,
+    targets:[{row:36,kind:'cell' as const}],done:[{from:0,to:35},{from:37,to:39}]};
+  const complete=settledGuidance({asks:['37번째 줄'],notes:['참고'],map},true);
+  assert.deepEqual(complete.asks,[]);
+  assert.deepEqual(complete.map?.targets,[]);
+  assert.deepEqual(complete.map?.done,[{from:0,to:39}]);
+  assert.equal(complete.map?.direction,null);
+  const open=settledGuidance({asks:['a'],notes:[],map:{...map,targets:[{row:36,kind:'cell' as const},{row:10,kind:'card' as const}]}},false);
+  assert.deepEqual(open.asks,['a']);
+  assert.deepEqual(open.map?.targets,[{row:10,kind:'card'}]);
+});
+
+test('a complete scan draws every row holding cards as read', async () => {
+  const {settledGuidance}=await import('../src/features/card-scanner/orchestration/row-scanner-state');
+  const map={totalRows:55,visibleRows:4,currentRow:null,direction:null,emptyFrom:40,lockedFrom:45,targets:[],done:[{from:0,to:18},{from:28,to:39}]};
+  assert.deepEqual(settledGuidance({asks:[],notes:[],map},true).map?.done,[{from:0,to:39}]);
+  assert.deepEqual(settledGuidance({asks:[],notes:[],map},false).map?.done,[{from:0,to:18},{from:28,to:39}]);
+});
+
+test('a complete scan asks for no row, also rows no frame placed', async () => {
+  const {settledGuidance}=await import('../src/features/card-scanner/orchestration/row-scanner-state');
+  const map={totalRows:55,visibleRows:4,currentRow:null,direction:null,emptyFrom:40,lockedFrom:45,targets:[{row:20,kind:'unseen' as const}],done:[{from:0,to:19},{from:21,to:39}]};
+  assert.deepEqual(settledGuidance({asks:['x'],notes:[],map},true).map?.targets,[]);
+});
+
+test('while sharing, once every card is confirmed, the map asks for no row', async () => {
+  const {rowScannerState}=await import('../src/features/card-scanner/orchestration/row-scanner-state');
+  const map={totalRows:55,visibleRows:4,currentRow:3,direction:null,emptyFrom:40,lockedFrom:45,targets:[{row:30,kind:'unseen' as const}],done:[{from:0,to:29}]};
+  const state=rowScannerState(snapshot({cards:[card(1),card(2)],confirmed:2,expected:2,phase:'capture',guidance:{asks:[],notes:[],map}} as never));
+  assert.deepEqual(state.listGuidance?.map?.targets,[]);
 });

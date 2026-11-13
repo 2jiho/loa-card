@@ -60,9 +60,10 @@ export function loadCv(): Promise<CV> {
  * it the nearest scales were 0.7 and 0.85, and the card window of a 1080p share was not found at
  * all (the native refinement only reaches 0.09 around a coarse match that already passed). */
 export const COARSE_SCALES = [1, 0.75, 0.85, 1.15, 0.7, 1.3, 0.55, 1.5] as const;
-/** The scale the input size suggests, tried before the fixed list. The game keeps its 16:9 layout
- * and scales it to fit the screen (a narrower screen gets black bars above and below, a wider one
- * at the sides), so the fitted scale is min(width/2560, height/1440): 0.75 for 1920x1080, about
+/** The scale the input size suggests, tried before the fixed list. The game scales its interface
+ * with the screen: a narrower screen than 16:9 keeps the 16:9 picture with black bars above and
+ * below (scale from the width); a wider one (21:9) shows more of the world but keeps the interface
+ * at the height's scale. Both are min(width/2560, height/1440): 0.75 for 1920x1080, about
  * 0.98 for a 2510x1438 window, 0.625 for 1600x900 and 1600x1200. A window share adds a few
  * pixels of border and title, which this rounding to 0.01 absorbs; the native refinement and the
  * grid measurement settle the rest. It is only a first guess: the fixed list follows. */

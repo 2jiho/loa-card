@@ -27,8 +27,10 @@ export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pe
   const pendingById=new Map(pendingFields.map(item=>[item.id,item]));
   const hasCountConflict=cards.some(card=>pendingById.get(card.id)?.reason==='각성·장수 판독 확인');
   const unmatched=unmatchedPendingFields(pendingFields,[...cards,...missing]);
-  const asks=guidance?.asks??[],notes=guidance?.notes??[],SHOWN_ASKS=12;
-  const count=cards.length+unresolved.length+discarded.length+recognitionNeeded.length+missing.length+unmatched.length+asks.length,hasAttention=count>0||evidenceLost;
+  // While sharing, rows not yet seen are progress, not something to check: the progress window
+  // shows them on its list map. What is still missing after the share is asked for here.
+  const asks=sharing?[]:guidance?.asks??[];
+  const count=cards.length+unresolved.length+discarded.length+recognitionNeeded.length+missing.length+unmatched.length+(asks.length?1:0),hasAttention=count>0||evidenceLost;
   // Keep the panel briefly after the last item clears, without retaining stale
   // cards or delaying newly observed issues. A new issue cancels the close.
   const [linger,setLinger]=useState(false);
@@ -41,6 +43,8 @@ export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pe
     <div className="scan-strip-heading"><h2 id="scan-attention-title">추가 확인 항목 <span>{evidenceLost?(count?`${count}+`:'미확인'):count}</span></h2></div>
     {evidenceLost&&<p role="alert">카드 확인에 필요한 근거가 누락됐거나 서로 충돌했습니다. {sharing?'화면 공유를 종료한 뒤 처음부터 다시 스캔해 주세요.':busy?'현재 처리가 끝나면 화면 공유를 다시 시작해 처음부터 스캔해 주세요.':'화면 공유를 다시 시작해 처음부터 스캔해 주세요.'}</p>}
     {!hasAttention&&<p>현재 표시할 확인 항목이 없습니다.</p>}
+    {/* First in the panel, above the card pictures: where to scroll is what is needed while sharing. */}
+    {!!asks.length&&guidance?.map&&<ListPositionMap map={{...guidance.map,currentRow:null,direction:null}}/>}
     {!!cards.length&&<div className="scan-attention-group">
       <h3>값 확인이 필요한 카드 <span>{cards.length}종</span></h3>
       <p>{attentionCardAdvice(mode)}</p>
@@ -97,12 +101,10 @@ export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,pe
       <p>툴팁이나 커서가 카드를 가려 판독하지 못했어요. 최근 수집 화면의 해당 칸을 다시 보여 주세요. 이대로 스캔을 종료해도 됩니다.</p>
       <ul>{recognitionNeeded.map(item=><li key={item.slot}>{recognitionNeededSlotLabel(item.slot)} · {item.reason}</li>)}</ul>
     </div>}
+    {/* Where, not why: the map shows the rows; the reasons stay in the diagnostic report. */}
     {!!asks.length&&<div className="scan-attention-group">
-      <h3>다시 보여 줄 곳 <span>{asks.length}곳</span></h3>
-      <p>{sharing?'아래 위치를 다시 비춰 주세요. 스크롤을 잠깐 멈추면 위치를 더 정확히 알 수 있어요.':'다시 스캔할 때 아래 위치를 비춰 주세요.'}</p>
-      {guidance?.map&&<ListPositionMap map={sharing?guidance.map:{...guidance.map,currentRow:null,direction:null}}/>}
-      <ul>{asks.slice(0,SHOWN_ASKS).map((line,index)=><li key={index}>{line}</li>)}{asks.length>SHOWN_ASKS&&<li>외 {asks.length-SHOWN_ASKS}곳</li>}</ul>
-      {!!notes.length&&<ul className="scan-attention-notes">{notes.map((line,index)=><li key={index}>참고: {line}</li>)}</ul>}
+      <h3>다시 스캔할 곳</h3>
+      <p>{guidance?.map?.targets.length?'지도에 강조된 줄을 다시 스캔해 주세요.':'목록을 처음부터 끝까지 천천히 다시 넘겨 주세요.'}</p>
     </div>}
     {!!missing.length&&<div className="scan-missing"><h3>보유 여부를 확인할 카드 <span>{missing.length}종</span></h3><p>{mode==='processing'?'판독 후에도 남으면 보유 중인지 확인해 주세요.':mode==='sharing'?'보유 중인 카드만 다시 보여 주세요.':'화면 공유를 다시 시작하고 보유 중인 카드만 보여 주세요.'}</p><ul>{missing.map(card=><li key={card.id}>{card.name}</li>)}</ul></div>}
   </section>;

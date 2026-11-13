@@ -76,7 +76,13 @@ export interface RowEvidence {
   /** `detail`: add the diagnosis of unconfirmed cards (their accepted crops and a picture). */
   /** The merged cards as the scanner projects them (values as accepted; a zero the check confirmed
    * is shown as zero), and how many are confirmed, computed now. */
-  cards():{readonly cards:readonly ScannedCard[];readonly confirmed:number};
+  /** The cards so far. With `pictures`, a card still to check carries the screen crop it was last
+   * read from (encoding it costs main-thread time, so the caller asks for it once frames are no
+   * longer being taken). */
+  cards(pictures?:boolean):{readonly cards:readonly ScannedCard[];readonly confirmed:number};
+  /** For the card strip of the interface: the cards as they were first read, newest last (at most
+   * 16), with a small picture of the crop and whether its values were read. Presentation only. */
+  activity():readonly {readonly id:number;readonly image:string;readonly name:string;readonly status:'read'|'review'}[];
   summary(detail?:boolean):{confirmed:number;cards:{id:string;name:string;awakening:number|null;extraCopies:number|null;confirmed:boolean;review:readonly string[];observations:number;
     /** Diagnosis, unconfirmed cards only: each accepted crop as read (at most 60): time, slot, stable, border alignment, the count as read and after acceptance, reliability, whether an icon was seen, and the reader's reason. */
     log?:readonly unknown[];
@@ -89,7 +95,14 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
   const inventory=new InventoryEvidence([],{seedPolicy:'prior-run-v3',consensusPolicy:CURRENT_INVENTORY_CONSENSUS_POLICY,countConflictPolicy:{version:3,sessionId}});
   let sequence=0,dirty=false,refreshed=-Infinity,projected:ScannedCard[]=[],confirmedIds=new Set<string>();
   /** Kept crops per card not yet confirmed, and the cards the zero check resolved. */
-  const previews=new Map<string,{canvas:HTMLCanvasElement;order:number;stable:boolean}[]>(),PREVIEWS=8;
+  const previews=new Map<string,{canvas:HTMLCanvasElement;order:number;stable:boolean;url?:string}[]>(),PREVIEWS=8;
+  /** The interface's card strip (activity()). */
+  const strip:{id:number;image:string;name:string;status:'read'|'review'}[]=[];let stripId=0;
+  const thumbnail=(image:HTMLCanvasElement)=>{
+    const small=Object.assign(document.createElement('canvas'),{width:68,height:102});
+    small.getContext('2d')!.drawImage(image,0,0,68,102);
+    const url=small.toDataURL('image/jpeg',.85);small.width=0;return url;
+  };
   const accepts=new Map<string,unknown[]>();
   const resolvedZero=new Map<string,NonNullable<ScannedCard['countDiagnostics']>>();
   /** Observations accepted per card, to notice one arriving while the zero check reads that card's crops. */
@@ -131,6 +144,12 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
         icon:values.countDiagnostics?.iconPresent??null,reason:values.countDiagnostics?.reason??null,pattern:values.countDiagnostics?.pattern?.value??null});
       // A new observation of the card replaces what the zero check concluded from older crops.
       resolvedZero.delete(identity.id);
+      // The strip shows each card once, when it is first read.
+      if(!acceptCount.has(identity.id)&&input.image&&input.image.width){
+        strip.push({id:++stripId,image:thumbnail(input.image),name:identity.name,
+          status:values.awakening!==null&&values.extraCopies!==null?'read':'review'});
+        if(strip.length>16)strip.shift();
+      }
       acceptCount.set(identity.id,(acceptCount.get(identity.id)??0)+1);
       if(input.image&&input.image.width&&(!confirmedIds.has(identity.id)||values.extraCopies===null||values.awakening===null)){
         const canvas=Object.assign(document.createElement('canvas'),{width:140,height:210});
@@ -188,7 +207,19 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
       return {checked,resolved,previewReads,withoutPreview,unresolved};
     },
     confirmed(id){refresh(false);return confirmedIds.has(id);},
-    cards(){refresh(true);return {cards:projected,confirmed:confirmedIds.size};},
+    activity(){return strip.map(item=>({...item}));},
+    cards(pictures=false){
+      refresh(true);
+      if(!pictures)return {cards:projected,confirmed:confirmedIds.size};
+      // A card still to check shows the screen crop it was last read from (the newest kept one).
+      return {confirmed:confirmedIds.size,cards:projected.map(card=>{
+        if(confirmedIds.has(card.id))return card;
+        const newest=[...(previews.get(card.id)??[])].sort((a,b)=>b.order-a.order)[0];
+        if(!newest?.canvas.width)return card;
+        newest.url??=newest.canvas.toDataURL('image/jpeg',.9);
+        return {...card,image:newest.url};
+      })};
+    },
     summary(detail=false){
       refresh(true);
       return {confirmed:confirmedIds.size,cards:projected.map(card=>({id:card.id,name:card.name,awakening:card.awakening,extraCopies:card.extraCopies,

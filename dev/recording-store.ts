@@ -2,7 +2,7 @@ import {spawn} from 'node:child_process';
 import type {ChildProcessWithoutNullStreams} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {createReadStream,createWriteStream,existsSync} from 'node:fs';
-import {mkdir,readFile,readdir,rename,writeFile} from 'node:fs/promises';
+import {mkdir,readFile,readdir,rename,rm,writeFile} from 'node:fs/promises';
 import type {WriteStream} from 'node:fs';
 import {join} from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
@@ -298,6 +298,92 @@ export async function transcodeRecording(root:string,sourceIdValue:string,newIdV
     pixelFormat,
     complete:meta.complete&&decoded===lines.length,frames:Math.min(decoded,lines.length),
     note:[`transcoded from ${sourceId} (lossless)`,meta.note].filter((part):part is string=>!!part).join(' | ')};
+  await writeJson(join(target,'meta.json'),copy);
+  return copy;
+}
+
+/** Frame order of a derived recording, as source frame indices. */
+export function derivedOrder(frames:number,kind:'reverse'|{readonly middle:number}):number[] {
+  const all=Array.from({length:frames},(_,index)=>index);
+  if(kind==='reverse')return all.reverse();
+  // Start at `middle`, go to the end, then all the way back to the start (a scan begun mid-list).
+  const from=Math.max(0,Math.min(frames-1,Math.floor(kind.middle)));
+  return [...all.slice(from),...all.slice(0,frames-1).reverse()];
+}
+
+/** Times of the frames in a new order: the first frame keeps its times, and each next frame is as
+ * far from the one before as the two were apart in the source (the cadence is kept). */
+export function derivedLines(lines:readonly RecordedFrameLine[],order:readonly number[]):RecordedFrameLine[] {
+  const out:RecordedFrameLine[]=[];
+  order.forEach((index,seq)=>{
+    const line=lines[index];
+    if(!seq){out.push({...line,seq});return;}
+    const before=out[seq-1],previous=lines[order[seq-1]];
+    // A turn shows the same frame twice in a row: take the cadence of its neighbours.
+    const near=lines[index+1]??lines[index-1]??line;
+    const step=(a:number|null,b:number|null,c:number|null)=>a===null||b===null?null:Math.max(1,Math.abs(b-a)||(c===null?1:Math.abs(c-b)));
+    const media=step(previous.mediaTimeMs,line.mediaTimeMs,near.mediaTimeMs);
+    out.push({seq,deliveredAtMs:before.deliveredAtMs+step(previous.deliveredAtMs,line.deliveredAtMs,near.deliveredAtMs)!,
+      receivedAtMs:before.receivedAtMs+step(previous.receivedAtMs,line.receivedAtMs,near.receivedAtMs)!,
+      mediaTimeMs:before.mediaTimeMs===null||media===null?null:before.mediaTimeMs+media});
+  });
+  return out;
+}
+
+/** Runs of neighbouring source frames in one direction; a run going back is kept short, since
+ * ffmpeg holds a reversed run in memory. */
+export function derivedRuns(order:readonly number[],maxDown=48):{first:number;last:number;down:boolean}[] {
+  const runs:{first:number;last:number;down:boolean}[]=[];
+  for(const index of order){
+    const run=runs[runs.length-1],length=run?Math.abs(run.last-run.first)+1:0;
+    if(run&&index===run.last+1&&(length===1||!run.down)){run.last=index;run.down=false;}
+    else if(run&&index===run.last-1&&(length===1||run.down)&&length<maxDown){run.last=index;run.down=true;}
+    else runs.push({first:index,last:index,down:false});
+  }
+  return runs;
+}
+
+/** Dev only: a new recording whose frames are a sealed recording's frames in another order: a scan
+ * from the bottom up, or one begun mid-list. Not a share that happened; the meta says what it was
+ * derived from. The source is left untouched. */
+export async function deriveRecording(root:string,sourceIdValue:string,newIdValue:string,kind:'reverse'|{readonly middle:number}):Promise<RecordingMeta> {
+  const sourceId=recordingIdentifier(sourceIdValue),newId=recordingIdentifier(newIdValue);
+  const meta=await readRecordingMeta(root,sourceId);
+  if(!meta)throw Error('Unknown recording.');
+  if(meta.status!=='sealed')throw Error('Only a sealed recording can be derived.');
+  const target=join(root,newId);
+  if(existsSync(join(target,'meta.json')))throw Error('Recording already exists.');
+  await mkdir(target,{recursive:true});
+  const lines=(await readRecordingLines(root,sourceId)).slice(0,meta.frames);
+  const order=derivedOrder(lines.length,kind);
+  const pixelFormat:RecordingPixelFormat=meta.pixelFormat==='nv12'?'i420':meta.pixelFormat;
+  const codec=codecFor(replayPixelFormat(meta.pixelFormat)==='rgba'?'rgba':'i420');
+  const ffmpegRun=(args:string[])=>new Promise<void>((resolve,reject)=>{
+    const child=spawn(ffmpeg(),['-hide_banner','-loglevel','error','-y',...args]);
+    child.on('error',reject);child.on('close',value=>value===0?resolve():reject(Error(`ffmpeg exit ${value}`)));
+  });
+  const parts:string[]=[];
+  for(const [index,run] of derivedRuns(order).entries()){
+    const file=join(target,`part-${index}.mkv`),from=Math.min(run.first,run.last),to=Math.max(run.first,run.last);
+    parts.push(file);
+    await ffmpegRun(['-i',join(root,sourceId,'frames.mkv'),'-vf',`trim=start_frame=${from}:end_frame=${to+1},setpts=N/30/TB${run.down?',reverse':''}`,
+      '-r','30',...codec.args,file]);
+  }
+  const list=join(target,'parts.txt');
+  // Names relative to the list's own folder (ffmpeg resolves them from there).
+  await writeFile(list,parts.map((_,index)=>`file 'part-${index}.mkv'`).join('\n')+'\n');
+  await ffmpegRun(['-f','concat','-safe','0','-i',list,'-c','copy',join(target,'frames.mkv')]);
+  for(const file of [...parts,list])await rm(file,{force:true});
+  const derived=derivedLines(lines,order);
+  await writeFile(join(target,'frames.jsonl'),derived.map(line=>JSON.stringify(line)).join('\n')+'\n');
+  await writeJson(join(target,'meta.json'),{...meta,id:newId,codec:codecFor(pixelFormat).name,pixelFormat,status:'open',complete:false,sha256:null});
+  let decoded=0;
+  for await(const item of readRecordingFrames(root,newId)){void item;decoded++;}
+  if(decoded!==derived.length)throw Error(`derived ${decoded} frames, expected ${derived.length}`);
+  const sha256=await fileHash(join(target,'frames.mkv'));
+  const how=kind==='reverse'?'frames in reverse order: a scan from the bottom up':`from frame ${kind.middle} to the end, then back to the start: a scan begun mid-list`;
+  const copy:RecordingMeta={...meta,id:newId,codec:codecFor(pixelFormat).name,pixelFormat,sha256,frames:derived.length,
+    note:[`derived from ${sourceId} (${how}; not a share that happened)`,meta.note].filter((part):part is string=>!!part).join(' | ')};
   await writeJson(join(target,'meta.json'),copy);
   return copy;
 }

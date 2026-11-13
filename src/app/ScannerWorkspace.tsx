@@ -6,7 +6,7 @@ import StopCircleOutlined from '@mui/icons-material/StopCircleOutlined';
 import FileDownloadOutlined from '@mui/icons-material/FileDownloadOutlined';
 import FileUploadOutlined from '@mui/icons-material/FileUploadOutlined';
 import RestartAltOutlined from '@mui/icons-material/RestartAltOutlined';
-import {ScanActivity} from '../features/card-scanner/ui/ScanActivity';
+import {ScanConveyor} from '../features/card-scanner/ui/ScanConveyor';
 import {ScanMonitor} from '../features/card-scanner/ui/ScanMonitor';
 import {ScanReadProgress} from '../features/card-scanner/ui/ScanReadProgress';
 import {DevPreviewLatency} from './DevPreviewLatency';
@@ -211,8 +211,7 @@ export function ScannerWorkspace(props: ScannerWorkspaceProps) {
       <figcaption><span className={`status-dot ${p.sharing ? 'active' : ''}`} />{p.sharing ? '화면 공유 연결됨' : p.ready ? '화면 공유 종료' : '공유 대기'}</figcaption>
     </figure>
     {import.meta.env.DEV && <DevPreviewLatency store={p.scanMonitorStore} probe={p.monitorLatency} />}
-    <ScanMonitor state={state ?? null} store={p.scanMonitorStore} busy={p.busy} sharing={p.sharing} engineReady={p.engineReady}
-      recognizedNames={(state?.cards ?? []).slice(0, 12).map(card => card.name)} onStop={p.onStopSharing} />
-    {p.busy && p.engineReady && <ScanActivity items={state?.activity ?? []} queued={state?.queued ?? 0} />}
+    <ScanMonitor state={state ?? null} store={p.scanMonitorStore} busy={p.busy} sharing={p.sharing} engineReady={p.engineReady} onStop={p.onStopSharing} />
+    {p.busy && p.engineReady && <ScanConveyor items={state?.activity ?? []} queued={state?.queued ?? 0} reading={(state?.activeReadings ?? 0) > 0} />}
   </section>;
 }
