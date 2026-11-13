@@ -1,4 +1,4 @@
-import type {ListCell} from '../src/features/card-scanner/session/list-table';
+import type {ListCell} from './list-table';
 
 /** Which slots of one visible grid row need reading (docs/scanner-live-redesign.md 13.9, step 2).
  *

@@ -1,13 +1,13 @@
-import {InventoryEvidence,CURRENT_INVENTORY_CONSENSUS_POLICY} from '../src/features/card-scanner/session/inventory-evidence';
-import type {InventorySource} from '../src/features/card-scanner/session/inventory-evidence';
-import {confirmedReadingCount} from '../src/features/card-scanner/session/recovery-completion';
-import {timedCaptureOrder} from '../src/features/card-scanner/session/live-scan-policy';
-import {observedCard,readFieldReliability,settleReadFields} from '../src/features/card-scanner/session/field-acceptance';
-import type {ReadFieldValues} from '../src/features/card-scanner/session/field-acceptance';
-import type {CatalogName} from '../src/features/card-scanner/recognition/card-dictionary';
-import type {ScannedCard} from '../src/features/card-scanner/recognition/recognizer-types';
-import {packCount} from '../src/features/card-scanner/recognition/count-pattern';
-import {PREVIEW_ZERO_REASON,needsPreviewZeroProof,previewZeroReading,selectZeroPreview} from '../src/features/card-scanner/session/preview-zero';
+import {InventoryEvidence,CURRENT_INVENTORY_CONSENSUS_POLICY} from './inventory-evidence';
+import type {InventorySource} from './inventory-evidence';
+import {confirmedReadingCount} from './recovery-completion';
+import {timedCaptureOrder} from './live-scan-policy';
+import {observedCard,readFieldReliability,settleReadFields} from './field-acceptance';
+import type {ReadFieldValues} from './field-acceptance';
+import type {CatalogName} from '../recognition/card-dictionary';
+import type {ScannedCard} from '../recognition/recognizer-types';
+import {packCount} from '../recognition/count-pattern';
+import {PREVIEW_ZERO_REASON,needsPreviewZeroProof,previewZeroReading,selectZeroPreview} from './preview-zero';
 
 /** Development prototype (docs/scanner-live-redesign.md 13.9, step 4). Not a scanner.
  *

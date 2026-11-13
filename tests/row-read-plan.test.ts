@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {planRow} from '../dev/row-read-plan';
+import {planRow} from '../src/features/card-scanner/session/row-read-plan';
 import type {ListCell} from '../src/features/card-scanner/session/list-table';
 
 const cell=(state:ListCell['state'],card:number|null=null):ListCell=>({state,card,looks:1,firstTime:0,lastTime:0});

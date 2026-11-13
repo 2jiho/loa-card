@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createNameHold} from '../dev/name-hold';
+import {createNameHold} from '../src/features/card-scanner/session/name-hold';
 
 test('a refused place is held for the hold time and then read again', () => {
   const hold=createNameHold(1);
