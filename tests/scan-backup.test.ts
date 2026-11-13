@@ -23,15 +23,15 @@ test('a new tab restores the same inventory and XP without sessionStorage', asyn
   assert.deepEqual(await createScanBackup(() => factory, () => null).load(), state());
 });
 
-test('the earlier scanner\'s warnings are not restored, and a malformed header-conflict flag still rejects the state',async()=>{
+test('the earlier scanner\'s warnings are neither saved nor checked',async()=>{
  const factory=new IDBFactory(),backup=createScanBackup(()=>factory,()=>null);
  await backup.load();await backup.save({...state(),headerConflict:true,captureWarning:'기록 실패'} as unknown as ScannerState);
  const restored=await backup.load() as Record<string,unknown>|null;
  assert.equal(restored?.headerConflict,undefined);assert.equal(restored?.captureWarning,undefined);
- for(const invalid of [null,'true',1])
-  await assert.rejects(backup.save({...state(),headerConflict:invalid} as unknown as ScannerState),/목록 형식/);
+ // A field the backup no longer keeps cannot make a list unrestorable.
+ for(const invalid of [null,'true',1])await backup.save({...state(),headerConflict:invalid} as unknown as ScannerState);
  const accessor=Object.defineProperty({...state()},'headerConflict',{get(){throw Error('must not invoke getter');}});
- await assert.rejects(backup.save(accessor),/목록 형식/);
+ await backup.save(accessor);
  assert.equal((await backup.load() as Record<string,unknown>|null)?.headerConflict,undefined);
 });
 

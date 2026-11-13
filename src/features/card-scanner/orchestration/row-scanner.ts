@@ -2,16 +2,14 @@ import type {ScannerState} from './scanner-state';
 import {runRowScan} from './row-scan';
 import type {RowScanSnapshot} from './row-scan';
 import type {PreparedScanner} from '../session/scanner-preparation';
-import {rowCanStopSharing,rowScannerState} from './row-scanner-state';
+import {rowCanStopSharing,rowScannerState,smallScreenNotice} from './row-scanner-state';
 import {stopCompletedShare} from '../session/auto-completion';
 import {inputScale} from '../acquisition/detector';
-import {smallScreenNotice} from './row-scanner-state';
 
 /** The row-centred scan behind the scanner's interface (docs/scanner-live-redesign.md, section 13).
  *
- * The scan of every screen share: `runScanner` calls this instead of its own loop (in
- * development `?engine=classic` runs the previous loop for comparison), so the app, the watchdog
- * and the development recorder run unchanged around it. It reads a live screen share and
+ * The scan of every screen share: `runScanner` (orchestration/scanner.ts) runs it under the scan
+ * guard and the name operation, with the development recorder around it. It reads a live screen share and
  * publishes the scanner's state shape.
  *
  * It reads the displayed total and issues the completion receipt under the conditions of

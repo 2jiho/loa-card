@@ -17,8 +17,6 @@ export function isState(value: unknown): value is ScannerState {
   if (!value || typeof value !== 'object') return false;
   const state = value as ScannerState;
   if (!validUnresolvedObservations(state)) return false;
-  const headerConflict=Object.getOwnPropertyDescriptor(state,'headerConflict');
-  if (headerConflict && (!('value' in headerConflict) || typeof headerConflict.value !== 'boolean')) return false;
   if (boundedUnresolvedFieldChanges(state).unresolvedFieldChangesUnavailable) return false;
   if (typeof state.status !== 'string' || !Array.isArray(state.cards)) return false;
   const ids = new Set<string>();

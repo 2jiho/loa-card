@@ -172,7 +172,7 @@ export function ScannerWorkspace(props: ScannerWorkspaceProps) {
         <LiveRowPosition store={p.scanMonitorStore} sharing={p.sharing} />
         {(p.sharing || p.scanTimedOut) && <p className="scan-deadline" data-state={p.scanTimedOut ? 'exceeded' : p.inputState.state === 'stalled' ? 'stalled' : p.deadline.state}>{p.deadlineText}</p>}
         {p.sharing && p.cursorMode === 'included' && <p className="scan-cursor-note">브라우저가 마우스 커서를 화면에 포함하고 있습니다. 게임 창 밖으로 마우스를 이동해 주세요.</p>}
-        {(p.busy || p.sharing) && !gridCurrent && <p className="notice">현재 화면에서 카드 영역을 찾지 못했습니다. 표시된 수치는 마지막으로 확인된 프레임 기준입니다.</p>}
+        {(p.busy || p.sharing) && p.engineReady && (state?.sampled ?? 0) > 0 && !gridCurrent && <p className="notice">현재 화면에서 카드 영역을 찾지 못했습니다. 표시된 수치는 마지막으로 확인된 프레임 기준입니다.</p>}
         {reviewNames.length > 0 && <p className="notice">확인 필요 {reviewNames.length}장: {reviewNames.slice(0, 6).join(', ')}</p>}
         {p.busy && p.engineReady && <ScanReadProgress store={p.scanMonitorStore} completed={state?.currentRunRead ?? 0} expected={state?.expected ?? null}
           collected={state?.currentRunNames ?? 0} review={state?.cards?.filter(card => card.review.length > 0).length ?? 0}

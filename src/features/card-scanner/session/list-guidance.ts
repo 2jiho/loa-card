@@ -239,16 +239,26 @@ export function listGuidanceMap(guidance:ListGuidance,options:{readonly totalRow
  * that view is read, a cell seen moving is read a frame later, and drawing those moments makes
  * the map blink. `since` (row -> first time seen) is kept by the
  * caller between calls. Display only: the card's state is unchanged. */
-export function holdNewCardTargets(map:ListGuidanceMap,since:Map<number,number>,now:number,holdMs:number):ListGuidanceMap {
+export function holdNewCardTargets(map:ListGuidanceMap,since:Map<number,number>,now:number,holdMs:number,
+  /** Rows drawn read last time: a held row stays read only if it was. */readBefore:ReadonlySet<number>=new Set()):ListGuidanceMap {
   const rows=new Set(map.targets.filter(target=>target.kind!=='unseen').map(target=>target.row));
   for(const row of [...since.keys()])if(!rows.has(row))since.delete(row);
   for(const row of rows)if(!since.has(row))since.set(row,now);
   const held=map.targets.filter(target=>target.kind!=='unseen'&&now-since.get(target.row)!<holdMs).map(target=>target.row);
   if(!held.length)return map;
   const targets=map.targets.filter(target=>!held.includes(target.row));
-  // A held row stays drawn as it was: read.
-  const drawn=new Set<number>(held);for(const run of map.done??[])for(let row=run.from;row<=run.to;row++)drawn.add(row);
+  // A held row stays drawn as it was: read if it was read, else as before (not yet highlighted).
+  const drawn=new Set<number>(held.filter(row=>readBefore.has(row)));for(const run of map.done??[])for(let row=run.from;row<=run.to;row++)drawn.add(row);
   const done:{from:number;to:number}[]=[];
   for(const row of [...drawn].sort((a,b)=>a-b)){const last=done[done.length-1];if(last&&last.to===row-1)last.to=row;else done.push({from:row,to:row});}
   return {...map,targets,done,direction:targets.length?map.direction:null};
+}
+
+/** Which rows of a frame read count as seen on the list map (`shown`: the grid row had a usable or
+ * empty cell). A resting scrollbar is the position. A moving one can be a row ahead in the way it
+ * moves, so the edge row on that side is left out (both edges when the way is not known); it is
+ * marked when the scrollbar rests or the row comes into the middle. */
+export function surelyShownRows(shown:readonly boolean[],resting:boolean,moving:'down'|'up'|null=null):boolean[] {
+  const last=shown.length-1;
+  return shown.map((on,row)=>on&&(resting||!((row===last&&moving!=='up')||(row===0&&moving!=='down'))));
 }

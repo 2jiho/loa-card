@@ -22,8 +22,8 @@ const LIMIT={greenLagMs:600,flipBackMs:2000,actionFlips:2,locatedFlips:2,doneReg
 const rowsOf=runs=>{const set=new Set();for(const run of runs??[])for(let row=run.from;row<=run.to;row++)set.add(row);return set;};
 const checks=[];const check=(name,ok,detail)=>checks.push({name,ok,detail});
 
-// 1. The map follows the scroll: a card row under the screen box is drawn read (or as a row to
-//    show again) soon after it is first under the box.
+// 1. The map follows the scroll: a card row in the middle of the screen box is drawn read (or as a
+//    row to show again) soon after it is first there.
 // Rows holding cards: from the header as last read (before it is read, every row may hold cards).
 const finalMap=[...entries].reverse().find(entry=>entry.map)?.map;
 const cardRowsAtEnd=finalMap?(finalMap.emptyFrom??finalMap.lockedFrom??finalMap.totalRows):Infinity;
@@ -32,7 +32,9 @@ for(const entry of entries){
   const map=entry.map;if(!map)continue;
   const cardRows=Math.min(cardRowsAtEnd,map.emptyFrom??map.lockedFrom??map.totalRows);
   if(entry.sharing&&map.currentRow!==null)
-    for(let row=map.currentRow;row<Math.min(cardRows,map.currentRow+map.visibleRows);row++)if(!firstOnScreen.has(row))firstOnScreen.set(row,entry.t);
+    // The middle rows of the box: a moving scrollbar can be a row ahead, so its edge rows may not be
+    // on screen yet (surelyShownRows); they are marked when the list rests or they reach the middle.
+    for(let row=map.currentRow+1;row<Math.min(cardRows,map.currentRow+map.visibleRows-1);row++)if(!firstOnScreen.has(row))firstOnScreen.set(row,entry.t);
   const marked=rowsOf(map.done);for(const target of map.targets)if(target.kind!=='unseen')marked.add(target.row);
   for(const row of marked)if(!firstMarked.has(row))firstMarked.set(row,entry.t);
 }

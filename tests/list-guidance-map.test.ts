@@ -124,12 +124,23 @@ test('a card highlight is drawn once it has lasted the hold; a moment of it is n
   assert.deepEqual(holdNewCardTargets(map([11]),since,1200,800).targets,[{row:11,kind:'card'}]);
 });
 
-test('a cell highlight is held like a card highlight', async () => {
+test('a cell highlight is held like a card highlight, and a held row is drawn read only if it was read', async () => {
   const {holdNewCardTargets}=await import('../src/features/card-scanner/session/list-guidance');
   const map=(rows:number[])=>({totalRows:55,visibleRows:4,currentRow:0,direction:null,targets:rows.map(row=>({row,kind:'cell' as const})),done:[]});
   const since=new Map<number,number>();
   const first=holdNewCardTargets(map([7]),since,0,800);
   assert.deepEqual(first.targets,[]);
-  assert.deepEqual(first.done,[{from:7,to:7}]);
+  assert.deepEqual(first.done,[],'a row never drawn read is not drawn read while held');
+  assert.deepEqual(holdNewCardTargets(map([7]),new Map(),0,800,new Set([7])).done,[{from:7,to:7}],'a read row stays read while held');
   assert.deepEqual(holdNewCardTargets(map([7]),since,900,800).targets,[{row:7,kind:'cell'}]);
+});
+
+test('a frame read while the scrollbar moves leaves out the edge row it may be ahead by; a resting one marks all', async () => {
+  const {surelyShownRows}=await import('../src/features/card-scanner/session/list-guidance');
+  const all=[true,true,true,true];
+  assert.deepEqual(surelyShownRows(all,false),[false,true,true,false],'way unknown: both edges');
+  assert.deepEqual(surelyShownRows(all,false,'down'),[true,true,true,false]);
+  assert.deepEqual(surelyShownRows(all,false,'up'),[false,true,true,true]);
+  assert.deepEqual(surelyShownRows(all,true),all);
+  assert.deepEqual(surelyShownRows([true,false,true,true],true),[true,false,true,true],'a row with nothing usable is not seen');
 });

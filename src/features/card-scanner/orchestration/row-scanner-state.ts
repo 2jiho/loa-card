@@ -103,7 +103,9 @@ export function rowScannerState(snapshot:RowScanSnapshot):ScannerState {
   const covered=rowAllNamed(snapshot)?snapshot.unidentifiedCells:0;
   // While the scan runs, every card of the displayed total is named and confirmed: no row is left to
   // show again (the map says so at once; whether the scan is complete is still decided at the end).
-  const allConfirmed=!done&&snapshot.expected!==null&&snapshot.cards.length===snapshot.expected&&snapshot.confirmed===snapshot.expected;
+  // Guidance only, so it follows the count the window shows; the automatic end uses `confirmed`.
+  const allConfirmed=!done&&snapshot.expected!==null&&snapshot.cards.length===snapshot.expected&&
+    (snapshot.displayConfirmed??snapshot.confirmed)===snapshot.expected;
   // The person sees what is done or missing. Frames passed over and cells seen covered after
   // everything was named are diagnostics: they stay in their own fields (liveMissedFrames,
   // duplicateUnidentifiedObservations), not in the status line.
@@ -111,7 +113,7 @@ export function rowScannerState(snapshot:RowScanSnapshot):ScannerState {
     :snapshot.phase==='verifying'?'판독 결과 검증 중'
     :queued>0?`카드 스캔 중 · ${queued}개 판독 대기`:'카드 스캔 중';
   const expected=snapshot.expected;
-  // What the window shows; completion, the automatic end and `allConfirmed` use `confirmed`.
+  // What the window shows; completion and the automatic end use `confirmed`.
   const shown=done?snapshot.confirmed:snapshot.displayConfirmed??snapshot.confirmed;
   return {
     status,

@@ -1,6 +1,6 @@
 import type {TrackLineReply,TrackLineRequest,TrackLineStats} from '../capture/track-line-worker';
 import type {ScannedCard} from '../recognition/recognizer-types';
-import {describeListGuidance,listGuidanceMap,holdNewCardTargets} from '../session/list-guidance';
+import {describeListGuidance,listGuidanceMap,holdNewCardTargets,surelyShownRows} from '../session/list-guidance';
 import type {ListGuidance,ListGuidanceMap} from '../session/list-guidance';
 import {createAcquisitionClient} from '../acquisition/acquisition-client';
 import {createVisualClient} from '../recognition/visual-client';
@@ -139,6 +139,8 @@ export interface RowScanSnapshot {
 
 /** How often the scan state is published while frames are taken (the progress map follows the scroll). */
 const SNAPSHOT_MS=200;
+/** After the share each snapshot re-projects every card; the map no longer follows a scroll. */
+const READING_SNAPSHOT_MS=400;
 /** Until the scan is done, a card highlight is drawn once it has lasted this long (holdNewCardTargets). */
 const CARD_TARGET_HOLD_MS=1500;
 /** Until the scan is done, a dip of the shown confirmed count is shown once it has lasted this long
@@ -166,7 +168,10 @@ export async function runRowScan(options:{
   const prepared=options.prepared;
   const acquisition=prepared?.acquisition??createAcquisitionClient(signal);
   const visuals=prepared?[...prepared.visuals]:Array.from({length:Math.min(8,Math.max(1,Math.round(options.readers??2)))},()=>createVisualClient(signal));
-  if(visuals.some(visual=>!visual))throw Error('이 브라우저는 시각 판독 워커를 지원하지 않습니다.');
+  if(visuals.some(visual=>!visual)){
+    if(!prepared){acquisition.dispose();for(const visual of visuals)visual?.dispose();}
+    throw Error('이 브라우저는 시각 판독 워커를 지원하지 않습니다.');
+  }
   const strip=Object.assign(document.createElement('canvas'),{width:16,height:942}),stripContext=strip.getContext('2d',{willReadFrequently:true})!;
   // The frame canvas is only drawn to, frozen for the worker and sampled for the thin scrollbar
   // strip, so it stays graphics-backed: a canvas marked for frequent reading copies every video
@@ -282,7 +287,7 @@ export async function runRowScan(options:{
     options.onReady?.();
     let lastLocated=false,lastSnapshot=-Infinity;
     /** The list row at the top of the screen in the latest frame the scrollbar was read in. */
-    let screenRow:number|null=null;
+    let screenRow:number|null=null,lastThumbRow:number|null=null;
     const headerCanvas=document.createElement('canvas'),headerContext=headerCanvas.getContext('2d',{willReadFrequently:true})!;
     const header={expected:null as number|null,capacity:null as number|null,finalExpected:null as number|null,time:0,kept:false,nextTry:-Infinity,
       firstAt:null as number|null,reads:0,failures:0,fresh:null as number|null,freshTried:-Infinity};
@@ -302,7 +307,7 @@ export async function runRowScan(options:{
       }catch{header.failures++;return null;}
       finally{copy.width=0;}
     };
-    const cardTargetSince=new Map<number,number>();
+    const cardTargetSince=new Map<number,number>(),drawnRead=new Set<number>();
     // Until the scan is done, a dip of the shown confirmed count (a newer view of a confirmed card, not read yet)
     // is shown once it has lasted COUNT_DIP_HOLD_MS (displayConfirmed); the final count is never held.
     let shownConfirmed={value:0,dipSince:null as number|null};
@@ -335,7 +340,9 @@ export async function runRowScan(options:{
         unidentifiedCells:guidance.cells.filter(cell=>cell.kind==='unidentified').length+guidance.unplaced.unidentified,
         guidance:(()=>{return {...describeListGuidance(guidance,{totalRows}),
           map:(()=>{const map=listGuidanceMap(guidance,{totalRows,visibleRows:GRID_ROWS,currentRow:screenRow});
-            return phase!=='done'?holdNewCardTargets(map,cardTargetSince,performance.now(),CARD_TARGET_HOLD_MS):map;})()};})()});}catch{/* A display callback cannot stop the scan. */}
+            const shown=phase!=='done'?holdNewCardTargets(map,cardTargetSince,performance.now(),CARD_TARGET_HOLD_MS,drawnRead):map;
+            drawnRead.clear();for(const run of shown.done??[])for(let row=run.from;row<=run.to;row++)drawnRead.add(row);
+            return shown;})()};})()});}catch{/* A display callback cannot stop the scan. */}
     };
     const completion=input.start().finally(()=>{ended=true;shareEnd={at:performance.now(),...counts()};wake?.();publishSnapshot('reading');});
     const counts=()=>{const cards=session.cards();return {cards:cards.length,complete:cards.filter(card=>card.observations.some(observation=>observation.awakening!==null&&observation.extraCopies!==null)).length,
@@ -406,7 +413,10 @@ export async function runRowScan(options:{
         const thumb=thumbClock(time,readScrollGeometry(stripContext.getImageData(0,0,16,942).data,16,942)?.position??null);
         stage.thumb.push(performance.now()-thumbStarted);thumbRow=thumb.position===null?null:Math.round(thumb.position*scrollSteps);
         if(thumbRow!==null){screenRow=thumbRow;
-          session.view(thumbRow,Array.from({length:GRID_ROWS},(_,row)=>acquired.cells.slice(row*COLUMNS,row*COLUMNS+COLUMNS).some(cell=>cell.quality.usable||cell.quality.reason===EMPTY_REASON)));}
+          const moving=lastThumbRow===null||thumbRow===lastThumbRow?null:thumbRow>lastThumbRow?'down' as const:'up' as const;
+          session.view(thumbRow,surelyShownRows(Array.from({length:GRID_ROWS},(_,row)=>
+            acquired.cells.slice(row*COLUMNS,row*COLUMNS+COLUMNS).some(cell=>cell.quality.usable||cell.quality.reason===EMPTY_REASON)),(thumb.settledMs??0)>=200,moving));
+          lastThumbRow=thumbRow;}
         read=async()=>{
           const readStarted=performance.now();
           await session.processFrame(time,acquired.cells.map(cell=>({usable:cell.quality.usable,empty:cell.quality.reason===EMPTY_REASON,image:cell.image,feature:cell.feature,alignment:cell.alignment,fieldRevision:cell.fieldRevision})),thumb);
@@ -432,7 +442,7 @@ export async function runRowScan(options:{
         }
         if(options.onCounts)options.onCounts(tick,describeListGuidance(session.guidance(scrollSteps+GRID_ROWS,header.capacity,header.expected),{totalRows:scrollSteps+GRID_ROWS}));}
       lastLocated=!!acquired.layout;
-      if(performance.now()-lastSnapshot>=SNAPSHOT_MS)publishSnapshot(ended?'reading':'capture');
+      if(performance.now()-lastSnapshot>=(ended?READING_SNAPSHOT_MS:SNAPSHOT_MS))publishSnapshot(ended?'reading':'capture');
       if(frames%10===0)options.onProgress?.(`줄 중심 실시간 · 읽은 프레임 ${frames} · 카드 ${session.cards().length}`);
     }
     await completion.catch(()=>{});
