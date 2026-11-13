@@ -1,4 +1,5 @@
 import type {TrackLineReply,TrackLineRequest,TrackLineStats} from '../capture/track-line-worker';
+import type {ScannedCard} from '../recognition/recognizer-types';
 import {describeListGuidance} from '../session/list-guidance';
 import type {ListGuidance} from '../session/list-guidance';
 import {createAcquisitionClient} from '../acquisition/acquisition-client';
@@ -99,6 +100,23 @@ function trackStats(track:MediaStreamTrack):{deliveredFrames:number;discardedFra
 
 type FrameCallbackVideo=HTMLVideoElement&{requestVideoFrameCallback(callback:(now:number,metadata:{mediaTime:number;presentedFrames:number})=>void):number};
 
+/** What the row-centred scan knows at one moment, for a caller that shows it. */
+export interface RowScanSnapshot {
+  /** `capture`: the share goes on. `reading`: the share ended, frames and names taken before the end are still read.
+   * `verifying`: the final zero check. `done`: everything was read. */
+  readonly phase:'capture'|'reading'|'verifying'|'done';
+  readonly frames:number;readonly locatedFrames:number;
+  /** Whether the last frame read showed the card window. */
+  readonly located:boolean;
+  /** Frames waiting to be read and frames dropped from the line. */
+  readonly waitingFrames:number;readonly droppedFrames:number;
+  /** Crops waiting for a name or a full count reading. */
+  readonly waitingReads:number;
+  /** The merged cards (with the evidence merge) and how many are confirmed. */
+  readonly cards:readonly ScannedCard[];readonly confirmed:number;
+  readonly guidance:{readonly asks:readonly string[];readonly notes:readonly string[]};
+}
+
 export async function runRowScan(options:{
   /** The share: the caller has already put its stream on `target`. `start` resolves when the share ends. */
   input:{start():Promise<void>;dispose():void};
@@ -107,6 +125,8 @@ export async function runRowScan(options:{
   /** Called about once a second with the cards named and confirmed so far, and what to show again (lines for a person). */onCounts?:(counts:{cards:number;complete:number;confirmed?:number},guidance:{readonly asks:readonly string[];readonly notes:readonly string[]})=>void;
   /** Keep the captured frames in the line as they are instead of copying them out of the capture pool (as before); for comparison. */heldFrames?:boolean;
   /** Read the track on the main thread instead of in the worker that keeps the line (as before); for comparison. */mainReader?:boolean;
+  /** Called a few times a second and at each change of phase with what is known now. */
+  onSnapshot?:(snapshot:RowScanSnapshot)=>void;
   /** Frame times count from the first frame taken (a live track's timestamps start anywhere). */relativeTime?:boolean;
   target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** After the share, run the scanner's zero check on kept crops (default; needs evidence). */zeroCheck?:boolean|'diagnose'|'end';/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
   onProgress?:(text:string)=>void}):Promise<RowLiveResult> {
@@ -221,7 +241,17 @@ export async function runRowScan(options:{
     else if(!lineWorker)watch();
     let shareEnd:{at:number;cards:number;complete:number;confirmed?:number}|null=null;
     options.onReady?.();
-    const completion=input.start().finally(()=>{ended=true;shareEnd={at:performance.now(),...counts()};wake?.();});
+    let lastLocated=false,lastSnapshot=-Infinity;
+    const publishSnapshot=(phase:RowScanSnapshot['phase'])=>{
+      if(!options.onSnapshot)return;
+      lastSnapshot=performance.now();
+      const merged=evidence?.cards()??{cards:[],confirmed:0},totalRows=scrollSteps+GRID_ROWS;
+      try{options.onSnapshot({phase,frames,locatedFrames:located,located:lastLocated,
+        waitingFrames:Math.max(waiting.length,workerLine?workerLine.received-workerLine.dropped-workerLine.passed-frames:0),
+        droppedFrames:dropped+(workerLine?.dropped??0),waitingReads:session.waitingReads(),
+        cards:merged.cards,confirmed:merged.confirmed,guidance:describeListGuidance(session.guidance(totalRows),{totalRows})});}catch{/* A display callback cannot stop the scan. */}
+    };
+    const completion=input.start().finally(()=>{ended=true;shareEnd={at:performance.now(),...counts()};wake?.();publishSnapshot('reading');});
     const counts=()=>{const cards=session.cards();return {cards:cards.length,complete:cards.filter(card=>card.observations.some(observation=>observation.awakening!==null&&observation.extraCopies!==null)).length,
       ...(evidence?{confirmed:evidence.summary().confirmed}:{})};};
     const timeline:{t:number;cards:number;complete:number}[]=[],frameMs:number[]=[],waitMs:number[]=[];
@@ -292,6 +322,8 @@ export async function runRowScan(options:{
           }).catch(()=>{}).finally(()=>{zeroRun=null;});
         }
         if(options.onCounts)options.onCounts(tick,describeListGuidance(session.guidance(scrollSteps+GRID_ROWS),{totalRows:scrollSteps+GRID_ROWS}));}
+      lastLocated=!!acquired.layout;
+      if(performance.now()-lastSnapshot>=400)publishSnapshot(ended?'reading':'capture');
       if(frames%10===0)options.onProgress?.(`줄 중심 실시간 · 읽은 프레임 ${frames} · 카드 ${session.cards().length}`);
     }
     await completion.catch(()=>{});
@@ -305,6 +337,7 @@ export async function runRowScan(options:{
     // A name reading still in flight when the share ended finishes; it is counted after the share.
     await session.namesIdle();
     const afterNames=counts();
+    publishSnapshot('verifying');
     let afterZeroCheck:RowLiveResult['live']['afterZeroCheck'];
     if(zeroRun)await zeroRun;
     if(evidence&&reader&&options.zeroCheck!==false){
@@ -315,6 +348,7 @@ export async function runRowScan(options:{
         visual:brief(await reader.read(image,id,false,false)),full:brief(await reader.read(image,id,false,true)),corroborated:brief(await reader.read(image,id,true,true))}));
       afterZeroCheck={...check,ms:Math.round(performance.now()-zeroStarted),confirmed:evidence.summary().confirmed};
     }
+    publishSnapshot('done');
     const sorted=[...frameMs].sort((a,b)=>a-b),at=(share:number)=>sorted.length?Math.round(sorted[Math.min(sorted.length-1,Math.floor(share*sorted.length))]):0;
     const namesSummary=session.names();
     const share=(values:number[])=>{const ordered=[...values].sort((a,b)=>a-b),pick=(part:number)=>ordered.length?Math.round(ordered[Math.min(ordered.length-1,Math.floor(part*ordered.length))]*10)/10:0;return {median:pick(.5),p95:pick(.95)};};

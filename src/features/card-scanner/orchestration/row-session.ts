@@ -261,6 +261,8 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
   return {
     table,stats,readAll,planRow:plan,
     /** Resolves when the background name lane has nothing in flight. */
+    /** Crops waiting in the name lane (for a name or a full count reading), with the one being read. */
+    waitingReads:()=>backlog.length+(inFlight?1:0),
     async namesIdle(){
       // The crops kept for a full reading are each card's latest look: read them before the end.
       for(const [code,kept] of [...pendingFull]){pendingFull.delete(code);queueFull(code,kept.item,kept.revision);}

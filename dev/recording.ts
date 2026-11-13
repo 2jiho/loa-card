@@ -355,6 +355,8 @@ async function run():Promise<void> {
           ...(rescue?{rescueFeature:rescue,onRescueFeature:(stats:{calls:number;ms:number;compared:number;different:number})=>{rescueFeature={mode:rescue,...stats,ms:Math.round(stats.ms)};}}:{}),
           ...(nativeAcquisition?{nativeAcquisition:true}:{}),
           onFrameFlow:flow=>{frameFlow=flow;},
+          // ?engine=row (live-path modes): the row-centred scan behind the scanner's interface.
+          ...(new URLSearchParams(location.search).get('engine')==='row'?{engine:'row' as const}:{}),
           ...(batch?{frameBatchVisual:true,onVisualBatch:(stats:NonNullable<RunReport['visualBatch']>)=>{visualBatch=stats;}}:{}),
           ...(detailed?{recordingMode:'detailed' as const,
             // The scanner hands over its continuous recording and still decodes it for the recovery

@@ -197,6 +197,8 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
       false,
       {...recording?.options, nameConfiguration: NORMAL_SCANNER_NAME_CONFIGURATION, onInternalSettled: engineSettled,
         onInternalCleanupUncertain: () => setEngineCleanupUncertain(true), feedbackProbe,
+        // Development only: ?engine=row runs the row-centred scan (no option in the app's own screens).
+        ...(import.meta.env.DEV && new URLSearchParams(location.search).get('engine') === 'row' ? {engine: 'row' as const} : {}),
         onAutoCompletion: diagnostic => {
           if (controller.current === abort) scanMonitorStore.publishAutoCompletion(diagnostic);
         },

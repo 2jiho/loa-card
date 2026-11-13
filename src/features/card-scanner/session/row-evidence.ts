@@ -74,6 +74,9 @@ export interface RowEvidence {
   confirmed(id:string):boolean;
   /** The projected cards and how many are confirmed, computed now. */
   /** `detail`: add the diagnosis of unconfirmed cards (their accepted crops and a picture). */
+  /** The merged cards as the scanner projects them (values as accepted; a zero the check confirmed
+   * is shown as zero), and how many are confirmed, computed now. */
+  cards():{readonly cards:readonly ScannedCard[];readonly confirmed:number};
   summary(detail?:boolean):{confirmed:number;cards:{id:string;name:string;awakening:number|null;extraCopies:number|null;confirmed:boolean;review:readonly string[];observations:number;
     /** Diagnosis, unconfirmed cards only: each accepted crop as read (at most 60): time, slot, stable, border alignment, the count as read and after acceptance, reliability, whether an icon was seen, and the reader's reason. */
     log?:readonly unknown[];
@@ -185,6 +188,7 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
       return {checked,resolved,previewReads,withoutPreview,unresolved};
     },
     confirmed(id){refresh(false);return confirmedIds.has(id);},
+    cards(){refresh(true);return {cards:projected,confirmed:confirmedIds.size};},
     summary(detail=false){
       refresh(true);
       return {confirmed:confirmedIds.size,cards:projected.map(card=>({id:card.id,name:card.name,awakening:card.awakening,extraCopies:card.extraCopies,
