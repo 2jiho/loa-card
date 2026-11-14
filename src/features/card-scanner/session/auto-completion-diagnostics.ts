@@ -110,21 +110,21 @@ export function boundedAutoCompletionDiagnostic(value:unknown):AutoCompletionDia
 
 export function autoCompletionMessage(gate:AutoCompletionGate):string {
  switch(gate){
-  case 'inventory':return '보관함 수량과 수집한 카드를 확인하고 있어요.';
+  case 'inventory':return '보관함 수량과 읽은 카드 수를 맞춰 보고 있어요.';
   case 'names':return '카드 이름을 다시 확인하고 있어요.';
-  case 'fields':return '각성과 카드 장수를 다시 확인하고 있어요.';
-  case 'latest-observations':return '확인되지 않은 화면이 남아 있어요. 카드 목록을 다시 보여 주세요.';
-  case 'occluded':return '가려진 카드가 있어요. 가림을 없애고 카드 목록 전체를 다시 보여 주세요.';
-  case 'input':return '수집한 화면을 정리하고 있어요.';
-  case 'input-dropped':return '처리하지 못한 화면이 있어요. 공유를 종료한 뒤 처음부터 다시 스캔해 주세요.';
+  case 'fields':return '각성·장수를 다시 확인하고 있어요.';
+  case 'latest-observations':return '아직 못 읽은 화면이 있어요. 카드 목록을 다시 넘겨 주세요.';
+  case 'occluded':return '가려진 카드가 있어요. 커서와 툴팁을 카드 밖으로 옮기고 목록을 다시 넘겨 주세요.';
+  case 'input':return '받아 둔 화면을 마저 읽고 있어요.';
+  case 'input-dropped':return '놓친 화면이 있어요. 공유를 끝내고 처음부터 다시 스캔해 주세요.';
   case 'metadata':return '보관함 정보를 확인하고 있어요.';
-  case 'header-unavailable':return '보관함 수량이 보이도록 성장 탭을 보여 주세요.';
+  case 'header-unavailable':return '보관함 수량이 보이게 카드 성장 탭 위쪽을 보여 주세요.';
   case 'hold':return '마지막 화면을 확인하고 있어요.';
   case 'header-reading':return '보관함 수량을 마지막으로 확인하고 있어요.';
   case 'header-mismatch':return '보관함 수량을 다시 확인하고 있어요.';
   case 'header-error':return '보관함 수량 확인을 다시 시도하고 있어요.';
-  case 'completion-error':return '스캔 완료 확인을 다시 시도하고 있어요.';
-  case 'input-ended':return '화면 공유가 종료됐어요.';
-  case 'complete':return '전체 카드 확인을 마쳤어요.';
+  case 'completion-error':return '마지막 확인을 다시 하고 있어요.';
+  case 'input-ended':return '화면 공유가 끝났어요.';
+  case 'complete':return '모든 카드를 읽었어요.';
  }
 }

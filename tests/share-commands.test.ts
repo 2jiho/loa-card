@@ -144,7 +144,8 @@ test('openWindowShare stops the stream and reports a play failure without starti
   });
   assert.equal(fixture.refs.stream.current, null);
   assert.equal(fixture.stopped(), 1);
-  assert.deepEqual(calls.errors, ['play blocked']);
+  // A browser's own (English) message is not shown as is: the person gets what to do.
+  assert.deepEqual(calls.errors, ['화면 공유를 시작하지 못했어요. 다른 창이나 화면을 골라 다시 시도해 주세요.']);
   assert.deepEqual(calls.sharing, [true, false]);
   assert.equal(calls.started, 0);
 });

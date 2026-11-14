@@ -180,7 +180,7 @@ export async function runRowScan(options:{
   const visuals=prepared?[...prepared.visuals]:Array.from({length:Math.min(8,Math.max(1,Math.round(options.readers??2)))},()=>createVisualClient(signal));
   if(visuals.some(visual=>!visual)){
     if(!prepared){acquisition.dispose();for(const visual of visuals)visual?.dispose();}
-    throw Error('이 브라우저는 시각 판독 워커를 지원하지 않습니다.');
+    throw Error('이 브라우저에서는 스캔할 수 없어요. 최신 Chrome이나 Edge에서 열어 주세요.');
   }
   const strip=Object.assign(document.createElement('canvas'),{width:16,height:942}),stripContext=strip.getContext('2d',{willReadFrequently:true})!;
   // The frame canvas is only drawn to, frozen for the worker and sampled for the thin scrollbar
@@ -260,7 +260,7 @@ export async function runRowScan(options:{
     const track=(video.srcObject as MediaStream|null)?.getVideoTracks()[0];
     const Processor=(globalThis as {MediaStreamTrackProcessor?:new(init:{track:MediaStreamTrack;maxBufferSize:number})=>{readable:ReadableStream<VideoFrame>;discardedFrames?:number;totalFrames?:number}}).MediaStreamTrackProcessor;
     const processor=!options.videoSource&&track&&Processor?new Processor({track,maxBufferSize:limit}):undefined;
-    if(!options.videoSource&&!processor)throw Error('이 브라우저는 MediaStreamTrackProcessor를 지원하지 않습니다.');
+    if(!options.videoSource&&!processor)throw Error('이 브라우저에서는 스캔할 수 없어요. 최신 Chrome이나 Edge에서 열어 주세요.');
     let sourceDone=!processor,trackFrames=0,firstStamp:number|null=null,sourceError:Error|undefined;
     // The track is read in a worker (dev/track-line-worker.ts), which keeps the line of waiting
     // frames; the main thread holds at most the one it asked for. `mainReader`: read the track
@@ -290,8 +290,8 @@ export async function runRowScan(options:{
         wake?.();
       };
       // A line worker that fails ends the scan with an error, not a silent wait for frames.
-      worker.onerror=event=>{sourceError??=Error('화면 프레임을 받는 작업을 시작하지 못했습니다'+(event.message?`: ${event.message}`:'')+'. 페이지를 새로고침해 주세요.');sourceDone=true;wake?.();};
-      worker.onmessageerror=()=>{sourceError??=Error('화면 프레임을 받지 못했습니다. 페이지를 새로고침해 주세요.');sourceDone=true;wake?.();};
+      worker.onerror=()=>{sourceError??=Error('공유 화면을 받아 오지 못했어요. 페이지를 새로고침해 주세요.');sourceDone=true;wake?.();};
+      worker.onmessageerror=()=>{sourceError??=Error('공유 화면을 받아 오지 못했어요. 페이지를 새로고침해 주세요.');sourceDone=true;wake?.();};
       worker.postMessage({type:'start',readable:processor.readable,limit,copy:!options.heldFrames} satisfies TrackLineRequest,[processor.readable as unknown as Transferable]);
       stopSource=()=>worker.postMessage({type:'stop'} satisfies TrackLineRequest);
       askNext=ask;skipToNewest=()=>worker.postMessage({type:'newest'} satisfies TrackLineRequest);

@@ -33,6 +33,6 @@ export function completionReasons(state:CompletionState):string[] {
   const receipt=state.completionReceipt;
   if(!receipt||receipt.version!==1||(receipt.mode!=='auto'&&receipt.mode!=='ended')||
     !Number.isSafeInteger(receipt.expected)||receipt.expected<=0||receipt.expected!==state.expected||
-    receipt.finalExpected!==receipt.expected)reasons.push('최종 스캔 검증 미완료');
+    receipt.finalExpected!==receipt.expected)reasons.push('스캔을 끝까지 확인하지 못했어요.');
   return reasons;
 }

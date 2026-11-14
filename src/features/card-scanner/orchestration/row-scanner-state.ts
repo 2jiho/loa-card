@@ -71,7 +71,7 @@ export const SMALL_SCREEN_SCALE=.75;
  * scale, or null. Values that cannot be read stay unconfirmed; nothing is guessed. */
 export function smallScreenNotice(width:number,height:number,scale:number|null):string|null {
   if(scale===null||scale>=SMALL_SCREEN_SCALE-.005)return null;
-  return `게임 화면이 작습니다(공유 화면 ${width}×${height}). 카드 숫자가 작아 일부 각성·장수를 읽지 못할 수 있어요. 게임 해상도를 1920×1080 이상으로 하면 모두 읽을 수 있습니다.`;
+  return `공유한 게임 화면이 작아요(${width}×${height}). 숫자가 작아서 일부 각성·장수를 못 읽을 수 있어요. 게임 해상도를 1920×1080 이상으로 올리면 더 잘 읽혀요.`;
 }
 
 /** Once every card is named, cells seen but not named are repeats of cards already read (see

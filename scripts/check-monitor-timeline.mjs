@@ -102,7 +102,7 @@ check('screen box does not spike',jumps===0,`${jumps} ${spikes.join(' ')}`);
 // 7b. Once every card of the displayed total is confirmed, no row is asked for and the action does
 //     not say to keep scrolling.
 const stale=entries.filter(entry=>entry.expected!==null&&entry.read===entry.expected&&entry.names===entry.expected&&
-  ((entry.map?.targets.length??0)>0||entry.action==='목록을 천천히 끝까지 넘겨 주세요'||entry.action==='강조된 미확인 부분을 다시 비춰 주세요'));
+  ((entry.map?.targets.length??0)>0||entry.action==='목록을 천천히 끝까지 넘겨 주세요'||entry.action==='지도에 표시된 줄을 다시 보여 주세요'));
 check('nothing asked once all is confirmed',stale.length===0,`${stale.length} entries${stale.length?` from ${stale[0].t} ms (${stale[0].action}, ${stale[0].map?.targets.length??0} rows)`:''}`);
 
 // 8. Counts only go up while sharing.
@@ -116,9 +116,9 @@ const complete=last.expected!==null&&last.read===last.expected;
 if(complete){
   const cardRows=lastMap?(lastMap.emptyFrom??lastMap.lockedFrom??lastMap.totalRows):0,done=rowsOf(lastMap?.done);
   const blank=[];for(let row=0;row<cardRows;row++)if(!done.has(row))blank.push(row+1);
-  check('a complete scan ends clean',last.header==='판독 완료'&&(lastMap?.targets.length??0)===0&&blank.length===0,
+  check('a complete scan ends clean',last.header==='읽기 완료'&&(lastMap?.targets.length??0)===0&&blank.length===0,
     `header ${last.header}, targets ${lastMap?.targets.length??0}, card rows not drawn read ${blank.length}${blank.length?` (${blank.slice(0,12).join(',')})`:''}`);
-}else check('an incomplete scan says where to look',(lastMap?.targets.length??0)>0||last.header!=='판독 완료',
+}else check('an incomplete scan says where to look',(lastMap?.targets.length??0)>0||last.header!=='읽기 완료',
   `read ${last.read}/${last.expected}, header ${last.header}, targets ${lastMap?.targets.length??0}`);
 
 // 10. After the share, every card read carries its own picture from the screen (the card list shows it).

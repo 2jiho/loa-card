@@ -58,23 +58,23 @@ export function RaidCards({ cards, complete, xp }: { cards: RaidOwned[]; complet
         <ToggleButton value={0}>없음</ToggleButton><ToggleButton value={10}>취약 10%</ToggleButton><ToggleButton value={15}>매우 취약 15%</ToggleButton>
       </ToggleButtonGroup>
     </div>
-    <div className="raid-context"><span>{bonus === 0 ? '취약 없음 · 속성에 따른 추가 피해 없음' : `${ELEMENTS[element]}속성 ${bonus === 15 ? '매우 취약' : '취약'} · 해당 속성 공격 피해 +${bonus}%`}{role === 'support' ? ' · 카드 효과 기준 표시' : ' · 최상위 서포터 카드 가정'}</span>
+    <div className="raid-context"><span>{bonus === 0 ? '취약 없음 · 속성 추가 피해 없음' : `${ELEMENTS[element]}속성 ${bonus === 15 ? '매우 취약' : '취약'} · 해당 속성 공격 피해 +${bonus}%`}{role === 'support' ? ' · 카드 효과로 표시' : ' · 가장 좋은 서포터 카드를 함께 쓴다고 계산'}</span>
     <Button color="inherit" startIcon={<TuneOutlined />} aria-haspopup="dialog" aria-expanded={!!settingsAnchor} onClick={event => setSettingsAnchor(event.currentTarget)}>비교 설정</Button>
     <Popover open={!!settingsAnchor} anchorEl={settingsAnchor} onClose={() => setSettingsAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       slotProps={{ paper: { role: 'dialog', 'aria-label': '비교 설정', sx: { width: 440, maxWidth: 'calc(100vw - 32px)', maxHeight: '65dvh', mt: 1, border: '1px solid var(--line)' } } }}>
       <div className="raid-settings-panel">
       {role === 'dealer' && <TextField label="카드 제외 추가 피해 (%)" type="number" size="small" fullWidth value={additional} slotProps={{ htmlInput: { min: 0, max: 1000, step: 1 } }} onChange={e => setAdditional(Math.max(0, Math.min(1000, Number(e.target.value) || 0)))} />}
-      <p>보유 카드 중 각성 합이 가장 높은 6장 기준입니다. 실제 게임의 장착 상태는 읽지 않습니다.</p>
-      <p>성장은 추가로 구할 카드 수가 가장 적은 조합, 그중 경험치가 적은 조합입니다. 각 세트를 독립 계산하며 이미 투입한 경험치는 차감하지 않습니다.</p>
-      <p>무속성 스킬 기준으로 카드 효과와 속성 취약을 비교합니다. 세우라제 등 조건부 조합은 제외합니다. 스킬 고유 속성·다른 속성 피해 보너스·방어 효과는 순위에 반영하지 않습니다.</p>
-      <p>서포터는 파티 딜러의 공격 속성에 맞춰 선택하세요. 세트 간 피해 증가 수치만 비교하며 공격력·마나·무력화 효과는 순위에 합산하지 않습니다.</p>
-      <p>{role === 'support' ? '큰 수치는 카드 원래 효과이며, 실효율은 취약이 적용된 상태에서 서포터 카드가 더하는 증가율입니다. 추천 순서는 실효율로 비교합니다.' : '각 딜러 세트에 가장 유리한 서포터 30각 세트를 가정합니다. 내 서포터 카드 보유량은 적용하지 않으며, 무속성·양쪽 카드 미사용 대비 취약과 두 카드의 합산 효과를 비교합니다. 속성 전환 전에는 범용 서포터 세트를 가정합니다.'} 속성 서포터 효과는 취약과 합산하고, 너계다의 범용 효과는 별도로 적용합니다. <a href="https://www.inven.co.kr/board/lostark/4821/101866" target="_blank" rel="noreferrer">실측 자료</a> 기반 추정이며 공식 산식은 아닙니다.</p>
+      <p>가진 카드 중 각성 합이 가장 높은 6장으로 계산해요. 게임에서 실제로 장착한 카드는 읽지 않아요.</p>
+      <p>성장은 새로 구할 카드가 가장 적은 조합을 고르고, 그중 경험치가 가장 적게 드는 조합을 골라요. 세트마다 따로 계산하고, 카드에 이미 넣은 경험치는 비용에서 빼지 않아요.</p>
+      <p>무속성 스킬을 쓴다고 보고 카드 효과와 속성 취약을 비교해요. 세우라제처럼 조건이 붙는 조합은 뺐어요. 스킬 자체의 속성, 다른 속성 피해 보너스, 방어 효과는 순위에 넣지 않아요.</p>
+      <p>서포터는 파티 딜러의 공격 속성에 맞춰 골라 주세요. 세트끼리는 피해 증가 수치만 비교하고, 공격력·마나·무력화 효과는 순위에 더하지 않아요.</p>
+      <p>{role === 'support' ? '큰 숫자는 카드의 원래 효과예요. 실효율은 취약이 이미 적용된 상태에서 서포터 카드가 더해 주는 비율이고, 추천 순서는 실효율로 정해요.' : '딜러 세트마다 가장 잘 맞는 서포터 30각 세트를 함께 쓴다고 보고 계산해요. 내 서포터 카드는 계산에 쓰지 않아요. 무속성 공격에 두 카드를 모두 쓰지 않았을 때와 비교해, 취약과 두 카드 효과를 더한 값을 비교해요. 속성이 바뀌기 전에는 범용 서포터 세트를 쓴다고 봐요.'} 속성 서포터 효과는 취약과 더하고, 너계다의 범용 효과는 따로 적용해요. <a href="https://www.inven.co.kr/board/lostark/4821/101866" target="_blank" rel="noreferrer">실측 자료</a>로 추정한 값이고 공식 계산식이 아니에요.</p>
       <p>데이터 {master?.version ?? '불러오는 중'}</p>
       </div>
     </Popover></div>
-    {!complete && <p className="raid-muted">미확인 카드는 전체 스캔 후 확인할 수 있어요.</p>}
+    {!complete && <p className="raid-muted">스캔을 끝까지 마치기 전이라 일부 카드는 아직 몰라요.</p>}
     {error ? <p role="alert">{error} <button onClick={() => { setError(''); setAttempt(n => n + 1); }}>다시 불러오기</button></p> :
-      !master ? <p role="status">카드 세트 불러오는 중…</p> :
+      !master ? <p role="status">카드 세트 불러오는 중</p> :
         <><RaidRecommendations prepared={progressById} master={master} cards={cards} complete={complete} role={role} element={element} bonus={bonus} additional={additional} xp={xp} onSelect={setFocused} />
         <div className="raid-list-heading"><h3>세트별 각성 <span>{sets.length}</span></h3><small>현재 → 성장 가능</small></div>
         <div className="raid-browser"><div className="raid-set-list">

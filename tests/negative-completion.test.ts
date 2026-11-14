@@ -26,26 +26,26 @@ test('discarded observations are recognition-needed, not unresolved',()=>{
  const reasons=negativeCompletionReasons({...clean(),unidentified:[],
   discardedObservations:[{image:'data:image/png;base64,a',time:1,pending:false,reason:'판독 불가'},
    {image:'data:image/png;base64,b',time:2,pending:false,reason:'카드 뒷면'}]} as ScannerState);
- assert.ok(reasons.includes('인식 필요 2건'));
- assert.equal(reasons.some(reason=>reason.includes('미식별')),false);
+ assert.ok(reasons.includes('읽지 못한 화면이 2개 있어요.'));
+ assert.equal(reasons.some(reason=>reason.includes('알아보지 못한')),false);
 });
 
 test('positively obstructed slots are reported as recognition-needed without inventing a card',()=>{
  const reasons=negativeCompletionReasons({...clean(),recognitionNeeded:[
    {slot:3,captureTime:10,reason:'툴팁 패널 가림'},
    {slot:14,captureTime:12,reason:'커서 가림'}]} as ScannerState);
- assert.ok(reasons.includes('인식 필요 2칸'));
- assert.equal(reasons.some(reason=>reason.includes('카드 값 확인 필요')),false);
+ assert.ok(reasons.includes('읽지 못한 칸이 2개 있어요.'));
+ assert.equal(reasons.some(reason=>reason.includes('각성·장수가 맞지 않는')),false);
 });
 
 test('a field-only shortage is not reported as missing card identities',()=>{
  const card={id:'a',name:'a',awakening:0,extraCopies:0,review:[],countReliable:true};
  const fieldOnly=negativeCompletionReasons({...clean(),expected:2,currentRunNames:2,currentRunRead:1,
   cards:[card,{...card,id:'b',name:'b',review:['장수 확인']}]} as ScannerState);
- assert.ok(fieldOnly.includes('1종 각성·장수 확인 필요'));
- assert.equal(fieldOnly.some(reason=>reason.includes('종 부족')),false);
+ assert.ok(fieldOnly.includes('카드 1종의 각성·장수를 못 읽었어요.'));
+ assert.equal(fieldOnly.some(reason=>reason.includes('아직 못 읽었어요')),false);
  const identityMissing=negativeCompletionReasons({...clean(),expected:2,currentRunNames:1,currentRunRead:1,
   cards:[card]} as ScannerState);
- assert.ok(identityMissing.includes('1종 부족'));
+ assert.ok(identityMissing.includes('카드 1종을 아직 못 읽었어요.'));
 });
 

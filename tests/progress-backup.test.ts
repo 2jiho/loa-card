@@ -74,14 +74,14 @@ test('malformed live states are rejected before they replace a checkpoint',async
   const factory = new IDBFactory(), progress = createProgressBackup(()=>factory);
   await progress.save(state());
   const corrupt = { ...state(), cards:[{...card, awakening:9}] } as unknown as ScannerState;
-  await assert.rejects(progress.save(corrupt),/진행 기록 형식/);
+  await assert.rejects(progress.save(corrupt),/진행 기록이 올바르지 않아요/);
   assert.equal((await progress.load())!.state.cards.length,1);
 });
 
 test('malformed stored checkpoints are rejected instead of being rendered',async()=>{
   const factory = new IDBFactory(), progress = createProgressBackup(()=>factory);
   await seed(factory,{version:1,savedAt:1,state:{...state(),cards:[null]}});
-  await assert.rejects(progress.load(),/진행 기록을 읽을 수 없습니다/);
+  await assert.rejects(progress.load(),/진행 기록을 읽지 못했어요/);
 });
 
 test('progress projection keeps unknown fields distinct and never marks a completion',()=>{

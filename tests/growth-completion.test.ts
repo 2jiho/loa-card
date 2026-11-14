@@ -127,7 +127,7 @@ test('unchanged required members are revalidated before single and bundled compl
     ]) {
       const stale = structuredClone(before);mutate(stale);
       const snapshot = structuredClone(stale);
-      assert.throws(()=>completeGrowth(stale,m,plan),/도감 조건/);
+      assert.throws(()=>completeGrowth(stale,m,plan),/도감에 필요한 카드/);
       assert.deepEqual(stale,snapshot);
     }
   }

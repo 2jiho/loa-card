@@ -6,18 +6,17 @@
 |---|---|
 | 처음 실행하거나 수정 | [README](../README.md), [AGENTS](../AGENTS.md), [개발·검증](development.md) |
 | 스캐너 인식·성능 | [스캐너 구조](scanner-pipeline.md) |
+| 입력 기록·재현 | [입력 기록과 재현 설계](scanner-session-design.md), [입력 코퍼스 사용](development.md#입력-코퍼스) |
+| 화면 공유 기록의 날짜별 조사 | [화면 공유 기록](dev-recording.md) (날짜별 기록, 현재 기준은 위 두 문서) |
 | 인식 평가·정답셋 | [평가 계약](evaluation.md) |
 | 기하 정규화·다해상도 홀드아웃 | [기하 홀드아웃](geometry-holdout.md) |
 | 이름+원화 신원 융합 | [이름+원화 융합](identity-fusion.md) |
 | 장수 0장 증거·필드 평가 | [장수 필드 증거](field-evidence.md) |
-| Scanner session 분해 | [session 분해](session-decomposition.md) |
-| Scanner 물리 분할 | [물리 분할](physical-split.md) |
-| 프로그램 구조·의존 규칙 | [프로그램 구조](architecture.md), [마이그레이션](architecture-migration.md) |
-| App 분해 | [App 분해](app-decomposition.md) |
-| 입력 누적·재현 구조 전환 | [입력 기록과 재현 설계](scanner-session-design.md), [입력 코퍼스 사용](development.md#입력-코퍼스) |
+| 미해결 항목의 원인 분석 | [미해결 항목 구조 분석](field-proof-gaps.md) (2026-11-05 전후 분석, 이전 스캐너 루프 기준) |
+| 카드 크롭의 픽셀 구조 | [카드 이미지 구조](card-image-structure.md), [클라이언트 카드 렌더](client-card-rendering.md) |
 | 프레임·이름 근거 분석 | [프레임 진단 설계](frame-name-evidence-design.md) |
-| 자동 종료 입력 공백 분석 | [자동 종료 입력 분석](auto-stop-input-analysis.md) |
-| 재시도 원장 실험 | [재시도 입장 원장 재생](retry-receipt-replay.md) |
+| 프로그램 구조·의존 규칙 | [프로그램 구조](architecture.md), [App 모듈](app-decomposition.md), [구조 감사](architecture-audit.md) (2026-11-08 생성 시점의 감사) |
+| 줄 중심 스캔의 설계 배경 | [실시간 스캐너 재설계안](scanner-live-redesign.md) (13절이 현재 구현, 나머지는 제안 기록) |
 | UI·테마 | [UI 설계](ui-design.md) |
 | 도감 계산 | [성장 계산](growth-optimizer.md) |
 | 레이드 비교 | [레이드 계산](raid-cards.md) |
@@ -27,5 +26,17 @@
 | 정적 배포 | [배포 안내](deployment.md) |
 | 공개·배포 전후 점검 | [출시 점검](release-checklist.md) |
 | 소스·자산의 권리 | [외부 고지](../THIRD_PARTY_NOTICES.md), [권리 검토](legal-review.md) |
+
+## 기록(현재 코드와 다름)
+
+아래 문서는 지운 코드나 지난 단계를 설명한다. 현재 동작의 근거로 쓰지 않는다.
+
+| 문서 | 다른 점 |
+|---|---|
+| [session 분해](session-decomposition.md) | v0.3.0에서 지운 프레임 단위 스캐너 루프의 분해 기록 |
+| [물리 분할](physical-split.md), [마이그레이션](architecture-migration.md) | 폴더 이동 단계 기록. 현재 구조는 [프로그램 구조](architecture.md) |
+| [자동 종료 입력 분석](auto-stop-input-analysis.md) | 설명한 진단 값이 지금 코드에 없다 |
+| [재시도 입장 원장 재생](retry-receipt-replay.md) | 설명한 실험 모듈이 저장소에 없다 |
+| [미식별 출처별 판정 실험](scanner-unknown-source-policy.md) | `?unknownPolicy`를 읽는 코드와 인용한 일부 테스트가 없다 |
 
 과거의 실험 수치와 폐기한 UI 설명은 현재 동작에 섞지 않는다. 새 검증은 입력·시작 목록·환경·종료 시점·최종 결과를 구분해서 기록한다. 원본 영상과 개인 실행 결과를 공개 저장소에 넣지 않는다.

@@ -40,7 +40,7 @@ export function koreanTime(timestamp: number) {
   return `${String(date.getUTCHours()).padStart(2,'0')}:${String(date.getUTCMinutes()).padStart(2,'0')}`;
 }
 export function sessionTime(session: MerchantSession) {
-  return `${koreanTime(session.start)}–${dayStart(session.start) === dayStart(session.end) ? '' : '다음 날 '}${koreanTime(session.end)}`;
+  return `${koreanTime(session.start)}~${dayStart(session.start) === dayStart(session.end) ? '' : '다음 날 '}${koreanTime(session.end)}`;
 }
 export function relativeKoreanTime(timestamp: number, now: number) {
   const days = (dayStart(timestamp) - dayStart(now)) / DAY;

@@ -30,6 +30,7 @@ import type {CsvCatalogCard} from './inventory-csv';
 import {unownedInventory} from './inventory-unowned';
 import {loadScanBackup,saveScanBackup,clearScanBackup,LegacyBackupChoice} from "./features/card-scanner/persistence/scan-backup";
 import {clearScanProgress,loadScanProgress,saveScanProgress} from "./features/card-scanner/persistence/progress-backup";
+import {userMessage} from "./shared/user-message";
 const MerchantAlerts = deferredPanel(async () => ({default:(await import('./features/merchants/MerchantAlerts')).MerchantAlerts}));
 const GrowthPlanner = deferredPanel(async () => ({default:(await import('./features/growth/GrowthPlanner')).GrowthPlanner}));
 const RaidCards = deferredPanel(async () => ({default:(await import('./features/raid/RaidCards')).RaidCards}));
@@ -117,7 +118,7 @@ function App() {
   const [csvExperience,setCsvExperience]=useState('');
   const csvExperienceError=useMemo(()=>{
     try {parseCsvExperience(csvExperience);return '';}
-    catch(e) {return e instanceof Error?e.message:'경험치를 확인해 주세요.';}
+    catch(e) {return e instanceof Error?e.message:'경험치는 0 이상의 숫자로 입력해 주세요.';}
   },[csvExperience]);
   const inventory = useRef<ScannedCard[]>([]);
   const [catalog, setCatalog] = useState<CsvCatalogCard[]>([]);
@@ -130,13 +131,13 @@ function App() {
       try { saved = (await loadScanBackup()) ?? null; }
       catch (e) {
         if (cancelled) return;
-        setBackupStatus('브라우저 저장 확인 필요');
+        setBackupStatus('저장된 목록을 불러오지 못했어요');
         if (e instanceof LegacyBackupChoice) setLegacyChoices(e.choices);
-        setBackupError(e instanceof Error ? e.message : '목록 복원 실패');
+        setBackupError(userMessage(e, '저장된 목록을 불러오지 못했어요. 페이지를 새로고침해 주세요.'));
       }
       let progress: Awaited<ReturnType<typeof loadScanProgress>>;
       try { progress = await loadScanProgress(); }
-      catch { if (!cancelled) setBackupError('이전 진행 기록을 복원하지 못했습니다. 저장된 카드 목록은 그대로입니다.'); }
+      catch { if (!cancelled) setBackupError('지난번 스캔에서 읽던 카드를 되살리지 못했습니다. 저장된 목록은 그대로입니다.'); }
       if (cancelled) return;
       savedState.current = saved;
       setSavedBackupAvailable(!!saved);
@@ -149,11 +150,11 @@ function App() {
         if (progress.state.completionReceipt) {
           clearScanIncomplete();
           setProgressRestored(false);
-          setBackupStatus('완료된 스캔 결과를 복원했습니다.');
+          setBackupStatus('완료한 스캔 결과를 되살렸어요.');
         } else {
-          markScanIncomplete(['이전 스캔이 진행 중 종료되어 진행 기록을 복원했습니다']);
+          markScanIncomplete(['지난번 스캔이 도중에 끝나, 그때까지 읽은 카드를 되살렸어요']);
           setProgressRestored(true);
-          setBackupStatus('진행 중이던 스캔을 복원했습니다. 이전 저장 목록은 변경하지 않았습니다.');
+          setBackupStatus('도중에 끝난 스캔을 되살렸어요. 전에 저장한 목록은 그대로예요.');
         }
       } else if (saved) {
         inventory.current = saved.cards;
@@ -227,7 +228,7 @@ function App() {
       // be released without losing the only copy of the cards.
       void clearScanProgress().catch(() => {});
       if (!cancelled) { setBackupStatus('카드 목록은 이 브라우저에 자동 저장됩니다.'); setBackupError(''); }
-    }).catch(e => { if (!cancelled) { setBackupStatus('저장되지 않음'); setBackupError(e instanceof Error ? e.message : '저장 실패 · CSV로 보관해 주세요.'); } });
+    }).catch(e => { if (!cancelled) { setBackupStatus('저장하지 못함'); setBackupError(userMessage(e, '브라우저에 저장하지 못했어요. CSV로 저장해 두세요.')); } });
     return () => { cancelled = true; };
   }, [state, busy, error, backupReady, backupAttempt, scanIncomplete]);
   async function restoreBackup(legacyKey?: string) {
@@ -242,7 +243,7 @@ function App() {
       setState(saved ?? null); setError(''); setActionError(''); setBackupError(''); setLegacyChoices([]);
       setReplacedState(null); resetScanDeadline();
       setBackupStatus('카드 목록은 이 브라우저에 자동 저장됩니다.');
-    } catch (e) { if (e instanceof LegacyBackupChoice) setLegacyChoices(e.choices); setBackupError(e instanceof Error ? e.message : '목록 복원 실패'); }
+    } catch (e) { if (e instanceof LegacyBackupChoice) setLegacyChoices(e.choices); setBackupError(userMessage(e, '저장된 목록을 불러오지 못했어요.')); }
     finally { setBackupReady(true); }
   }
   async function resetInventory() {
@@ -253,14 +254,14 @@ function App() {
       release(); inventory.current=[]; savedState.current=null; setState(null);clearScanIncomplete();setReplacedState(null);setProgressRestored(false);setSavedBackupAvailable(false);resetScanDeadline();scanMonitorStore.clear();
       setQuery(''); setInventoryFilter('owned'); setPage(1); setResetPending(false); setError(''); setActionError(''); setBackupError('');
       setBackupStatus('카드 목록은 이 브라우저에 자동 저장됩니다.');
-    } catch (e) { setBackupError(e instanceof Error ? e.message : '목록 초기화 실패'); }
+    } catch (e) { setBackupError(userMessage(e, '목록을 비우지 못했어요. 페이지를 새로고침한 뒤 다시 시도해 주세요.')); }
     finally { setBackupReady(true); }
   }
   useEffect(() => {
     const abort = new AbortController();
     void loadCardCatalog(abort.signal)
       .then(({cards, version}) => { setCatalog(cards); setCatalogVersion(version); })
-      .catch(e => { if (!abort.signal.aborted) setCatalogError(e instanceof Error ? e.message : '카드 사전 로드 실패'); });
+      .catch(e => { if (!abort.signal.aborted) setCatalogError(userMessage(e, '카드 자료를 불러오지 못했어요.')); });
     return () => abort.abort();
   }, [catalogAttempt]);
   function release() {
@@ -338,7 +339,7 @@ function App() {
       const source=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());
       setCsvPending({name:file.name,cards:parseInventoryCsv(source,catalog)});
     } catch(error) {
-      setActionError(error instanceof TypeError?'UTF-8 형식의 CSV를 선택해 주세요.':error instanceof Error?error.message:'CSV를 읽지 못했습니다.');
+      setActionError(error instanceof TypeError?'파일의 글자를 읽지 못했어요. UTF-8로 저장한 CSV를 선택해 주세요.':userMessage(error,'CSV를 읽지 못했어요.'));
     } finally {setCsvReading(false);}
   }
   function applyCsv() {
@@ -367,7 +368,7 @@ function App() {
       inventory.current = next.cards;
       setState(next);
       setActionError('');
-    } catch (e) { setActionError(e instanceof Error ? e.message : '성장을 반영하지 못했습니다.'); }
+    } catch (e) { setActionError(userMessage(e, '성장을 반영하지 못했어요.')); }
   }
   function undoLastGrowth() {
     if (busy || !state || inventory.current !== state.cards) return;
@@ -381,7 +382,7 @@ function App() {
     try{
       downloadInventory(new Blob([inventoryCsv(cards)],{type:'text/csv;charset=utf-8'}),'loacard-cards.csv');
     }
-    catch(e){setActionError(e instanceof Error?e.message:'CSV 저장 실패');}
+    catch(e){setActionError(userMessage(e,'CSV로 저장하지 못했어요.'));}
   }
   const liveResults = useLiveResults(cards, state?.growthPoints?.current, busy);
   const unowned = useMemo(()=>unownedInventory(catalog,state,busy||!!error||scanIncomplete),[catalog,state,busy,error,scanIncomplete]);
@@ -413,31 +414,31 @@ function App() {
   // this, an empty list said "share to start" while the button said "preparing"
   // and could not be pressed.
   const shareReadiness = sharePicking ? {title:'공유 창 선택 중',description:'공유할 로스트아크 창을 선택해 주세요.'}
-    : preparationCleanupUncertain || engineCleanupUncertain ? {title:'엔진 정리 확인 필요',description:'이전 인식 엔진 종료를 확인하지 못해 새 스캔을 잠갔습니다. 페이지를 새로고침해 주세요.'}
-    : !backupReady ? {title:'목록 불러오는 중',description:'저장된 카드 목록을 확인하고 있습니다. 끝나면 화면을 공유해 주세요.'}
-    : catalogError ? {title:'카드 사전 불러오기 실패',description:'카드 이름 기준을 불러오지 못했습니다. 다시 시도를 눌러 주세요.'}
-    : !catalog.length ? {title:'카드 사전 준비 중',description:'카드 이름 기준을 불러오는 중입니다.'}
-    : preparationState === 'error' ? {title:'스캔 준비 실패',description:'인식 엔진을 준비하지 못했습니다. 준비 다시 시도를 눌러 주세요.'}
-    : preparationState === 'loading' ? {title:'스캔 준비 중',description:'이름·장수 인식 엔진을 준비하고 있습니다. 끝나면 화면 공유 시작을 눌러 주세요.'}
-    : preparationSettling || engineSettling ? {title:'이전 준비 정리 중',description:'이전 인식 엔진을 정리하고 있습니다. 잠시만 기다려 주세요.'}
-    : csvReading ? {title:'CSV 확인 중',description:'CSV 파일을 확인하고 있습니다.'}
+    : preparationCleanupUncertain || engineCleanupUncertain ? {title:'새로고침이 필요해요',description:'이전 스캔이 깔끔하게 끝나지 않았어요. 페이지를 새로고침한 뒤 다시 시작해 주세요. 저장된 목록은 그대로예요.'}
+    : !backupReady ? {title:'목록 불러오는 중',description:'저장된 카드 목록을 불러오고 있어요. 끝나면 화면을 공유해 주세요.'}
+    : catalogError ? {title:'카드 자료를 불러오지 못했어요',description:"'다시 시도'를 눌러 주세요."}
+    : !catalog.length ? {title:'카드 자료 불러오는 중',description:'카드 이름 자료를 불러오고 있어요.'}
+    : preparationState === 'error' ? {title:'스캔 준비 실패',description:"스캔을 준비하지 못했어요. '준비 다시 시도'를 눌러 주세요."}
+    : preparationState === 'loading' ? {title:'스캔 준비 중',description:"스캔을 준비하고 있어요. 끝나면 '화면 공유 시작'을 눌러 주세요."}
+    : preparationSettling || engineSettling ? {title:'이전 스캔 정리 중',description:'이전 스캔을 정리하고 있어요. 잠시만 기다려 주세요.'}
+    : csvReading ? {title:'CSV 읽는 중',description:'CSV 파일을 읽고 있어요.'}
     : null;
   const readinessStatus = !busy && !sharing && !error && !stopped && !scanIncomplete &&
     (sharePicking || csvReading || !cards.length) ? shareReadiness : null;
-  const statusTitle = scanTimedOut ? "스캔 시간 초과" : state?.interrupted === "stalled" ? "스캔 미완료" : error ? "입력을 확인해 주세요" : busy && !engineReady ? "스캔 준비 중" : sharing ? "화면 공유 중" : previewStatus ? previewStatus.title : busy && workPhase==='cleanup' ? "스캔을 마무리하고 있어요" : busy && workPhase==='verifying' ? "판독 결과를 검증하고 있어요" : busy ? "카드를 읽고 있어요" : stopped ? "스캔 중지됨" : scanIncomplete ? "스캔 미완료" : readinessStatus ? readinessStatus.title : review > 0 ? "확인할 카드가 남아 있어요" : inputWarnings ? knownInputWarnings ? "확인할 입력이 남아 있어요" : "카드 목록 준비됨" : state?.autoStopped ? "전체 카드 수집 완료" : state?.status === "CSV 불러오기 완료" ? "CSV 불러오기 완료" : cards.length ? "카드 목록 준비됨" : "화면을 공유해 시작하세요";
-  const statusDescription = scanTimedOut ? "스캔 진행이 일정 시간 없어 중지했습니다. 카드가 충분히 보이도록 다시 스캔해 주세요."
+  const statusTitle = scanTimedOut ? "스캔 시간 초과" : state?.interrupted === "stalled" ? "스캔 미완료" : error ? "스캔 중 문제가 생겼어요" : busy && !engineReady ? "스캔 준비 중" : sharing ? "화면 공유 중" : previewStatus ? previewStatus.title : busy && workPhase==='cleanup' ? "스캔을 마무리하고 있어요" : busy && workPhase==='verifying' ? "읽은 결과를 확인하고 있어요" : busy ? "카드를 읽고 있어요" : stopped ? "스캔을 멈췄어요" : scanIncomplete ? "스캔 미완료" : readinessStatus ? readinessStatus.title : review > 0 ? "다시 확인할 카드가 있어요" : inputWarnings ? knownInputWarnings ? "알아보지 못한 카드가 있어요" : "카드 목록 준비됨" : state?.autoStopped ? "모든 카드를 읽었어요" : state?.status === "CSV 불러오기 완료" ? "CSV 불러오기 완료" : cards.length ? "카드 목록 준비됨" : "화면을 공유해 시작하세요";
+  const statusDescription = scanTimedOut ? "새로 읽은 카드가 한동안 없어 스캔을 멈췄어요. 카드가 가려지지 않게 한 뒤 다시 스캔해 주세요."
     : error ? error
-    : busy && !engineReady ? `${state?.status ?? "화면 검출 모듈 준비 중"} · 준비가 끝나면 스크롤해 주세요.`
-    : sharing ? (state?.located ? "성장 탭을 천천히 스크롤해 주세요. 읽은 카드는 아래에 쌓입니다. 공유를 종료해도 수집된 카드 판독은 계속됩니다." : "카드 보관함의 성장 탭을 찾고 있어요. 카드 화면을 보여 주세요.")
+    : busy && !engineReady ? "스캔을 준비하고 있어요. 준비가 끝나면 목록을 스크롤해 주세요."
+    : sharing ? (state?.located ? "성장 탭을 천천히 끝까지 스크롤해 주세요. 읽은 카드는 아래에 쌓여요. 공유를 끝내도 이미 받은 화면은 끝까지 읽어요." : "카드 보관함의 성장 탭을 찾고 있어요. 게임에서 성장 탭을 열어 주세요.")
     : previewStatus ? previewStatus.description
     : readinessStatus ? readinessStatus.description
-    : busy && workPhase==='cleanup' ? "판독 작업을 종료하고 임시 기록을 정리하고 있습니다."
-    : busy && workPhase==='verifying' ? "보관함 수량과 카드별 판독 근거를 대조하고 있습니다."
-    : !busy && scanIncomplete ? "최종 판독을 확인하지 못했습니다. 카드 성장 탭을 다시 보여 주세요."
-    : state?.autoStopped&&!busy ? "전체 카드의 이름·각성·장수와 보관함 수량이 확인되어 화면 공유를 종료했어요."
-    : state?.autoStopped&&busy ? "전체 카드 화면을 확보해 공유를 종료했어요. 저장한 이미지로 남은 장수·각성을 확인하고 있습니다."
-    : busy ? "공유는 종료됐어요. 수집한 화면에서 남은 카드를 확인하고 있습니다."
-    : cards.length ? "다시 스캔하면 목록을 처음부터 읽고, 끝까지 확인되면 이 목록을 새 결과로 바꿉니다."
+    : busy && workPhase==='cleanup' ? "마무리하고 있어요. 잠시만 기다려 주세요."
+    : busy && workPhase==='verifying' ? "읽은 카드 수가 보관함 수량과 맞는지 확인하고 있어요."
+    : !busy && scanIncomplete ? "스캔을 끝까지 확인하지 못했어요. 화면 공유를 다시 시작해 목록을 처음부터 스캔해 주세요."
+    : state?.autoStopped&&!busy ? "모든 카드의 이름·각성·장수를 읽고 보관함 수량과 맞춰 봤어요. 그래서 화면 공유를 끝냈어요."
+    : state?.autoStopped&&busy ? "목록을 끝까지 받아 화면 공유를 끝냈어요. 아직 못 읽은 각성·장수를 마저 읽고 있어요."
+    : busy ? "화면 공유가 끝났어요. 이미 받은 화면에서 남은 카드를 읽고 있어요."
+    : cards.length ? "다시 스캔하면 목록을 처음부터 새로 읽어요. 끝까지 읽으면 지금 목록을 새 결과로 바꿔요."
     : "로스트아크 카드 보관함의 성장 탭을 열어 주세요.";
   const scanSummary = <ScannerSummary state={state} cardsLength={cards.length} match={match} review={review}
     inputWarnings={inputWarnings} knownReviewCards={knownReviewCards}
@@ -447,19 +448,19 @@ function App() {
     <AppShell activeView={activeView} onViewChange={setResultView}
       onBrandClick={()=>{setResultView('cards');setInventoryFilter('owned');setQuery('');setPage(1);}}
       resultsReady={resultsReady} cardCount={cards.length}
-      navHint={busy ? '읽은 카드부터 각 메뉴에 반영합니다.' : review > 0 || nameIssues.length > 0 ? '강조된 카드를 다시 보여 주세요.' : !cards.length ? '스캔하거나 CSV를 불러오면 시작할 수 있어요.' : undefined}
+      navHint={busy ? '읽은 카드부터 각 메뉴에 반영해요.' : review > 0 || nameIssues.length > 0 ? '다시 확인할 카드가 있어요. 목록을 다시 스캔해 주세요.' : !cards.length ? '스캔하거나 CSV를 불러오면 시작할 수 있어요.' : undefined}
       busy={busy} csvReading={csvReading} engineReady={engineReady} backupStatus={backupStatus} catalogVersion={catalogVersion}
       guideOpen={guideOpen} onGuideOpen={()=>setGuideOpen(true)} onGuideClose={()=>setGuideOpen(false)}>
       {actionError && <p className="error" role="alert">{actionError}<button className="text-button" onClick={() => setActionError('')}>닫기</button></p>}
       {busy && activeView!=='cards' && <div className="notice" role="status">
-        <span className="scan-spinner" aria-hidden="true" /> 스캔 중 · <ScanReadCount completed={state?.currentRunRead ?? 0} expected={state?.expected ?? null} store={scanMonitorStore} inline/> 판독 · 결과 갱신 중
-        <p>지금까지 읽은 카드 기준입니다. 스캔이 끝까지 확인되기 전에는 읽지 못한 카드를 미등록으로 보지 않습니다.</p>
+        <span className="scan-spinner" aria-hidden="true" /> 스캔 중 · 읽기 완료 <ScanReadCount completed={state?.currentRunRead ?? 0} expected={state?.expected ?? null} store={scanMonitorStore} inline/>
+        <p>지금까지 읽은 카드로 계산해요. 아직 읽지 않은 카드는 '미확인'으로 표시해요.</p>
         <button className="text-button" onClick={()=>setResultView('cards')}>스캔 진행 보기</button>
       </div>}
       {activeView!=='cards' && scanSummary}
       {!!state?.growthHistory?.length && <div className="growth-completion-notice" role="status">
-        <span>{state.growthHistory.at(-1)!.label} · 성장 반영됨 <small>경험치는 다음 스캔에서 갱신</small></span>
-        <button className="text-button" disabled={busy} onClick={undoLastGrowth}>성장 실행 취소</button>
+        <span>{state.growthHistory.at(-1)!.label} 성장을 이 목록에 반영했어요 <small>게임은 바뀌지 않아요. 경험치는 예상값이고, 다음 스캔에서 정확해져요.</small></span>
+        <button className="text-button" disabled={busy} onClick={undoLastGrowth}>반영 취소</button>
       </div>}
       <section id="panel-cards" role="tabpanel" aria-labelledby="view-cards" hidden={activeView!=='cards'}>
       {backupReady && !cards.length && !busy && !sharing && !csvReading && <ScanQuickStart onHelp={() => setGuideOpen(true)} />}
@@ -488,16 +489,16 @@ function App() {
         cursorMode={cursorMode} engineReady={engineReady} scanMonitorStore={scanMonitorStore}
         workPhase={workPhase} scanStartedAt={scanStartedAt}
         video={video} ready={ready} onReady={()=>setReady(true)}
-        onVideoError={()=>setError("공유 화면을 표시할 수 없습니다.")}
+        onVideoError={()=>setError("공유한 화면을 보여 줄 수 없어요. 화면 공유를 다시 시작해 주세요.")}
       />
       {catalogError && <p className="error" role="alert">{catalogError} <button className="text-button" onClick={() => { setCatalogError(''); setCatalogAttempt(n => n + 1); }}>다시 시도</button></p>}
-      {legacyChoices.length > 0 && <div className="notice" role="group" aria-label="이전 백업 선택">{legacyChoices.map((item, i) => <Button key={item.key} disabled={!backupReady || busy} onClick={() => void restoreBackup(item.key)} title={item.names}>백업 {i + 1} · {item.count}종 · 경험치 {item.xp?.toLocaleString('ko-KR') ?? '미확인'}</Button>)}</div>}
-      {backupError && <div className="notice" role="alert"><p>{backupError}</p>{!!state && <button className="text-button" disabled={busy || !backupReady} onClick={() => setBackupAttempt(n => n + 1)}>저장 다시 시도</button>}<button className="text-button" disabled={busy || !backupReady} onClick={() => void restoreBackup()}>현재 목록 대신 저장 목록 불러오기</button><span> · 현재 목록은 먼저 CSV로 보관해 주세요.</span></div>}
+      {legacyChoices.length > 0 && <div className="notice" role="group" aria-label="이전 목록 선택">{legacyChoices.map((item, i) => <Button key={item.key} disabled={!backupReady || busy} onClick={() => void restoreBackup(item.key)} title={item.names}>이전 목록 {i + 1} · 카드 {item.count.toLocaleString('ko-KR')}종 · 경험치 {item.xp?.toLocaleString('ko-KR') ?? '미확인'}</Button>)}</div>}
+      {backupError && <div className="notice" role="alert"><p>{backupError}</p>{!!state && <button className="text-button" disabled={busy || !backupReady} onClick={() => setBackupAttempt(n => n + 1)}>저장 다시 시도</button>}<button className="text-button" disabled={busy || !backupReady} onClick={() => void restoreBackup()}>저장된 목록으로 되돌리기</button><span> 되돌리면 지금 화면의 목록은 사라져요. 필요하면 먼저 CSV로 저장하세요.</span></div>}
       {error && <p className="error" role="alert">{error}<button className="text-button" onClick={() => setError("")}>닫기</button></p>}
       {state?.resolutionNotice && <p className="notice" role="status">{state.resolutionNotice}</p>}
       {busy && state?.processingWarning && <p className="notice" role="status">{state.processingWarning}</p>}
-      {!!state?.droppedFrames && <p className="notice" role="alert">일부 화면을 처리하지 못했습니다. 화면 공유를 종료한 뒤 처음부터 다시 스캔해 주세요.</p>}
-      {!busy && !state?.droppedFrames && (state?.unresolvedObservations??0)>0 && nameIssues.length===0 && <p className="notice" role="alert">연결되지 않은 화면 입력이 남아 있습니다. 새로 스캔해 확인해 주세요.</p>}
+      {!!state?.droppedFrames && <p className="notice" role="alert">일부 화면을 놓쳤어요. 화면 공유를 끝낸 뒤 처음부터 다시 스캔해 주세요.</p>}
+      {!busy && !state?.droppedFrames && (state?.unresolvedObservations??0)>0 && nameIssues.length===0 && <p className="notice" role="alert">어느 카드인지 알아보지 못한 화면이 있어요. 처음부터 다시 스캔해 주세요.</p>}
       {scanSummary}
       <ScanAttention cards={reviewCards} unknown={sharing || busy ? nameIssues : []} discarded={!sharing && !busy ? nameIssues : []} missing={missingCards} artworkById={artworkById} guidance={state?.listGuidance}
         sharing={sharing} busy={busy} queued={state?.queued} activeReadings={state?.activeReadings}/>

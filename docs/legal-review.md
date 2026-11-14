@@ -2,9 +2,20 @@
 
 검토일: 2026-10-08. 대한민국 서비스와 현재 저장소·정적 웹 빌드를 대상으로 한 기술·문서 검토다. 법률 의견서, 권리자의 승인, 모든 특허·상표의 권리조사를 대신하지 않는다. 허가가 확인되지 않았다는 사실과 위법하다는 판단은 구분한다.
 
+개정: 2026-11-14. 검토일 이후 추가된 자료와 의존성을 반영했다. 날짜는 해당 파일을 추가한 커밋의 날짜다.
+
+- 2026-10-10: 표시 전용 원화 32종을 추가해 `public/scanner/artwork/*.webp`가 420개가 됐다.
+- 2026-10-18: `motion` 의존성(`framer-motion`, `motion-dom`, `motion-utils` 포함)을 추가했다.
+- 2026-10-29: `lz4-wasm`, `lz4-lite`와 Rust 의존성 고지 4개를 추가했다.
+- 2026-11-11: `public/scanner/portrait-competitors.json`, `src/features/card-scanner/portrait-competitor-pins.json`을 추가했다. `tests/fixtures/`에 `screen-portrait-regression.json`, `beskal-single-frame.json`, `evaluation/` 4개를 추가하고 `screen-portrait-holdout.json`을 삭제했다.
+- 2026-11-13: `public/scanner/screen-artwork-extra.json`과 1920×1080 숫자 패턴 135개를 추가했다.
+- 2026-11-14: `public/scanner/screen-artwork-1080.json`, `screen-artwork-0625.json`과 0.625 배율 숫자 패턴 51개를 추가했다. `tests/fixtures/`에 `count-teal-artwork-band.json`, `count-five-k-eight.json`을 추가했다.
+
 ## 결론과 공개 범위
 
 비상업적 팬 애플리케이션에 적용할 수 있는 공식 UGC 허용 근거가 있다. 그러나 현재 게임 유래 자료 전체의 재배포 권한은 확인되지 않았다. 작성 코드의 MIT와 외부 자료의 이용 조건을 분리한다. 모든 파일을 MIT로 재허가하거나 전체 앱의 공개 적법성이 확인됐다고 설명하면 안 된다.
+
+루트 `LICENSE`는 MIT 원문이고 GitHub은 저장소 전체를 MIT로 표시한다. 그러나 MIT는 프로젝트가 작성한 코드와 문서에만 적용된다. `public/scanner/*`, `public/growth/*`, `public/raid/*`, `tests/fixtures/*`는 MIT 대상이 아니다. 이 자료는 아래 [현재 공개 대상 데이터의 실물 목록](#현재-공개-대상-데이터의-실물-목록)과 [라이선스와 외부 자산](../THIRD_PARTY_NOTICES.md)에 설명한다. 파일별 출처는 `public/scanner/NOTICE.txt`에 있다.
 
 | 대상 | 확인 내용 | 판단 / 남은 일 |
 |---|---|---|
@@ -58,6 +69,10 @@
 |---|---|---|
 | `public/scanner/cards.json` | 420종 이름·ID·등급·출처와 원화에서 만든 `feature` | 우선 검토. 단순 카드 목록만 있는 파일이 아님. 클라이언트 DB로 검증한 메타데이터와 원화 파생값을 분리해서 판단. 미사용 뒷면 특징과 외부 아이콘 경로는 제거 |
 | `public/scanner/artwork-details.json` | 388종 클라이언트 원화 영역을 20×10 회색조 픽셀로 만든 base64 | 우선 검토. 클라이언트 atlas 기반. 파일 확장자가 JSON이어도 작은 이미지를 복원할 수 있음 |
+| `public/scanner/artwork/*.webp` | 클라이언트 atlas에서 만든 160×234 표시용 원화 썸네일 420개 | 우선 검토. 게임 원화 이미지 자체다. 외부 사이트 그림 픽셀은 없음. 게임 원화 배포 권리 확인은 별도 |
+| `public/scanner/artwork-provenance.json` | 420종 이름, 원본 atlas 파일명·좌표, 원본·특징·초상·썸네일 SHA-256, 라벨 근거 | 픽셀은 없음. 게임 명칭과 atlas 구조를 담은 출처 기록. 과거 인벤/Codex 대응 이력을 공식 대응표로 표현하지 않음 |
+| `public/scanner/portrait-competitors.json` | 클라이언트 atlas에서 만든 1종(`3201001`) 20×10 회색조 원화 영역 200바이트 | 클라이언트 atlas 파생 자료. 다른 후보의 차순위 비교에만 쓰고 이 카드의 단독 식별에는 쓰지 않음. 실제 게임 양성 캡처와 사람이 확인한 정답은 아직 없음 |
+| `src/features/card-scanner/portrait-competitor-pins.json` | 위 특징의 SHA-256 1개 | 픽셀은 없음. 앱 번들에 포함되어 위 파일을 검증함 |
 | `public/scanner/screen-artwork-extra.json` | 사용자의 화면 공유에서 얻은 3종 20×10 회색조 원화 영역 4개 | 위와 같은 게임 화면 파생 자료 |
 | `public/scanner/screen-artwork-1080.json` | 사용자의 1920×1080 화면 공유에서 얻은 398종 20×10 회색조 원화 영역 | 위와 같은 게임 화면 파생 자료 |
 | `public/scanner/screen-artwork-0625.json` | 사용자의 1600×1200 화면 공유에서 얻은 397종 20×10 회색조 원화 영역 | 위와 같은 게임 화면 파생 자료 |
@@ -67,9 +82,11 @@
 | `public/growth/master.json` | 420종 성장 비용·각성 재료, 259개 도감의 구성·수집/각성 효과 | 클라이언트 DB를 읽어 생성한 숫자·명칭 데이터. 게임에 공개된 사실인지와 추출 경위, DB 이용 범위를 확인 |
 | `public/raid/master.json` | 93종 카드와 19개 레이드 세트, 구성·속성·단계 효과 | 위와 같은 DB 파생 자료. 원본 DB 파일은 아니지만 출처가 제거되는 것은 아님 |
 | `src/features/merchants/merchants.json` | 사용자 제공 기획 자료에서 정리한 22개 지역/상인 그룹과 판매 카드 | 개별 사실관계 자료 중심. 최초 원자료의 출처 보완·현재 게임 내용과 독립 검증 권장 |
-| `tests/fixtures/` | 19개 JSON, 합계 3,355,415바이트. 카드 크롭 RGBA, 회색조, 이름 마스크, 스크롤바 압축 픽셀, 보유량 수동 정답 등 | 게임 유래 표본은 우선 검토. 이름 가시성 마스크는 36개만 유지하며 옛 이름·장수 사전은 제거. 합성 `observation-plans.json`도 함께 집계한 크기다. 실제 RGBA/base64/zlib 표본을 복원하면 게임 화면 일부가 나옴. 합성 표본 대체 또는 허용 범위 확인을 검토하되 실제 화면의 가림·압축 회귀를 잃지 않도록 함 |
+| `tests/fixtures/` | Git 추적 JSON 26개, Git 저장 기준 합계 3,410,093바이트(2026-11-14 측정). 픽셀·마스크·원화 특징이 있는 파일은 15개다: `artwork-detail-samples`, `border-integrity-samples`, `compressed-empty-slots`, `count-five-k-eight`, `count-teal-artwork-band`, `counter-samples`, `empty-slot-samples`, `masked-portrait-corroboration`, `name-visibility-samples`, `portrait-corroboration`, `screen-portrait-regression`, `scrollbar-gray-sample`, `scrollbar-samples`, `shared-portrait-priority`, `star-samples`. 픽셀이 없는 파일은 11개다: `beskal-single-frame`(판정 결과), `border-alignment-equivalence`(좌표 기대값), `evaluation/` 4개(사람 확인 라벨 형식 검사), `first-row`, `manual-cards`, `manual-counters`, `manual-screenshot-cards`(수동 정답), `observation-plans`(합성 표본 해시). 2026-10-08 이후 추가한 픽셀 파일은 `screen-portrait-regression`(400칸 회색조 원화), `count-five-k-eight`(86×31 RGBA 장수 영역), `count-teal-artwork-band`(140×50 RGBA 장수 띠)다 | 게임 유래 표본은 우선 검토. 이름 가시성 마스크는 36개만 유지하며 옛 이름·장수 사전은 제거. 합성 `observation-plans.json`도 함께 집계한 크기다. Windows 작업 트리의 줄바꿈 변환으로 디스크 크기는 조금 다를 수 있다. 실제 RGBA/base64/zlib 표본을 복원하면 게임 화면 일부가 나옴. 합성 표본 대체 또는 허용 범위 확인을 검토하되 실제 화면의 가림·압축 회귀를 잃지 않도록 함 |
 
 이 목록의 우선순위는 검토 순서이며 위법 판정이나 정량적 법률 위험 점수가 아니다. 원화·UI 표현을 보존한 픽셀, 개별 숫자·사실 정보, 데이터베이스의 체계적 이용은 각각 다른 쟁점이다.
+
+아래 두 문단은 2026-10-08 초기 공개 전 정리 기록이다. 그 안의 파일 수와 테스트 수는 당시 측정값이며 현재 수와 다르다.
 
 미사용 자료 정리에서는 헤더 숫자·ORB·옛 숫자·중복 장수 atlas 4개와 외부 원화 다운로드 스크립트 2개를 제거했다. 뒷면 특징·아이콘 경로·미사용 보석 표본 33개도 제외해 해당 파일 묶음을 2,967,347바이트 줄였다. 중복 장수 검사는 실제 런타임 atlas로 통합했고, 삭제한 옛 데이터 자체를 확인하던 테스트 2개를 제거했다. 남은 테스트 376개·lint·build가 통과했다. 실제 사용하는 카드 특징·메타데이터와 보석 2개의 값이 정리 전과 같음을 대조했다. 이번 정리에서 전체 영상·실시간 화면 공유를 새로 실행하지는 않았다. 남은 게임 유래 자료의 권리 확인까지 완료한 것은 아니다.
 
@@ -81,16 +98,17 @@ Paddle 문자표는 저장소에 포함된 외부 소프트웨어 자료다. Ope
 
 ## 소프트웨어 점검과 보완
 
-1. `package-lock.json`의 production 의존성 120개를 목록화했다. MIT/BSD/ISC/Apache-2.0/MPL-2.0 선언을 확인했다. 이 수는 실제 웹 번들 구성 수가 아니며 네이티브 하위 코드를 모두 포함한 수도 아니다.
+1. `package-lock.json`에서 `dev`가 아닌 항목 127개를 목록화했다(2026-11-14). 선언된 라이선스는 MIT 101개, BSD-3-Clause 13개, Apache-2.0 7개, ISC 3개, BSD-2-Clause 1개, MPL-2.0 1개(`mediabunny`), 0BSD 1개(`tslib`)다. 생성된 `public/licenses/inventory.json`도 같은 127개와 같은 분포다. 이 수는 실제 웹 번들 구성 수가 아니며 네이티브 하위 코드를 모두 포함한 수도 아니다.
 2. `guid-typescript@1.0.9`, `tr46@0.0.3`은 ISC/MIT 선언은 있으나 원문 누락이 남아 있다. npm gitHead를 조사했고 tr46 해당 커밋에도 원문이 없었다. guid 해당 커밋은 현재 upstream에서 조회되지 않았다. 임의로 저작권자·연도를 만들어 원문을 채우지 않았다.
-3. 현재 Vite 빌드의 앱/Worker 모듈 549개와 `ort.wasm.bundle.min.mjs.map`, Tesseract `worker.min.js.map`에서 이 두 패키지 경로는 발견되지 않았다. 현재 정적 배포의 포함 근거가 없는 항목으로 분류하되 누락 보고서는 유지한다. Node 실행 파일·다른 ONNX 백엔드로 전환하면 재검토한다.
-4. Tesseract 워커에 이미 포함된 `buffer@6.0.3`, `base64-js@1.5.1`, `ieee754@1.2.1`은 앱 lockfile에 없었다. Tesseract 6.0.1의 npm gitHead `9d9b666ad5d253451857f4085763e2a9586e984f` lockfile → npm integrity → 워커 source map 소스 일치를 검증해 원문을 확보했다. 워커의 원본 `.LICENSE.txt`도 같은 경로로 복사하도록 수정했다.
-5. [ONNX Runtime 1.30.0 ThirdPartyNotices](https://github.com/microsoft/onnxruntime/blob/v1.30.0/ThirdPartyNotices.txt), Tesseract core 6.1.2의 고정 submodule 라이선스 9개, OpenCV 5.0.0의 protobuf/zlib/flatbuffers, tessdata 4.1.0 모델 원문과 Google Material Icons 원문을 추가했다. 총 19개 추가 원문을 해시와 출처로 관리한다. OpenCV 실제 파일은 설치 패키지와 바이트가 같고 build information에서 버전과 하위 라이브러리를 확인했다.
+3. 2026-10-08 Vite 빌드의 앱/Worker 모듈 549개와 `ort.wasm.bundle.min.mjs.map`, Tesseract `worker.min.js.map`에서 이 두 패키지 경로는 발견되지 않았다. 현재 정적 배포의 포함 근거가 없는 항목으로 분류하되 누락 보고서는 유지한다. Node 실행 파일·다른 ONNX 백엔드로 전환하면 재검토한다.
+4. Tesseract 워커에 이미 포함된 `buffer@6.0.3`, `base64-js@1.5.1`, `ieee754@1.2.1`은 앱 lockfile에 없었다. Tesseract 6.0.1의 npm gitHead `9d9b666ad5d253451857f4085763e2a9586e984f` lockfile → npm integrity → 워커 source map 소스 일치를 검증해 원문을 확보했다. 워커의 원본 `.LICENSE.txt`도 같은 경로로 복사하도록 수정했다. source map과 대조한 내장 라이브러리는 이 세 개뿐이다. 워커에 함께 들어 있는 `regenerator-runtime`과 `zlib.js`는 `.LICENSE.txt`의 고지만 있으며 소스 일치는 확인하지 않았다.
+5. [ONNX Runtime 1.30.0 ThirdPartyNotices](https://github.com/microsoft/onnxruntime/blob/v1.30.0/ThirdPartyNotices.txt), Tesseract core 6.1.2의 고정 submodule 라이선스 9개, OpenCV 5.0.0의 protobuf/zlib/flatbuffers, tessdata 4.1.0 모델 원문과 Google Material Icons 원문을 추가했다. 2026-10-08에는 항목 4의 3개와 합쳐 19개 추가 원문을 해시와 출처로 관리했다. 항목 9의 4개를 더해 현재 manifest 항목은 23개다. OpenCV 실제 파일은 설치 패키지와 바이트가 같고 build information에서 버전과 하위 라이브러리를 확인했다.
 6. Mediabunny 1.61.1의 설치된 원본 소스 70개 파일과 MPL 원문을 배포 페이지에서 제공한다. [Mozilla FAQ Q8·Q11·Q16·Q17](https://www.mozilla.org/en-US/MPL/2.0/FAQ/)에 따라 브라우저에 전달되는 minified JavaScript의 소스 제공과 파일 단위 적용 범위를 구분한다.
 7. PaddlePaddle 공식 [한국어 v5 모델](https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx)과 [숫자용 v6 모델](https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_rec_onnx)은 Apache-2.0으로 표시된다. 모델과 문자표의 고정 리비전·해시를 유지한다. 라이선스 선언 확인은 학습 데이터 전체의 권리 검증을 의미하지 않는다.
 8. `ffmpeg-static`은 로컬 입력 준비용 개발 의존성이다. FFmpeg 실행 파일은 Git/정적 배포에 포함하지 않는다. 추후 다운로드 패키지에 넣으면 해당 바이너리의 GPL/LGPL 및 구성별 조건을 별도로 확인한다.
+9. 무손실 입력 기록은 `lz4-wasm@0.9.2`를 사용한다. 초기화할 수 없는 환경은 `lz4-lite@1.1.2`로 처리한다. 두 npm 패키지는 MIT이며 npm 패키지의 MIT·Apache 원문을 보존한다. 설치된 WASM의 SHA-256은 준비 단계에서 검증한다. 공개 upstream에는 해당 사전 빌드의 `Cargo.lock`과 확인 가능한 npm `gitHead`가 없다. 따라서 내부 Rust 의존성의 정확한 잠금 버전은 확정하지 않았다. 선언된 `lz4_flex`, `wasm-bindgen`, `console_error_panic_hook`, `cfg-if`의 MIT 고지 4개를 manifest에 추가했다(2026-10-29). 이 고지는 정확한 바이너리 SBOM을 대신하지 않는다. 버전·WASM·선언이 바뀌면 재검토한다.
 
-추가 고지는 [manifest](../licenses/third-party/manifest.json)에 있으며 생성기가 패키지 버전·고지 해시·워커 내부 소스를 검사한다. 상위 프로젝트의 전체 고지는 웹 빌드에 없는 구성도 포함할 수 있다. 자체 재빌드로 네이티브 링크 대상 전체를 대조한 감사나 특허 검토는 수행하지 않았다. 상세 설치/생성 절차는 [데이터 유지보수](data-maintenance.md)를 따른다.
+추가 고지는 [manifest](../licenses/third-party/manifest.json)에 있으며(2026-11-14 기준 23개 항목) 생성기가 패키지 버전·고지 해시·워커 내부 소스를 검사한다. 상위 프로젝트의 전체 고지는 웹 빌드에 없는 구성도 포함할 수 있다. 자체 재빌드로 네이티브 링크 대상 전체를 대조한 감사나 특허 검토는 수행하지 않았다. 상세 설치/생성 절차는 [데이터 유지보수](data-maintenance.md)를 따른다.
 
 ## 개인정보·브랜드
 
@@ -112,6 +130,6 @@ GitHub Pages는 [공식 안내](https://docs.github.com/en/pages/getting-started
 
 ## 검증 범위
 
-재현 명령: `npm ci`, `npm run lint`, `npm test`, `npm run build`, `npm run audit:distribution`. 최초 권리 검토 시 테스트 378개, 미사용 코드·자료 정리 시 371개가 통과했다. 클라이언트 원화 전환과 떠돌이 상인 시간표를 추가한 뒤에는 376개다. 배포 폴더의 추가 고지 원문·manifest 해시, 워커 원본 고지, Mediabunny 소스 포함도 별도로 확인한다. 빌드의 기존 500 kB 초과 번들 경고는 라이선스 판정과 무관하다.
+재현 명령: `npm ci`, `npm run lint`, `npm test`, `npm run build`, `npm run audit:distribution`. 2026-10-08 초기 공개 시점에는 최초 권리 검토 시 테스트 378개, 미사용 코드·자료 정리 시 371개, 클라이언트 원화 전환과 떠돌이 상인 시간표 추가 후 376개가 통과했다. 이 수는 당시 측정값이며 이번 개정에서 다시 세지 않았다. 배포 폴더의 추가 고지 원문·manifest 해시, 워커 원본 고지, Mediabunny 소스 포함도 별도로 확인한다. 빌드의 기존 500 kB 초과 번들 경고는 라이선스 판정과 무관하다.
 
 현재 작업 트리와 생성한 정적 배포물을 검사했다. 원본 DB·영상·폰트·실행 파일의 추적 여부, 소스의 외부 요청 경로, 게임 자료의 출처, 직접·간접 의존성 및 사전 빌드된 주요 OCR 코드를 확인했다. Git 과거 전체 이력의 권리 관계, 모든 테스트 픽셀의 수작업 개인정보 검수, 420종 카드의 공개 여부 전수 확인은 이번 검토에 포함하지 않았다. 저장소 이력이나 공개 여부를 바꿔도 원자료의 권리 관계는 바뀌지 않는다.

@@ -48,7 +48,7 @@ test('the published uncertainty blocks CSV and all numeric calculation consumers
     steps:Array.from({length:5},(_,i)=>({copies:i+1,xp:0,silver:0}))}];
   const set: RaidSet = {id:'test',name:'test',alias:'test',role:'dealer',element:'general',slots:1,cardIds:[original.id],stages:[]};
   assert.equal(inventoryCsvIssues(cards).length,1);
-  assert.throws(()=>inventoryCsv(cards),/확인 필요/);
+  assert.throws(()=>inventoryCsv(cards),/못 읽은 카드/);
   assert.equal(remainingMerchantCopies(cards[0]),null);
   assert.deepEqual(trustedInventory({version:'test',cards:definitions,books:[],targets:[]},cards).valid,[]);
   assert.deepEqual(raidMembers(set,{version:'test',cards:definitions,sets:[set]},cards,true)

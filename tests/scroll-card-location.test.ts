@@ -24,7 +24,7 @@ test('moving, half-row and ambiguous geometry never claim an exact row',()=>{
   assert.equal(scrollCardLocation({position:1,pageSpan:4/35.5},0,true)?.row,undefined);
   assert.equal(scrollCardLocation(null,0,true),undefined);
   assert.equal(scrollCardLocation({position:NaN,pageSpan:.1},0,true),undefined);
-  assert.match(scrollLocationLabel(scrollCardLocation({position:.5,pageSpan:4/35},13,false)),/50%.*4열/);
-  assert.equal(scrollLocationLabel({percent:0,column:9}),'스크롤 약 0% · 9열');
+  assert.match(scrollLocationLabel(scrollCardLocation({position:.5,pageSpan:4/35},13,false)),/50%.*4번째 칸/);
+  assert.equal(scrollLocationLabel({percent:0,column:9}),'목록 0% 지점 · 9번째 칸쯤');
   assert.equal(scrollLocationLabel(undefined),'');
 });

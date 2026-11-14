@@ -1,7 +1,7 @@
 import type {LiveCaptureDecision,LiveCaptureReleaseEvent} from '../capture/live-capture-pipeline';
 import type {CandidateAdmission} from '../acquisition/candidate-queue';
 
-export const LIVE_INPUT_LOSS_MESSAGE='일부 화면을 놓쳤습니다. 스크롤을 천천히 하거나 공유 해상도를 낮춘 뒤 다시 스캔해 주세요.';
+export const LIVE_INPUT_LOSS_MESSAGE='일부 화면을 놓쳤어요. 스크롤을 더 천천히 하면서 다시 스캔해 주세요.';
 export type InputLossReason='freeze-failed'|'capacity'|'rejected'|'pipeline-error'|'not-ready'|'zero-dimensions'|'completion-paused'|'queue-full';
 export interface InputLossFact {version:1;inputId:number;captureTime:number;reason:InputLossReason}
 const reasons:readonly InputLossReason[]=['freeze-failed','capacity','rejected','pipeline-error','not-ready','zero-dimensions','completion-paused','queue-full'];

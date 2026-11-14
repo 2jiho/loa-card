@@ -6,7 +6,7 @@ import {rowCanStopSharing,rowScannerState,smallScreenNotice} from './row-scanner
 import {stopCompletedShare} from '../session/auto-completion';
 import {inputScale} from '../acquisition/detector';
 
-/** The row-centred scan behind the scanner's interface (docs/scanner-live-redesign.md, section 13).
+/** The row-centred scan behind the scanner's interface (docs/scanner-pipeline.md).
  *
  * The scan of every screen share: `runScanner` (orchestration/scanner.ts) runs it under the scan
  * guard and the name operation, with the development recorder around it. It reads a live screen share and

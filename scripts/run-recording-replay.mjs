@@ -7,19 +7,18 @@
 // live-path modes unfaithful; use this runner for those.
 //
 // Usage:
-//   node scripts/run-recording-replay.mjs --id <recording-id> [--id <id2> ...] [--mode sequential|realtime|realtime-detailed|realtime-batch]
-//        [--port 5199] [--timeout 600] [--browser <path to chrome or edge>] [--log <file>] [--until <seconds>] [--json] [--cpuprofile <file.cpuprofile>] [--query "name=value"]
-// --cpuprofile: CPU profiles of the sharing phase (live-path modes, one --id): the main thread in <file>, and
+//   node scripts/run-recording-replay.mjs --id <recording-id> [--id <id2> ...] [--mode rowlive|realtime|...]
+//        [--port 5173] [--timeout 600] [--browser <path to chrome or edge>] [--log <file>] [--until <seconds>] [--json] [--cpuprofile <file.cpuprofile>] [--query "name=value"]
+// --cpuprofile: CPU profiles of the sharing phase (realtime, one --id): the main thread in <file>, and
 //        each worker in <file minus .cpuprofile>.<worker script>-<n>.cpuprofile. Open them in
 //        Chrome DevTools or summarize it with scripts/summarize-cpuprofile.mjs.
-// Modes: skip:mean=1,block=6,force=8 (sequential replay that leaves out frames similar to the last processed one; experiment),
-//        sequential (default, deterministic), realtime (live path, recording off = deployed app),
-//        realtime-detailed (live path with the detailed input recording on = development default),
+// Modes: realtime (the app's scan, runScanner, on the recording at its own pace),
 //        lean (prototype measurement of the acquisition and visual workers alone; not a scan),
 //        rows (per-frame row observations for the row-centred design feasibility measurement; not a scan),
 //        rowread (row-centred reading prototype: reads only the rows the list table lacks; not a scan),
 //        rowlight (rowread with a light per-frame check that skips frames needing nothing; not a scan),
-//        rowlive (rowread with name reading, fed in real time from the newest shown frame; not a scan),
+//        rowlive (default: the row-centred scan run directly at the recording's pace, with the
+//        progress window's timeline in the report),
 //        artfail (the artwork matcher's own numbers for the crops it rejects; not a scan),
 //        gridfit (grid measurement: the client border outline laid over every visible card; needs the private work/ extracts),
 //        cardmap (card layout measurement: crops lined up with the client border and stacked; needs the private work/ extracts).
@@ -31,14 +30,15 @@ import {join} from 'node:path';
 const args=process.argv.slice(2);
 const values=(name)=>args.flatMap((value,index)=>value===name&&args[index+1]?[args[index+1]]:[]);
 const value=(name,fallback)=>values(name)[0]??fallback;
-const ids=values('--id'),mode=value('--mode','sequential'),port=Number(value('--port','5199')),timeoutSec=Number(value('--timeout','600'));
+const ids=values('--id'),mode=value('--mode','rowlive'),port=Number(value('--port','5173')),timeoutSec=Number(value('--timeout','600'));
 const asJson=args.includes('--json');
 const until=value('--until',null); // end the share after this recorded time (seconds): a share that stops while the card window is still shown
 const extraQuery=value('--query',null); // extra page parameters for experiments, e.g. "rescue=direct"
 const cpuProfile=value('--cpuprofile',null),debugPort=Number(value('--debug-port','9339'));
 const logFile=value('--log',null); // browser console and error output, for diagnosing a failed run
-if(!ids.length){console.error('usage: node scripts/run-recording-replay.mjs --id <recording-id> [--mode sequential|realtime|realtime-detailed|realtime-batch]');process.exit(2);}
-if(!['sequential','realtime','realtime-detailed','realtime-batch','lean','rows','rowread','rowlight','rowlive','cardmap','gridfit','artfail'].includes(mode)&&!mode.startsWith('skip:')){console.error(`unknown mode: ${mode}`);process.exit(2);}
+const MODES=['rowlive','realtime','lean','rows','rowread','rowlight','cardmap','gridfit','artfail'];
+if(!ids.length){console.error(`usage: node scripts/run-recording-replay.mjs --id <recording-id> [--mode ${MODES.join('|')}] [--port 5173]`);process.exit(2);}
+if(!MODES.includes(mode)){console.error(`unknown mode: ${mode}`);process.exit(2);}
 
 function findBrowser() {
   const explicit=value('--browser',process.env.CHROME_PATH);

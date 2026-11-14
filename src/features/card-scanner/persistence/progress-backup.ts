@@ -33,7 +33,7 @@ function openProgress(factory: () => IDBFactory, timeoutMs: number) {
       clearTimeout(timer);
       reject(error);
     };
-    const timer = setTimeout(() => fail(new Error('진행 기록 저장소 응답 시간이 초과됐습니다.')), timeoutMs);
+    const timer = setTimeout(() => fail(new Error('진행 기록 저장소가 응답하지 않아요.')), timeoutMs);
     try {
       const request = factory().open(DB, 1);
       request.onupgradeneeded = () => {
@@ -47,8 +47,8 @@ function openProgress(factory: () => IDBFactory, timeoutMs: number) {
         request.result.onversionchange = () => request.result.close();
         resolve(request.result);
       };
-      request.onerror = () => fail(request.error ?? new Error('진행 기록 저장소를 열 수 없습니다.'));
-      request.onblocked = () => fail(new Error('다른 탭이 진행 기록 저장소를 사용하고 있습니다.'));
+      request.onerror = () => fail(request.error ?? new Error('진행 기록 저장소를 열지 못했어요.'));
+      request.onblocked = () => fail(new Error('다른 LoaCard 탭이 진행 기록 저장소를 쓰고 있어요.'));
     } catch (error) { fail(error); }
   });
 }
@@ -73,9 +73,9 @@ export function createProgressBackup(factory: () => IDBFactory = () => indexedDB
             finish(error);
             try { transaction.abort(); } catch { /* Already finished. */ }
           };
-          const timer = setTimeout(() => fail(new Error('진행 기록 저장 응답 시간이 초과됐습니다.')), timeoutMs);
+          const timer = setTimeout(() => fail(new Error('진행 기록 저장이 끝나지 않았어요.')), timeoutMs);
           transaction.oncomplete = () => finish();
-          transaction.onabort = transaction.onerror = () => finish(transaction.error ?? new Error('진행 기록 저장 실패'));
+          transaction.onabort = transaction.onerror = () => finish(transaction.error ?? new Error('진행 기록을 저장하지 못했어요.'));
           if (mode === 'save') {
             const snapshot = progressSnapshotState(state!);
             store.put({ version: 1, savedAt: Date.now(), state: snapshot } satisfies ProgressRecord, KEY);
@@ -87,13 +87,13 @@ export function createProgressBackup(factory: () => IDBFactory = () => indexedDB
             if (settled || request.result === undefined) return;
             const stored = request.result as ProgressRecord;
             if (!stored || stored.version !== 1 || !Number.isFinite(stored.savedAt) || !isState(stored.state)) {
-              fail(new Error('저장된 진행 기록을 읽을 수 없습니다.'));
+              fail(new Error('저장된 진행 기록을 읽지 못했어요.'));
               return;
             }
             try {
               result = { savedAt: stored.savedAt, state: progressSnapshotState(stored.state) };
             } catch {
-              fail(new Error('저장된 진행 기록을 읽을 수 없습니다.'));
+              fail(new Error('저장된 진행 기록을 읽지 못했어요.'));
             }
           };
         });
@@ -105,7 +105,7 @@ export function createProgressBackup(factory: () => IDBFactory = () => indexedDB
   return {
     load: () => access('load'),
     save: (state: ScannerState) => {
-      if (!isState(state)) return Promise.reject(new Error('저장할 진행 기록 형식이 올바르지 않습니다.'));
+      if (!isState(state)) return Promise.reject(new Error('저장할 진행 기록이 올바르지 않아요.'));
       return access('save', state).then(() => undefined);
     },
     clear: () => access('clear').then(() => undefined),

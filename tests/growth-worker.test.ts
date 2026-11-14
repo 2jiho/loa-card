@@ -12,7 +12,7 @@ test('unresponsive calculation returns a timeout and terminates exactly once',as
  const worker=new FakeWorker(),results:unknown[]=[];
  runGrowthWorker(worker,request,result=>results.push(result),5);
  await new Promise(resolve=>setTimeout(resolve,20));
- assert.equal(results.length,1);assert.match(JSON.stringify(results),/시간/);assert.equal(worker.terminated,1);
+ assert.equal(results.length,1);assert.match(JSON.stringify(results),/오래 걸려/);assert.equal(worker.terminated,1);
  worker.onmessage?.call(worker as unknown as Worker,{data:{result:{collectionCandidates:[]}}} as MessageEvent);
  assert.equal(results.length,1);
 });

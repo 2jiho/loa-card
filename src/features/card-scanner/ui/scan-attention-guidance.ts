@@ -13,9 +13,9 @@ export function attentionScanMode(input:{sharing:boolean;busy:boolean;queued?:nu
 }
 
 export function attentionCardAdvice(mode:AttentionScanMode):string {
-  if(mode==='processing')return '스캔 처리가 진행 중이에요. 처리가 끝난 뒤에도 남으면 다시 확인해 주세요.';
-  if(mode==='sharing')return '커서와 툴팁을 카드 밖으로 옮기고 해당 카드를 다시 보여 주세요.';
-  return '화면 공유를 다시 시작하고 커서와 툴팁을 카드 밖으로 옮긴 뒤 해당 카드를 보여 주세요.';
+  if(mode==='processing')return '아직 읽는 중이에요. 다 읽은 뒤에도 남으면 다시 확인해 주세요.';
+  if(mode==='sharing')return '커서와 툴팁을 카드 밖으로 옮기고 이 카드를 다시 보여 주세요.';
+  return '커서와 툴팁을 카드 밖으로 옮기고 다시 스캔해 주세요.';
 }
 
 /** Explain only a current unresolved observation, never a preserved older
@@ -26,7 +26,7 @@ export function attentionCountAdvice(card:ScannedCard,pending:PendingCardFields|
   const diagnostic=pending.countDiagnostics;
   if(diagnostic?.reliability!=='unconfirmed'||diagnostic.pattern?.value!==null||
       diagnostic.pattern.reason!=='장수 숫자 미검출 또는 불명확')return null;
-  return '장수 숫자를 확인하지 못했어요. 카드의 장수 표시를 확인해 주세요.';
+  return '장수 숫자를 읽지 못했어요. 숫자가 가려지지 않았는지 봐 주세요.';
 }
 
 /** Optional diagnostics explain an existing unresolved observation only.
@@ -34,7 +34,7 @@ export function attentionCountAdvice(card:ScannedCard,pending:PendingCardFields|
 export function unidentifiedReferenceAdvice(diagnostics:PortraitDiagnostics|null|undefined):string|null {
   return diagnostics?.some(call=>call.diagnostic.outcome==='rejected'&&
     call.diagnostic.reason==='missing-competitor-reference')
-    ?'유사 카드 비교 자료 부족' : null;
+    ?'비슷한 카드와 비교할 자료가 없음' : null;
 }
 
 /** Pending observations are still being read; only finished unidentified
@@ -43,13 +43,14 @@ export function unidentifiedAttention<T extends {pending:boolean;location?:Scrol
   const unresolved=entries.filter(entry=>!entry.pending);
   const withLocation=unresolved.filter(entry=>!!entry.location).length;
   if(!unresolved.length)return {unresolved,advice:undefined,hasLocation:false};
-  if(mode==='processing'&&!sharing)return {unresolved,advice:'스캔 처리가 진행 중이에요. 처리가 끝난 뒤에도 남은 항목을 확인해 주세요.',hasLocation:withLocation>0};
-  const area=withLocation===unresolved.length?'표시된 추정 위치 부근을':withLocation?'표시된 추정 위치 부근을 보여 주고, 위치가 없는 입력은 목록 전체를':'카드 목록 전체를';
-  if(mode==='processing')return {unresolved,advice:`판독 중에도 ${area} 다시 보여 주세요. 툴팁과 커서는 치워 주세요.`,hasLocation:withLocation>0};
+  if(mode==='processing'&&!sharing)return {unresolved,advice:'아직 읽는 중이에요. 다 읽은 뒤에도 남은 화면만 확인하면 돼요.',hasLocation:withLocation>0};
+  const area=withLocation===unresolved.length?'표시된 위치 근처를':withLocation?'표시된 위치 근처와 목록 전체를':'카드 목록 전체를';
+  if(mode==='processing')return {unresolved,advice:`${area} 다시 보여 주세요. 커서와 툴팁은 카드 밖으로 옮겨 주세요.`,hasLocation:withLocation>0};
   const live=mode==='sharing'||sharing;
-  const prefix=live?'툴팁과 커서를 치우고':'화면 공유를 다시 시작하고 툴팁과 커서를 치운 뒤';
-  const retry=live?' 계속 남으면 화면 공유를 종료한 뒤 새 스캔을 시작해 주세요.':'';
-  return {unresolved,advice:`${prefix} ${area} 천천히 다시 보여 주세요.${retry}`,hasLocation:withLocation>0};
+  // After the share a new scan reads the whole list again, so no place is named.
+  const advice=live?`커서와 툴팁을 카드 밖으로 옮기고 ${area} 천천히 다시 보여 주세요. 그래도 남으면 공유를 끝내고 다시 스캔해 주세요.`
+    :'커서와 툴팁을 카드 밖으로 옮기고 다시 스캔해 주세요.';
+  return {unresolved,advice,hasLocation:withLocation>0};
 }
 
 /** Preserve a failed field observation even when no matching card has been

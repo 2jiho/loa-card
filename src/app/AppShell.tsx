@@ -41,9 +41,9 @@ export function AppShell(props: {
         }}><span className="brand-icon" aria-hidden="true">
           <img src={`${import.meta.env.BASE_URL}favicon.svg`} width="28" height="30" alt="" />
         </span>LoaCard</a>
-        <div className="header-tools"><span className={`local-status ${busy || csvReading ? 'is-active' : ''}`} role="status" title="카드 인식은 현재 브라우저에서 실행됩니다.">
+        <div className="header-tools"><span className={`local-status ${busy || csvReading ? 'is-active' : ''}`} role="status" title="카드는 이 브라우저 안에서만 읽어요. 공유한 화면을 서버로 보내지 않아요.">
           {busy || csvReading ? <span className="scan-spinner" aria-hidden="true" /> : <span className="status-dot" aria-hidden="true" />}
-          {csvReading ? 'CSV 확인 중' : busy ? engineReady ? '브라우저에서 분석 중' : '분석 준비 중' : '로컬 처리'}
+          {csvReading ? 'CSV 읽는 중' : busy ? engineReady ? '이 브라우저에서 읽는 중' : '스캔 준비 중' : '내 PC에서만 처리'}
         </span><Button color="inherit" startIcon={<HelpOutline />} onClick={() => onGuideOpen()}>사용법</Button>
         <Tooltip title="GitHub 저장소 (새 탭)"><IconButton component="a" href="https://github.com/2jiho/loa-card" target="_blank" rel="noopener noreferrer" aria-label="GitHub 저장소 (새 탭)"><GitHub fontSize="small" /></IconButton></Tooltip><ThemeToggle />
         </div>

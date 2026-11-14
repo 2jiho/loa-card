@@ -2,6 +2,8 @@
 
 LoaCard 작성 코드와 문서는 [MIT](LICENSE)로 제공한다. 아래 외부 코드·모델·게임 유래 자료에는 해당 권리자의 조건이 적용되며 프로젝트 MIT로 재허가하지 않는다.
 
+루트 `LICENSE`는 MIT 원문이다. GitHub은 저장소 전체를 MIT로 표시하지만, MIT는 프로젝트가 작성한 코드와 문서에만 적용된다. `public/scanner/*`, `public/growth/*`, `public/raid/*`, `tests/fixtures/*`는 MIT 대상이 아니다. 이 자료는 아래 [게임과 데이터](#게임과-데이터)와 [권리 검토](docs/legal-review.md)의 실물 목록에 설명한다. 파일별 출처는 `public/scanner/NOTICE.txt`에 있다. 같은 디렉터리의 `LICENSE-*.txt`는 외부 소프트웨어의 라이선스 원문이다.
+
 ## 소프트웨어와 모델
 
 | 구성 | 라이선스 | 출처 |
@@ -10,6 +12,7 @@ LoaCard 작성 코드와 문서는 [MIT](LICENSE)로 제공한다. 아래 외부
 | MUI / 아이콘 | MIT | https://github.com/mui/material-ui |
 | Google Material Icons 원본 SVG | Apache-2.0 | https://github.com/google/material-design-icons |
 | Emotion | MIT | https://github.com/emotion-js/emotion |
+| Motion (`motion` 14.3.0, `framer-motion` 14.3.0, `motion-dom` 14.3.0, `motion-utils` 14.1.1) | MIT | https://github.com/motiondivision/motion |
 | Mediabunny | MPL-2.0 | https://github.com/Vanilagy/mediabunny |
 | lz4-lite / lz4-wasm | MIT | https://github.com/alex-vukov/lz4-lite · https://github.com/PSeitz/lz4-wasm |
 | @noble/hashes 1.8.0 (개발 전용) | MIT | https://github.com/paulmillr/noble-hashes |
@@ -30,7 +33,7 @@ Mediabunny는 수정하지 않은 npm 패키지를 사용한다. 빌드에 사�
 
 2026-10-08 웹 빌드의 앱·Worker 모듈과 사용 중인 ONNX WASM/Tesseract 워커의 source map에서는 위 두 패키지가 발견되지 않았다. 이 결과는 현재 브라우저 배포 경로에 한정하며, 해당 패키지 자체의 라이선스 원문 누락을 해결한 것은 아니다. Node 경로 또는 다른 ONNX 백엔드를 배포하면 다시 검사한다.
 
-`licenses/third-party/manifest.json`은 사전 빌드된 워커/WASM과 모델의 추가 고지 원문·출처·SHA-256을 관리한다. `npm run notices`가 파일과 관련 패키지 버전을 검증하고 `public/licenses/supplemental/` 및 원문 모음에 포함한다. Tesseract 워커의 `buffer`, `base64-js`, `ieee754`는 상위 패키지 lockfile과 npm 무결성, source map의 소스 일치로 확인했다. `worker.min.js.LICENSE.txt`도 워커와 함께 배포한다.
+`licenses/third-party/manifest.json`은 사전 빌드된 워커/WASM과 모델의 추가 고지 원문·출처·SHA-256을 관리한다. `npm run notices`가 파일과 관련 패키지 버전을 검증하고 `public/licenses/supplemental/` 및 원문 모음에 포함한다. Tesseract 워커의 `buffer`, `base64-js`, `ieee754`는 상위 패키지 lockfile과 npm 무결성, source map의 소스 일치로 확인했다. 워커 source map과 대조한 내장 라이브러리는 이 세 개뿐이다. 워커에는 `regenerator-runtime`과 `zlib.js`도 들어 있다. 이 둘의 고지는 `worker.min.js.LICENSE.txt`에만 있으며 소스 일치는 확인하지 않았다. `worker.min.js.LICENSE.txt`도 워커와 함께 배포한다.
 
 ONNX Runtime의 버전별 전체 ThirdPartyNotices, Tesseract core의 고정 submodule 고지, OpenCV 빌드 정보에 나온 protobuf/zlib/flatbuffers 고지와 tessdata 모델 원문을 보존한다. 상위 프로젝트의 전체 고지는 웹 빌드에 포함되지 않은 구성도 다루므로 전체 바이너리 구성표(SBOM)와 동일하지 않다. Tesseract core includes software based in part on the work of the Independent JPEG Group. Google Material Icons는 MUI가 SVG 컴포넌트로 변환한 아이콘이며 Google 원본의 Apache-2.0과 MUI 패키지 MIT를 구분한다.
 
@@ -43,7 +46,7 @@ Lost Ark의 카드 원화·게임 UI·명칭 및 관련 게임 자산의 권리�
 다음 자료는 이미지가 JSON/base64/특징 벡터로 변환되어 있어도 자동으로 프로젝트 MIT 대상이 되지 않는다.
 
 - `public/scanner/growth-tab.png`, `header-anchor.png`: 게임 UI 일부.
-- `public/scanner/cards.json`, `artwork-details.json`, `screen-artwork-details.json`, `screen-artwork-extra.json`, `screen-artwork-1080.json`, `screen-artwork-0625.json`, `portrait-competitors.json`, `counter-patterns.json`, `stars.json`: 카드 메타데이터 및 원화·UI에서 유래한 인식 자료.
+- `public/scanner/cards.json`, `artwork-details.json`, `screen-artwork-details.json`, `screen-artwork-extra.json`, `screen-artwork-1080.json`, `screen-artwork-0625.json`, `portrait-competitors.json`, `counter-patterns.json`, `stars.json`, `artwork-provenance.json`, `artwork/*.webp`: 카드 메타데이터 및 원화·UI에서 유래한 인식 자료.
 - `public/growth/master.json`, `public/raid/master.json`, `src/features/merchants/merchants.json`: 게임 데이터 기반 마스터.
 - `tests/fixtures/`: 게임 화면에서 자른 픽셀, 이름 마스크, 특징과 수동 라벨. 일부 JSON에서 이미지를 복원할 수 있다. 별도의 합성 테스트 자료도 있지만 실제 화면에서 얻은 표본의 권리가 바뀌는 것은 아니다.
 

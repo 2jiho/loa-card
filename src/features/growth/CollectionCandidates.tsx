@@ -56,7 +56,7 @@ export function CollectionCandidates({ candidates, targetName, onComplete, disab
         {a.xpShortfall > 0 && <p className="growth-collection-note">경험치 {number(a.xpShortfall)} 부족</p>}
         <p className="growth-step-total"><span>실행 누적 경험치 {number(a.usedXp)} · 효과 +{(a.gained / 100).toFixed(2)}%p{c.status !== 'ready' ? ' · 이 단계 제외' : ''}</span>
           <span>남은 경험치 {number(a.remainingXp)}</span></p>
-        {a.conditional && <p className="growth-collection-note">미등록 가정 · 부족 장수에 등록용 1장 포함</p>}
+        {a.conditional && <p className="growth-collection-note">아직 등록하지 않은 카드로 계산했어요. 모자란 장수에 등록할 1장이 들어 있어요.</p>}
       </div>
     </details>
     {c.status === 'ready' && a.cards.length>0 && <button className="secondary growth-complete-button" disabled={disabled || c !== firstReady}
@@ -64,6 +64,6 @@ export function CollectionCandidates({ candidates, targetName, onComplete, disab
       title={c === firstReady ? '게임에서 표시된 카드의 성장을 모두 마친 뒤 눌러 주세요.' : '앞의 금색 단계를 먼저 완료해 주세요.'}
       onClick={() => onComplete(c)}>성장 완료</button>}
     </div>; })}
-    {!candidates.length && <p>성장 후보 없음 · 최대 효과 또는 카드 확인 필요</p>}
+    {!candidates.length && <p>성장할 카드가 없어요. 이미 최대 효과이거나, 못 읽은 카드가 있어요.</p>}
   </section>;
 }

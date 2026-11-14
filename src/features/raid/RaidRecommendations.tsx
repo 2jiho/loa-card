@@ -22,8 +22,8 @@ function Choice({ choices, preferred, unavailable, grow, xp, onSelect }: { choic
       <strong>{choice.set.alias} {choice.total}각</strong><span>{choice.set.role === 'support' ? '카드 효과' : '피해 증가'} +{percent(displayedBoost(choice))}%</span>
       <ComparisonBasis choice={choice} />
       <small>{unavailable ? '속성 세트가 준비되기 전 사용할 수 있어요.' : best ? `${best.set.alias}보다 실효율 약 +${percent(choice.boost - best.boost)}%p` : '주요 세트의 피해 증가 효과를 달성하기 전 사용할 수 있어요.'}
-        {choice.uncertain ? ' · 확인된 카드 기준' : ''}</small>
-      {grow && choice.xp > 0 && <small>필요 경험치 {choice.xp.toLocaleString()} · {xp === undefined ? '보유 경험치 미확인' : choice.xp > xp ? '경험치 부족' : '지금 성장 가능'}</small>}
+        {choice.uncertain ? ' · 읽은 카드로만 계산' : ''}</small>
+      {grow && choice.xp > 0 && <small>필요 경험치 {choice.xp.toLocaleString()} · {xp === undefined ? '보유 경험치 모름' : choice.xp > xp ? '경험치 부족' : '지금 성장 가능'}</small>}
     </div>)}
   </section>;
   if (!best) return <div className="raid-choice is-empty"><span className="raid-choice-label">{grow ? '보유 카드로 성장 후' : '지금 사용할 세트'}</span><strong>주요 세트의 효과 미달성</strong><small>아래에서 세트별 부족한 카드를 확인하세요.</small>{explanation}</div>;
@@ -34,8 +34,8 @@ function Choice({ choices, preferred, unavailable, grow, xp, onSelect }: { choic
       <span><strong>{best.set.alias}</strong><b>{best.total}각</b></span><span className="raid-choice-gain">+{percent(displayedBoost(best))}<small>%</small></span>
     </button>
     {!unavailable && <ComparisonBasis choice={best} />}
-    <div className="raid-choice-meta"><span>{unavailable ?? (grow && best.xp > 0 ? `경험치 ${best.xp.toLocaleString()}` : grow ? '추가 성장 불필요' : '현재 각성 효과')}{best.uncertain ? ' · 확인된 카드 기준' : ''}</span>
-      {grow && best.xp > 0 && <span className={xp === undefined ? '' : best.xp > xp ? 'needs-xp' : 'ready'}>{xp === undefined ? '경험치 미확인' : best.xp > xp ? '경험치 부족' : '지금 성장 가능'}</span>}</div>
+    <div className="raid-choice-meta"><span>{unavailable ?? (grow && best.xp > 0 ? `경험치 ${best.xp.toLocaleString()}` : grow ? '추가 성장 불필요' : '현재 각성 효과')}{best.uncertain ? ' · 읽은 카드로만 계산' : ''}</span>
+      {grow && best.xp > 0 && <span className={xp === undefined ? '' : best.xp > xp ? 'needs-xp' : 'ready'}>{xp === undefined ? '보유 경험치 모름' : best.xp > xp ? '경험치 부족' : '지금 성장 가능'}</span>}</div>
     {ties.length > 1 && <small>같은 효과의 세트 {ties.length - 1}개 더 있음</small>}
     {grow && !unavailable && best.maximum > best.total && <small>최대 {best.maximum}각 가능 · 다음 효과 미달</small>}
     {explanation}
@@ -58,7 +58,7 @@ export function RaidRecommendations({ master, cards, complete, role, element, bo
   const current = matchingChoice(choices.current, false);
   const growth = matchingChoice(choices.growth, true);
   const unavailable = (choice?: RaidComparison) => choice?.boost === 0 && matchingProgress ? matchingProgress.selected.length < choice.set.slots
-    ? `구성 카드 ${choice.set.slots - matchingProgress.selected.length}종 ${matchingProgress.unknown ? '미확인' : '미등록'}` : '피해 증가 효과 미달성' : undefined;
+    ? `구성 카드 ${choice.set.slots - matchingProgress.selected.length}종 ${matchingProgress.unknown ? '못 읽음' : '미등록'}` : '피해 증가 효과 미달성' : undefined;
   return <div className="raid-recommendations" aria-label={`${ELEMENTS[element]}속성 추천`}>
     <Choice choices={choices.current} preferred={current} unavailable={unavailable(current)} grow={false} onSelect={onSelect} />
     <Choice choices={choices.growth} preferred={growth} unavailable={unavailable(growth)} grow xp={xp} onSelect={onSelect} />

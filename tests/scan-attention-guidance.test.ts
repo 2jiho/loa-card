@@ -11,8 +11,8 @@ test('count advice uses only the newest unresolved structured field observation'
   const pattern={value:null,candidate:null,score:0,gap:0,reason:'장수 숫자 미검출 또는 불명확'};
   const countDiagnostics={maximum:15,reason:'숫자 획 부족',readings:[],reliability:'unconfirmed' as const,pattern};
   const pending:PendingCardFields={id:'1',name:'card',image:'',time:2,captureOrder:11,reason:'추가 장수 확인',countDiagnostics};
-  assert.equal(attentionCountAdvice(card,pending),'장수 숫자를 확인하지 못했어요. 카드의 장수 표시를 확인해 주세요.');
-  assert.equal(attentionCountAdvice({...card,captureOrder:11},pending),'장수 숫자를 확인하지 못했어요. 카드의 장수 표시를 확인해 주세요.');
+  assert.equal(attentionCountAdvice(card,pending),'장수 숫자를 읽지 못했어요. 숫자가 가려지지 않았는지 봐 주세요.');
+  assert.equal(attentionCountAdvice({...card,captureOrder:11},pending),'장수 숫자를 읽지 못했어요. 숫자가 가려지지 않았는지 봐 주세요.');
   assert.equal(attentionCountAdvice(card,undefined),null);
   assert.equal(attentionCountAdvice(card,{...pending,id:'2'}),null);
   assert.equal(attentionCountAdvice(card,{...pending,captureOrder:9}),null);
@@ -25,7 +25,7 @@ test('count advice uses only the newest unresolved structured field observation'
   assert.equal(attentionCountAdvice(card,{...pending,countDiagnostics:{...countDiagnostics,pattern:undefined}}),null);
   const observation={card:{...card,captureOrder:11,countDiagnostics},borderAlignment:1};
   const visible=pendingScanFields([observation],{latest:new Map([['1',11]]),confirmed:new Map()});
-  assert.equal(attentionCountAdvice(card,visible[0]),'장수 숫자를 확인하지 못했어요. 카드의 장수 표시를 확인해 주세요.');
+  assert.equal(attentionCountAdvice(card,visible[0]),'장수 숫자를 읽지 못했어요. 숫자가 가려지지 않았는지 봐 주세요.');
   const stale=pendingScanFields([observation],{latest:new Map([['1',12]]),confirmed:new Map()});
   assert.equal(attentionCountAdvice(card,stale[0]),null,'a newer observation excludes old diagnostics');
   const resolved=pendingScanFields([observation],{latest:new Map([['1',11]]),confirmed:new Map([['1',11]])});
@@ -39,7 +39,7 @@ test('only a rejected missing competitor diagnostic explains that a re-scan may 
   assert.equal(unidentifiedReferenceAdvice([]),null);
   assert.equal(unidentifiedReferenceAdvice(calls('rejected','all-stages-rejected')),null);
   assert.equal(unidentifiedReferenceAdvice(calls('accepted','missing-competitor-reference')),null);
-  assert.match(unidentifiedReferenceAdvice(calls('rejected','missing-competitor-reference'))!,/유사 카드/);
+  assert.match(unidentifiedReferenceAdvice(calls('rejected','missing-competitor-reference'))!,/비슷한 카드/);
 });
 
 test('unidentified guidance appears only for final unresolved inputs, never for pending or empty input',()=>{
@@ -48,8 +48,8 @@ test('unidentified guidance appears only for final unresolved inputs, never for 
   assert.equal(unidentifiedAttention([pending]).advice,undefined);
   const result=unidentifiedAttention([pending,final]);
   assert.deepEqual(result.unresolved,[final]);
-  assert.match(result.advice!,/툴팁과 커서/);
-  assert.match(result.advice!,/계속 남으면 화면 공유를 종료한 뒤 새 스캔/);
+  assert.match(result.advice!,/커서와 툴팁/);
+  assert.match(result.advice!,/그래도 남으면 공유를 끝내고 다시 스캔/);
 });
 
 test('rescan advice waits for queued work and distinguishes stopped screen sharing',()=>{
@@ -61,19 +61,19 @@ test('rescan advice waits for queued work and distinguishes stopped screen shari
   assert.equal(attentionScanMode({...live,queued:-1}),'processing');
   assert.equal(attentionScanMode({...live,sharing:false}),'processing');
   assert.equal(attentionScanMode({...live,sharing:false,busy:false}),'restart');
-  assert.match(attentionCardAdvice('processing'),/처리/);
-  assert.doesNotMatch(attentionCardAdvice('processing'),/보여 주세요|공유를 다시 시작/);
-  assert.match(attentionCardAdvice('restart'),/화면 공유를 다시 시작/);
+  assert.match(attentionCardAdvice('processing'),/아직 읽는 중/);
+  assert.doesNotMatch(attentionCardAdvice('processing'),/보여 주세요|다시 스캔해/);
+  assert.match(attentionCardAdvice('restart'),/다시 스캔해 주세요/);
 });
 
 test('unknown inputs without a location request the whole list; estimated locations remain estimates',()=>{
   const unknown={pending:false},located={pending:false,location:{percent:42,column:4,row:18}};
   const during=unidentifiedAttention([unknown,located],'processing');
-  assert.match(during.advice!,/처리/);assert.doesNotMatch(during.advice!,/다시 보여/);
+  assert.match(during.advice!,/아직 읽는 중/);assert.doesNotMatch(during.advice!,/다시 보여/);
   assert.match(unidentifiedAttention([unknown],'sharing').advice!,/목록 전체/);
-  assert.match(unidentifiedAttention([located],'sharing').advice!,/추정 위치/);
-  assert.match(unidentifiedAttention([located,unknown],'sharing').advice!,/위치가 없는 입력은 목록 전체/);
-  assert.match(unidentifiedAttention([unknown],'restart').advice!,/화면 공유를 다시 시작/);
+  assert.match(unidentifiedAttention([located],'sharing').advice!,/표시된 위치 근처를/);
+  assert.match(unidentifiedAttention([located,unknown],'sharing').advice!,/위치 근처와 목록 전체/);
+  assert.match(unidentifiedAttention([unknown],'restart').advice!,/다시 스캔해 주세요/);
   assert.equal(unidentifiedAttention([unknown],'restart').hasLocation,false);
   assert.equal(unidentifiedAttention([located],'restart').hasLocation,true);
 });
@@ -82,12 +82,12 @@ test('a final unidentified input can be re-shown during other queued work only w
   const pending={pending:true,location:{percent:12,column:1}},final={pending:false,location:{percent:42,column:4,row:18}};
   const live=unidentifiedAttention([pending,final],'processing',true);
   assert.deepEqual(live.unresolved,[final]);
-  assert.match(live.advice!,/판독 중에도/);
-  assert.match(live.advice!,/추정 위치 부근을 다시 보여/);
-  assert.match(live.advice!,/툴팁과 커서는 치워/);
+  assert.doesNotMatch(live.advice!,/다시 스캔/);
+  assert.match(live.advice!,/표시된 위치 근처를 다시 보여/);
+  assert.match(live.advice!,/커서와 툴팁은 카드 밖으로/);
   const stopped=unidentifiedAttention([pending,final],'processing',false);
-  assert.match(stopped.advice!,/처리/);
-  assert.doesNotMatch(stopped.advice!,/다시 보여|공유를 다시 시작/);
+  assert.match(stopped.advice!,/아직 읽는 중/);
+  assert.doesNotMatch(stopped.advice!,/다시 보여|다시 스캔해/);
   assert.equal(unidentifiedAttention([pending],'processing',true).advice,undefined);
 });
 

@@ -4,12 +4,12 @@ import {boundedUnresolvedFieldChanges} from '../session/current-scan-fields';
 const SLOT = 'current';
 interface Backup { version: 1; revision: string; savedAt: number; state: ScannerState | null }
 export class BackupConflict extends Error {
-  constructor() { super('다른 탭에서 저장한 목록이 있습니다. 현재 목록은 CSV로 보관하고 저장된 목록을 다시 불러오세요.'); }
+  constructor() { super('다른 탭에서 저장한 목록이 있어요. 지금 목록을 CSV로 저장해 둔 뒤 저장된 목록을 다시 불러와 주세요.'); }
 }
 export class LegacyBackupChoice extends Error {
   readonly choices: { key: string; count: number; names: string; xp?: number }[];
   constructor(choices: LegacyBackupChoice['choices']) {
-    super('이전 백업이 여러 개입니다. 복원할 목록을 선택해 주세요.');
+    super('이전 백업이 여러 개 있어요. 되살릴 목록을 골라 주세요.');
     this.choices = choices;
   }
 }
@@ -44,8 +44,8 @@ function validUnresolvedObservations(state:ScannerState):boolean {
  * projection when loaded so obsolete diagnostics (and the earlier scanner's grid,
  * warnings and scroll gaps) are not restored into React. */
 export function inventoryBackupState(state: ScannerState): ScannerState {
-  if (boundedUnresolvedFieldChanges(state).unresolvedFieldChangesUnavailable) throw new Error('저장할 최신 필드 상태가 올바르지 않습니다.');
-  if (!validUnresolvedObservations(state)) throw new Error('저장할 미식별 입력 상태가 올바르지 않습니다.');
+  if (boundedUnresolvedFieldChanges(state).unresolvedFieldChangesUnavailable) throw new Error('저장할 스캔 결과가 올바르지 않아 저장하지 못했어요.');
+  if (!validUnresolvedObservations(state)) throw new Error('저장할 스캔 결과가 올바르지 않아 저장하지 못했어요.');
   const keys = ['status','percent','sampled','stable','expected','capacity','cards','seededCards',
     'growthPoints','growthPointsEstimated','growthHistory','sort','located','unreadable','unidentified',
     'currentRunNames','currentRunRead','unresolvedFieldChanges','unresolvedObservations','duplicateUnidentifiedObservations','autoStopped','interrupted','droppedFrames','liveMissedFrames',
@@ -60,7 +60,7 @@ function openBackup(factory: () => IDBFactory, timeoutMs: number) {
   return new Promise<IDBDatabase>((resolve,reject) => {
     let done = false;
     const fail = (error: unknown) => { if (!done) { done = true; clearTimeout(timer); reject(error); } };
-    const timer = setTimeout(() => fail(new Error('브라우저 저장소 응답 시간이 초과됐습니다. 다시 시도해 주세요.')),timeoutMs);
+    const timer = setTimeout(() => fail(new Error('브라우저 저장소가 응답하지 않아요. 다시 시도해 주세요.')),timeoutMs);
     try {
       const request = factory().open('loacard-scan-backups',1);
       request.onupgradeneeded = () => { if (done) { request.transaction?.abort(); return; } request.result.createObjectStore('scans'); };
@@ -70,8 +70,8 @@ function openBackup(factory: () => IDBFactory, timeoutMs: number) {
         request.result.onversionchange = () => request.result.close();
         resolve(request.result);
       };
-      request.onerror = () => fail(request.error ?? new Error('브라우저 저장소를 열 수 없습니다.'));
-      request.onblocked = () => fail(new Error('다른 탭이 저장소 변경을 기다리고 있습니다. 다른 LoaCard 탭을 닫고 다시 시도해 주세요.'));
+      request.onerror = () => fail(request.error ?? new Error('브라우저 저장소를 열지 못했어요.'));
+      request.onblocked = () => fail(new Error('다른 LoaCard 탭이 저장소를 쓰고 있어요. 그 탭을 닫고 다시 시도해 주세요.'));
     } catch (error) { fail(error); }
   });
 }
@@ -96,9 +96,9 @@ export function createScanBackup(factory: () => IDBFactory = () => indexedDB,
             if (error) reject(error); else { revision = nextRevision; resolve(result); }
           };
           const fail = (error: unknown) => { finish(error); try { transaction.abort(); } catch { /* Already finished. */ } };
-          const timer = setTimeout(() => fail(new Error('목록 저장 응답 시간이 초과됐습니다. 다시 시도해 주세요.')),limits.transactionTimeoutMs ?? 8_000);
+          const timer = setTimeout(() => fail(new Error('목록 저장이 끝나지 않았어요. 다시 시도해 주세요.')),limits.transactionTimeoutMs ?? 8_000);
           transaction.oncomplete = () => finish();
-          transaction.onabort = transaction.onerror = () => finish(transaction.error ?? new Error('브라우저 저장 실패'));
+          transaction.onabort = transaction.onerror = () => finish(transaction.error ?? new Error('목록을 저장하지 못했어요.'));
           const request = store.get(SLOT);
           request.onsuccess = () => {
             if (settled) return;
@@ -112,12 +112,12 @@ export function createScanBackup(factory: () => IDBFactory = () => indexedDB,
               return;
             }
             if (unreadable) {
-              fail(new Error('저장된 목록 형식을 읽을 수 없습니다. 브라우저 데이터를 지우기 전에 CSV 백업을 확인해 주세요.')); return;
+              fail(new Error('저장된 목록을 읽지 못했어요. 브라우저 데이터를 지우기 전에 CSV로 저장해 둔 파일이 있는지 확인해 주세요.')); return;
             }
             nextRevision = stored?.revision ?? '';
             if (mode !== 'load') {
               if (revision === undefined || revision !== nextRevision) { fail(new BackupConflict()); return; }
-              if (mode === 'save' && !isState(state)) { fail(new Error('저장할 목록 형식이 올바르지 않습니다.')); return; }
+              if (mode === 'save' && !isState(state)) { fail(new Error('저장할 목록이 올바르지 않아 저장하지 못했어요.')); return; }
               nextRevision = crypto.randomUUID();
               // Keep ambiguous legacy backups until the user can export them.
               if (mode === 'clear') store.clear();
@@ -126,16 +126,16 @@ export function createScanBackup(factory: () => IDBFactory = () => indexedDB,
               return;
             }
             if (stored) {
-              if (selectedLegacy !== undefined) { fail(new Error('다른 탭에서 저장 목록이 변경됐습니다. 저장 목록을 다시 확인해 주세요.')); return; }
+              if (selectedLegacy !== undefined) { fail(new Error('다른 탭에서 저장된 목록이 바뀌었어요. 저장된 목록을 다시 확인해 주세요.')); return; }
               result = stored.state ? inventoryBackupState(stored.state) : undefined; return;
             }
             const all = store.getAll(), keys = store.getAllKeys();
             keys.onsuccess = () => {
               if (settled) return;
               const index = keys.result.indexOf(selectedLegacy ?? legacyKey() ?? '');
-              if (selectedLegacy !== undefined && index < 0) { fail(new Error('선택한 이전 백업이 없습니다. 저장 목록을 다시 확인해 주세요.')); return; }
+              if (selectedLegacy !== undefined && index < 0) { fail(new Error('고른 이전 백업이 없어요. 저장된 목록을 다시 확인해 주세요.')); return; }
               const candidate = index >= 0 ? all.result[index] : all.result.length === 1 ? all.result[0] : undefined;
-              if (candidate && !isState(candidate)) { fail(new Error('이전 백업을 읽을 수 없습니다.')); return; }
+              if (candidate && !isState(candidate)) { fail(new Error('이전 백업을 읽지 못했어요.')); return; }
               if (candidate) {
                 result = inventoryBackupState(candidate);
                 nextRevision = crypto.randomUUID();
@@ -156,7 +156,7 @@ export function createScanBackup(factory: () => IDBFactory = () => indexedDB,
   }
   return { load: (selectedLegacy?: string) => access('load', undefined, selectedLegacy), save: (state: ScannerState) => {
     // Validate before projection so malformed entries cannot be hidden by it.
-    if (!isState(state)) return Promise.reject(new Error('저장할 목록 형식이 올바르지 않습니다.'));
+    if (!isState(state)) return Promise.reject(new Error('저장할 목록이 올바르지 않아 저장하지 못했어요.'));
     return access('save',inventoryBackupState(state));
   }, clear: () => access('clear') };
 }

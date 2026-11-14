@@ -64,13 +64,13 @@ test('unresolved changed-field counts survive backup while malformed counts cann
  assert.equal(restored.unresolvedFieldChanges,MAX_UNRESOLVED_FIELD_CHANGES);
  assert.equal(unattributedFieldReviewCount(restored),MAX_UNRESOLVED_FIELD_CHANGES);
  for(const invalid of [null,-1,.5,NaN,Infinity,MAX_UNRESOLVED_FIELD_CHANGES+1]){
-   await assert.rejects(backup.save({...input,unresolvedFieldChanges:invalid} as unknown as ScannerState),/목록 형식/);
+   await assert.rejects(backup.save({...input,unresolvedFieldChanges:invalid} as unknown as ScannerState),/올바르지 않아/);
    assert.equal((await backup.load())?.unresolvedFieldChanges,MAX_UNRESOLVED_FIELD_CHANGES);
  }
  const accessor=Object.defineProperty({...input},'unresolvedFieldChanges',{get(){throw Error('must not invoke getter');}});
- await assert.rejects(backup.save(accessor),/목록 형식/);
+ await assert.rejects(backup.save(accessor),/올바르지 않아/);
  await seed(factory,[['current',{version:1,revision:'corrupt-fields',state:{...input,unresolvedFieldChanges:MAX_UNRESOLVED_FIELD_CHANGES+1}}]]);
- await assert.rejects(backup.load(),/저장된 목록 형식/);
+ await assert.rejects(backup.load(),/저장된 목록을 읽지 못했어요/);
 });
 
 test('the unresolved-input lower bound survives backup and invalid values cannot replace it',async()=>{
@@ -83,7 +83,7 @@ test('the unresolved-input lower bound survives backup and invalid values cannot
   assert.equal((await backup.load())!.unresolvedObservations,2);
  }
  const getter=Object.defineProperty({...input},'unresolvedObservations',{get(){throw Error('must not invoke getter');}});
- await assert.rejects(backup.save(getter),/목록 형식/);
+ await assert.rejects(backup.save(getter),/올바르지 않아/);
 });
 test('stale tab cannot overwrite a newer scan; explicit reload permits later changes', async () => {
   const factory = new IDBFactory(), a = createScanBackup(() => factory), b = createScanBackup(() => factory);
@@ -115,7 +115,7 @@ test('single orphan tab backup is recoverable and malformed/future records are n
   assert.deepEqual(await createScanBackup(() => factory, () => null).load(), state());
   await seed(factory, [['current', { version: 99, state: state(), revision: 'future' }]]);
   const client = createScanBackup(() => factory);
-  await assert.rejects(client.load(), /형식/); await assert.rejects(client.save(state()), /형식/);
+  await assert.rejects(client.load(), /올바르지 않아|읽지 못/); await assert.rejects(client.save(state()), /올바르지 않아|읽지 못/);
 });
 test('unavailable browser storage rejects without preventing a subsequent retry', async () => {
   let unavailable = true; const factory = new IDBFactory();
@@ -127,7 +127,7 @@ test('unavailable browser storage rejects without preventing a subsequent retry'
 test('a missing explicitly selected backup never falls back to another inventory', async () => {
   const factory = new IDBFactory(); await seed(factory, [['other', state('다른 계정')]]);
   const client = createScanBackup(() => factory, () => null);
-  await assert.rejects(client.load('removed'), /선택한 이전 백업/);
+  await assert.rejects(client.load('removed'), /고른 이전 백업/);
   assert.equal((await client.load('other'))?.status, '다른 계정');
 });
 
@@ -136,7 +136,7 @@ test('another tab migrating a backup cannot silently replace the selected legacy
   const selecting=createScanBackup(()=>factory,()=>null);
   await assert.rejects(selecting.load(), /여러 개/);
   await createScanBackup(()=>factory,()=>null).load('a');
-  await assert.rejects(selecting.load('b'), /다른 탭/);
+  await assert.rejects(selecting.load('b'), /다른 (LoaCard )?탭/);
   assert.equal((await selecting.load())?.status,'A');
 });
 
@@ -149,13 +149,13 @@ test('corrupt card fields are rejected before rendering or migrating and cannot 
     const corrupt = {...state(),cards} as unknown as ScannerState;
     await seed(factory, [['old',corrupt]]);
     const client=createScanBackup(()=>factory,()=>null);
-    await assert.rejects(client.load(), /이전 백업을 읽을 수/);
+    await assert.rejects(client.load(), /이전 백업을 읽지 못/);
     await seed(factory,[['old',{...state(),cards:[card]}]]);
     assert.equal((await client.load())?.cards.length,1);
-    await assert.rejects(client.save(corrupt), /목록 형식/);
+    await assert.rejects(client.save(corrupt), /올바르지 않아/);
     assert.equal((await client.load())?.cards.length,1);
     await seed(factory,[['current',{version:1,revision:'broken',state:corrupt}]]);
-    await assert.rejects(client.load(), /저장된 목록 형식/);
+    await assert.rejects(client.load(), /저장된 목록을 읽지 못했어요/);
   }
 });
 
@@ -186,7 +186,7 @@ test('a stalled storage open times out, closes a late connection, and does not p
  const factory=new IDBFactory();let request:IDBOpenDBRequest|undefined,stall=true,closed=0;
  const fake={open(){request={} as IDBOpenDBRequest;return request;}} as unknown as IDBFactory;
  const backup=createScanBackup(()=>stall?fake:factory,()=>null,{openTimeoutMs:10});
- const load=backup.load();await assert.rejects(load,/응답 시간이 초과/);
+ const load=backup.load();await assert.rejects(load,/응답하지 않아요|저장이 끝나지 않았어요/);
  stall=false;await backup.load();await backup.save(state());
  Object.defineProperty(request!,'result',{value:{close(){closed++;}}});
  request!.onsuccess?.call(request!,new Event('success'));
@@ -196,7 +196,7 @@ test('a stalled storage open times out, closes a late connection, and does not p
 test('blocked opens reject promptly and close a connection delivered after rejection',async()=>{
  let request:IDBOpenDBRequest|undefined,closed=0;
  const backup=createScanBackup(()=>({open(){request={} as IDBOpenDBRequest;queueMicrotask(()=>request!.onblocked?.call(request!,new Event('blocked') as IDBVersionChangeEvent));return request;}} as unknown as IDBFactory),()=>null);
- await assert.rejects(backup.load(),/다른 탭/);
+ await assert.rejects(backup.load(),/다른 (LoaCard )?탭/);
  Object.defineProperty(request!,'result',{value:{close(){closed++;}}});
  request!.onsuccess?.call(request!,new Event('success'));assert.equal(closed,1);
 });
@@ -207,7 +207,7 @@ test('a stalled transaction aborts within its budget and allows later operations
  const db={transaction:()=>tx,close(){closed++;}} as unknown as IDBDatabase;
  const fake={open(){const request={result:db} as IDBOpenDBRequest;queueMicrotask(()=>request.onsuccess?.call(request,new Event('success')));return request;}} as unknown as IDBFactory;
  const backup=createScanBackup(()=>stall?fake:factory,()=>null,{transactionTimeoutMs:10});
- await assert.rejects(backup.load(),/응답 시간이 초과/);assert.equal(aborted,1);assert.equal(closed,1);
+ await assert.rejects(backup.load(),/응답하지 않아요|저장이 끝나지 않았어요/);assert.equal(aborted,1);assert.equal(closed,1);
  // A late completion must not update the client's revision after timeout.
  tx.oncomplete?.call(tx,new Event('complete'));
  stall=false;await backup.load();await backup.save(state('retry'));assert.equal((await backup.load())?.status,'retry');
@@ -217,7 +217,7 @@ test('a stored list that cannot be read can still be cleared, and is never loade
   const factory = new IDBFactory();
   await seed(factory, [['current', {version: 1, revision: 'r', savedAt: 1, state: {cards: 'not a list'}}]]);
   const backup = createScanBackup(() => factory, () => null);
-  await assert.rejects(backup.load(), /형식을 읽을 수 없습니다/);
+  await assert.rejects(backup.load(), /저장된 목록을 읽지 못했어요/);
   await assert.rejects(backup.save(state()));
   await backup.clear();
   assert.equal(await createScanBackup(() => factory, () => null).load(), undefined);

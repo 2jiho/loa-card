@@ -65,7 +65,7 @@ export function GrowthPlanner({ cards: observations, growthPoints, onComplete, b
           xp, target };
         worker = new Worker(new URL('./optimizer.worker.ts', import.meta.url), { type: 'module' });
         cancelWorker=runGrowthWorker(worker,request,finish);
-      } catch (e) { finish({ error: e instanceof Error ? e.message : '계산을 시작하지 못했습니다.' }); }
+      } catch (e) { finish({ error: e instanceof Error ? e.message : '계산을 시작하지 못했어요.' }); }
     };
     const initial = setTimeout(calculate, 300);
     const timer = setInterval(calculate, 1000);
@@ -74,21 +74,21 @@ export function GrowthPlanner({ cards: observations, growthPoints, onComplete, b
   const targetName = master?.targets.find(t => t.id === target)?.name ?? '악마';
   return <section className="panel growth-planner" aria-label="도감작 성장 계산">
     <div className="growth-heading"><h2>도감작</h2><details className="growth-help"><summary>계산 기준</summary>
-      <p>현재 카드 목록 기준입니다. 삭제한 카드의 과거 달성 이력은 반영하지 않습니다.</p>
-      {selectedStat ? <p>수집 1종당 효과가 큰 조합순입니다. 카드 등록만 필요하며, 조합별 효과는 합산하지 않습니다.</p> : <>
-        <p>각 도감의 다음 효과까지 경험치당 효율을 비교합니다. 중간 효과 달성 후 남은 단계를 다시 비교하며, 부족한 단계는 건너뛰고 금색 단계에만 자원을 사용합니다.</p>
-        <p>실링은 무제한이며 카드에 이미 투입한 경험치는 제외하지 않습니다. 획득 비용과 미판독 도감은 계산에서 제외합니다.</p>
-        <p>후보 탐색에 제한이 있어 전체 최소 비용을 보장하지 않습니다.</p>
+      <p>지금 카드 목록으로 계산해요. 전에 달성했다가 지금 목록에 없는 카드는 계산에 넣지 않아요.</p>
+      {selectedStat ? <p>카드 1종을 새로 등록할 때 오르는 효과가 큰 순서예요. 카드 등록만 하면 되고 경험치는 들지 않아요. 순서에 나온 조합들의 효과를 서로 더한 값은 아니에요.</p> : <>
+        <p>도감마다 다음 효과까지 경험치당 효과를 비교해요. 효과 하나를 달성하면 남은 단계를 다시 비교해요. 지금 자원으로 모자란 단계는 건너뛰고, 금색으로 표시된 단계에만 자원을 써요.</p>
+        <p>실링은 충분하다고 보고 계산해요. 카드에 이미 넣은 경험치는 비용에서 빼지 않아서, 실제보다 조금 많게 나올 수 있어요. 카드를 새로 구하는 비용과, 못 읽은 카드가 있는 도감은 계산에 넣지 않아요.</p>
+        <p>비교하는 경우의 수에 한도가 있어서, 가장 적은 비용이라고 보장하지는 않아요.</p>
       </>}
     </details></div>
     {master && <BookOverview master={master} cards={cards} target={target} onTargetChange={setTarget} />}
     {selectedStat && master ? <StatCollection master={master} cards={cards} stat={selectedStat} /> : <>
     <h3 className="growth-plan-title">{targetName} 피해량 · 성장 효율</h3>
-    {xp === null && <p className="growth-assumption" role="status">경험치 미확인 · 성장 탭을 스캔해 주세요.</p>}
+    {xp === null && <p className="growth-assumption" role="status">보유 경험치를 아직 몰라요. 카드 성장 탭을 스캔하면 채워져요.</p>}
     </>}
     {error && <p role="alert" className="error">{error}{!master && <button onClick={() => { setLoadError(''); setLoadAttempt(n => n + 1); }}>다시 불러오기</button>}
       {current?.error && !selectedStat && <button onClick={() => setCalculationAttempt(n => n + 1)}>다시 계산</button>}</p>}
-    {running && <p role="status" className="growth-working"><span className="growth-spinner" />성장 순서 계산 중…</p>}
+    {running && <p role="status" className="growth-working"><span className="growth-spinner" />성장 순서 계산 중</p>}
     {result && <div className="growth-result">
       {!current?.result&&<p className="growth-assumption">이전 계산 결과 · {current?.error?'다시 계산해 주세요.':'현재 목록으로 다시 확인 중'}</p>}
       <CollectionCandidates candidates={result.collectionCandidates} targetName={targetName} disabled={busy || !current?.result} onComplete={step => onComplete(master!, step)} />

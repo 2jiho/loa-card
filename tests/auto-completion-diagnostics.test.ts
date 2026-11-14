@@ -52,7 +52,7 @@ test('diagnostic is bounded, detached and keeps failed header attempts independe
  assert.equal(boundedAutoCompletionDiagnostic({...result,gate:'unknown'}),undefined);
  const getter={...result};Object.defineProperty(getter,'fields',{get(){throw Error('must not run');}});
  assert.equal(boundedAutoCompletionDiagnostic(getter),undefined);
- assert.match(autoCompletionMessage(result.gate),/다시 보여/);
+ assert.match(autoCompletionMessage(result.gate),/다시 (보여|넘겨) 주세요/);
 });
 
 test('early inventory diagnostic preserves unavailable freshness instead of claiming zero',()=>{

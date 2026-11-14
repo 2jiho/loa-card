@@ -16,7 +16,7 @@ const state=()=>({status:'판독 종료',expected:1,currentRunNames:1,currentRun
 
 test('manual and automatic completion both need positive final evidence',()=>{
  assert.deepEqual(negativeCompletionReasons(state()),[]);
- assert.deepEqual(completionReasons(state()),['최종 스캔 검증 미완료']);
+ assert.deepEqual(completionReasons(state()),['스캔을 끝까지 확인하지 못했어요.']);
  for(const mode of ['ended','auto'] as const){
   const receipt=issuePositiveCompletionReceipt({...evidence(),mode});
   assert.deepEqual(receipt,{version:1,mode,expected:1,finalExpected:1});
@@ -30,7 +30,7 @@ test('missing or changed final header blocks completion even when every known ne
   assert.equal(issuePositiveCompletionReceipt({...evidence(),...change}),undefined,JSON.stringify(change));
  for(const change of [{expected:2},{finalExpected:2},{version:2},{mode:'other'}]){
   const receipt={version:1,mode:'ended',expected:1,finalExpected:1,...change} as ScannerState['completionReceipt'];
-  assert.ok(completionReasons({...state(),completionReceipt:receipt}).includes('최종 스캔 검증 미완료'));
+  assert.ok(completionReasons({...state(),completionReceipt:receipt}).includes('스캔을 끝까지 확인하지 못했어요.'));
  }
 });
 

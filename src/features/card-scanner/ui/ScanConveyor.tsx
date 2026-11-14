@@ -9,7 +9,7 @@ const SLOTS=5,PITCH=64,MAX_BACKLOG=6;
 /** Belt pace: a card per 240 ms, faster (120 ms) while more than two wait, so the belt keeps up
  * with a fast scroll instead of lagging behind it. */
 const STEP_MS=240,FAST_STEP_MS=120;
-const labels={reading:'판독 중',waiting:'판독 대기',read:'완료',review:'확인 필요'} as const;
+const labels={reading:'읽는 중',waiting:'대기',read:'완료',review:'값 못 읽음'} as const;
 
 /** Cards passing through a scanner. Crops waiting to be read stand on the left (a count); each card
  * read enters the window and moves right one slot when the next one comes in, at a steady pace.
@@ -39,8 +39,8 @@ export function ScanConveyor({items,queued,reading}:{items:readonly ScanActivity
     return ()=>window.clearTimeout(timer);
   },[reduced]);
   const busy=reading||queued>0;
-  return <section className="scan-conveyor" aria-label="실시간 카드 판독">
-    <div className="scan-conveyor-queue" aria-label={`판독 대기 ${queued}개`}>
+  return <section className="scan-conveyor" aria-label="카드 읽기 진행">
+    <div className="scan-conveyor-queue" aria-label={`읽기 대기 ${queued}개`}>
       <div className="scan-conveyor-stack" aria-hidden="true">{Array.from({length:Math.max(1,Math.min(3,queued))},(_,index)=><span key={index}/>)}</div>
       <strong>{queued}</strong><small>대기</small>
     </div>
@@ -53,7 +53,7 @@ export function ScanConveyor({items,queued,reading}:{items:readonly ScanActivity
           <span title={item.name}>{item.name??''}</span><small>{labels[item.status]}</small>
         </li>)}
       </ol>
-      {!belt.length&&<p className="scan-conveyor-empty">카드 화면이 잡히면 여기로 지나갑니다.</p>}
+      {!belt.length&&<p className="scan-conveyor-empty">카드가 화면에 보이면 여기로 지나가요.</p>}
     </div>
   </section>;
 }

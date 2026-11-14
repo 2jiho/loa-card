@@ -100,26 +100,26 @@ export function ScanReadProgress({completed:completedProp,expected:expectedProp,
     return () => window.clearInterval(timer);
   }, [startedAt,phase,expected]);
   const total=expected!==null&&Number.isInteger(expected)&&expected>0?expected:null;
-  const label=`${stale?'마지막 판독':'판독 완료'} ${completed.toLocaleString('ko-KR')} / ${total?.toLocaleString('ko-KR') ?? '—'}종`;
+  const label=`${stale?'마지막 읽기':'읽기 완료'} ${completed.toLocaleString('ko-KR')} / ${total?.toLocaleString('ko-KR') ?? '—'}종`;
   const percent = total === null ? null : Math.min(100, Math.floor(completed / total * 100));
   const remaining = total === null ? null : Math.max(0,total-completed);
-  const stage = stale ? '카드 화면 찾는 중' : {capture:'화면 수집 · 판독',reading:'남은 카드 판독',recovery:'저장된 화면 재검사',verifying:'최종 수량·필드 검증',cleanup:'임시 기록 정리'}[phase];
+  const stage = stale ? '카드 목록 찾는 중' : {capture:'화면 읽는 중',reading:'남은 카드 읽는 중',recovery:'받아 둔 화면 다시 보는 중',verifying:'마지막 확인 중',cleanup:'정리 중'}[phase];
   const inputWaitVisible=inputWaitGuidance===guidanceObservation&&completionGate==='input'&&!(phase==='recovery'&&recoveryPercent!==undefined);
   const validCount=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;
   const detail=scanReadDetail({phase,recoveryPercent,remaining,gate:completionGate,droppedFrames,
     stableGuidance:stableGuidance===guidanceObservation?stableGuidance.gate:undefined,
     inputWaitGuidance:inputWaitVisible,lagGuidance:autoCompletionEnabled&&(lagging||lagHeld?.session===lagSession&&lagHeld.value),liveObstruction:showObstruction,
     processing:!validCount(queued)||!validCount(active)||queued>0||active>0,queued,estimate});
-  const announcedAdvice=detail==='화면을 잠시 멈춰 주세요.'||detail==='판독 대기 중이에요. 화면을 잠시 멈춰 주세요.'||detail==='카드 목록이 따라올 때까지 잠시 스크롤을 멈춰 주세요.'||detail===LIVE_OBSTRUCTION_MESSAGE?detail:'';
+  const announcedAdvice=detail==='화면을 잠시 멈춰 주세요.'||detail==='읽을 화면이 밀려 있어요. 스크롤을 잠시 멈춰 주세요.'||detail==='카드 목록이 따라올 때까지 잠시 스크롤을 멈춰 주세요.'||detail===LIVE_OBSTRUCTION_MESSAGE?detail:'';
   // Counts change continuously: only the advice line below is announced.
   return <div className="scan-read-progress" aria-live="off">
     <div className="scan-read-heading"><span>{label}</span>{percent !== null && <b>{percent}%</b>}</div>
-    {recheck>0&&<small className="scan-read-peak" title="최신 관측에서 필드가 아직 확인되지 않아 생긴 차이입니다. 이전에 확인된 카드가 목록에서 삭제된 것은 아닙니다.">누적 확인 {peak.toLocaleString('ko-KR')}종 · 최신 재확인 {recheck.toLocaleString('ko-KR')}종</small>}
-    {total!==null ? <progress aria-label="카드 판독 진행" aria-valuetext={label} max={total} value={Math.min(completed,total)} />
-      : <small>보관함 수량 확인 중</small>}
-    <div className="scan-read-heading"><span>{stage}</span>{remaining !== null && remaining > 0 && <span>남은 판독 {remaining}종</span>}</div>
+    {recheck>0&&<small className="scan-read-peak" title="최근 화면에서 각성·장수를 다시 읽고 있는 카드예요. 이미 읽은 카드가 목록에서 빠진 것은 아니에요.">지금까지 읽음 {peak.toLocaleString('ko-KR')}종 · 다시 읽는 중 {recheck.toLocaleString('ko-KR')}종</small>}
+    {total!==null ? <progress aria-label="카드 읽기 진행" aria-valuetext={label} max={total} value={Math.min(completed,total)} />
+      : <small>보관함 수량을 읽는 중</small>}
+    <div className="scan-read-heading"><span>{stage}</span>{remaining !== null && remaining > 0 && <span>남은 카드 {remaining}종</span>}</div>
     {/* Shown only while scanning: cards not confirmed yet are progress here, counted for review once the scan ends. */}
-    {total !== null && collected < total && <small className="scan-read-breakdown"><span>이름 미확인 {total - collected}종</span></small>}
+    {total !== null && collected < total && <small className="scan-read-breakdown"><span>이름 남음 {total - collected}종</span></small>}
     <small aria-live="off">경과 {formatScanTime((now-startedAt)/1000)}</small>
     <small className="scan-read-detail" aria-live="off" aria-hidden={!detail}>{detail||'\u00a0'}</small>
     <span className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">{announcedAdvice}</span>

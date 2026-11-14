@@ -20,5 +20,5 @@ export function scrollCardLocation(geometry:{position:number;pageSpan:number}|nu
   return result;
 }
 export function scrollLocationLabel(location:ScrollCardLocation|undefined){
-  return !location?'':location.row!==undefined?`약 ${location.row}행 · ${location.column}열`:`스크롤 약 ${location.percent}% · ${location.column}열`;
+  return !location?'':location.row!==undefined?`${location.row}번째 줄 · ${location.column}번째 칸쯤`:`목록 ${location.percent}% 지점 · ${location.column}번째 칸쯤`;
 }

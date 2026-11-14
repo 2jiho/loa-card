@@ -14,6 +14,6 @@ export function MerchantSchedule({now}:{now:number}) {
     <div className="merchant-sessions">{today.map(session => <div key={session.start} className={current?.start===session.start?'is-active':''}>
       <strong>{sessionTime(session)}</strong><small>{session.groups.join('·')}그룹</small>
     </div>)}</div>
-    <p>하루 2회 · 회당 5시간 30분 · 시간표 기준이며 실제 판매 카드는 게임에서 확인하세요.</p>
+    <p>하루 2번, 한 번에 5시간 30분 열려요. 시간표로 계산한 것이라 실제로 파는 카드는 게임에서 확인해 주세요.</p>
   </aside>;
 }

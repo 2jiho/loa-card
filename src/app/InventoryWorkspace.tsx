@@ -55,7 +55,7 @@ export function InventoryWorkspace(props: {
         onChange={event => { onQueryChange(event.target.value); onPageChange(1); }}
         slotProps={{htmlInput: {'aria-label': '카드 이름 검색'}, input: {startAdornment: <InputAdornment position="start"><SearchOutlined fontSize="small" /></InputAdornment>}}} />
     </div>
-    {onlyUnowned && <p className="inventory-filter-note">{unowned === null ? '전체 스캔 후 확인 가능' : '현재 보관함 목록에 없는 카드'}</p>}
+    {onlyUnowned && <p className="inventory-filter-note">{unowned === null ? '스캔을 끝까지 마치면 볼 수 있어요' : '이번에 스캔한 보관함 목록에 없는 카드예요'}</p>}
     <div className="inventory-grid" aria-label="카드 그리드">
       {onlyUnowned ? pageUnowned.map(card => <UnownedCardTile key={card.id} card={card} />)
         : pageCards.map(card => <CardTile key={card.id} card={card} rarity={rarityById.get(card.id)} artwork={artworkById.get(card.id)} />)}
@@ -66,10 +66,10 @@ export function InventoryWorkspace(props: {
       </div>)}
     </div>
     {onlyUnowned && unowned !== null && !filteredUnowned.length && <div className="empty-list"><strong>{query ? '검색 결과가 없어요' : '모든 카드가 등록되어 있어요'}</strong></div>}
-    {!onlyUnowned && !filtered.length && <div className="empty-list"><strong>{!cards.length ? '아직 수집한 카드가 없어요' : '검색 결과가 없어요'}</strong>
-      <p>{!cards.length ? '화면을 공유하면 카드가 여기에 표시됩니다.' : '전체 목록을 보거나 다른 이름으로 검색해 주세요.'}</p></div>}
+    {!onlyUnowned && !filtered.length && <div className="empty-list"><strong>{!cards.length ? '아직 읽은 카드가 없어요' : '검색 결과가 없어요'}</strong>
+      <p>{!cards.length ? '화면을 공유하면 읽은 카드가 여기에 나와요.' : '전체 목록을 보거나 다른 이름으로 검색해 주세요.'}</p></div>}
     {!!visibleCount && <nav className="pagination" aria-label="카드 목록 페이지">
-      <span>{(currentPage - 1) * CARDS_PER_PAGE + 1}–{Math.min(currentPage * CARDS_PER_PAGE, visibleCount)} / {visibleCount}종</span>
+      <span>{(currentPage - 1) * CARDS_PER_PAGE + 1}~{Math.min(currentPage * CARDS_PER_PAGE, visibleCount)} / {visibleCount}종</span>
       <div><button className="secondary" disabled={currentPage === 1} onClick={() => changePage(currentPage - 1)}>이전</button>
         <span aria-live="polite">{currentPage} / {pageCount}</span>
         <button className="secondary" disabled={currentPage === pageCount} onClick={() => changePage(currentPage + 1)}>다음</button></div>

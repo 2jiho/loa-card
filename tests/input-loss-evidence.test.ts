@@ -132,5 +132,5 @@ test('bounded tracking remains fail-closed and displays the retained number as a
  assert.equal(summary.observedCount,4096);assert.equal(summary.overflow,true);
  assert.equal(canStopSharing(completion(summary.observedCount!)),false);
  const outcome=scanMonitorOutcome({expected:1,currentRunRead:1,unresolvedCount:0,droppedFrames:summary.observedCount!,hasInput:true},{busy:false,sharing:false});
- assert.match(outcome.detail,/처리하지 못한 화면 최소 4096건/);
+ assert.match(outcome.detail,/놓친 화면 4096개 이상/);
 });

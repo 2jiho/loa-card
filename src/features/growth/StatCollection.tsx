@@ -24,8 +24,8 @@ export function StatCollection({ master, cards, stat }: { master: GrowthMaster; 
         <p className="growth-collection-note">등록 후 {name} {each}+{current} → {each}+{current + c.gain}</p>
       </div>
     </details>)}
-    {!plan.candidates.length && <p className="growth-empty">{current === maximum ? '최대 효과 달성' : '수집 조합 미확인 · 확인할 카드를 다시 스캔해 주세요.'}</p>}
-    {!!plan.excluded.length && <details className="growth-details"><summary>판독 확인으로 제외한 도감 {plan.excluded.length}개</summary><p>{plan.excluded.join(' · ')}</p></details>}
-    {plan.limited && <p className="book-context">후보가 많아 도감 효과당 최대 512개 조합을 비교했습니다.</p>}
+    {!plan.candidates.length && <p className="growth-empty">{current === maximum ? '최대 효과 달성' : '못 읽은 카드가 있어 계산하지 못했어요. 다시 스캔해 주세요.'}</p>}
+    {!!plan.excluded.length && <details className="growth-details"><summary>카드를 못 읽어 계산에서 뺀 도감 {plan.excluded.length}개</summary><p>{plan.excluded.join(' · ')}</p></details>}
+    {plan.limited && <p className="book-context">경우의 수가 많아 효과마다 조합을 512개까지만 비교했어요.</p>}
   </section>;
 }

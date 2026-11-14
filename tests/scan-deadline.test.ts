@@ -33,24 +33,24 @@ test('progress deadline restarts on input/read progress and keeps a hard cap',()
 });
 
 test('deadline guidance distinguishes waiting, progress, warning and failure',()=>{
-  assert.equal(scanDeadlineMessage(scanDeadline({firstInputAtMs:null,nowMs:0})),'카드 입력을 기다리는 중입니다.');
+  assert.equal(scanDeadlineMessage(scanDeadline({firstInputAtMs:null,nowMs:0})),'카드 화면을 기다리는 중이에요.');
   assert.equal(scanDeadlineMessage(scanDeadline({firstInputAtMs:0,lastProgressAtMs:0,nowMs:10_000,limitMs:30_000})),
-    '스캔 중 · 진행 대기 20초');
+    '스캔 중 · 20초 안에 새 카드가 없으면 멈춰요');
   assert.match(scanDeadlineMessage(scanDeadline({firstInputAtMs:0,lastProgressAtMs:0,nowMs:25_000,limitMs:30_000})),
-    /스캔 진행이 25초째 없습니다/);
+    /25초째 새 카드가 없어요/);
   assert.equal(scanDeadlineMessage(scanDeadline({firstInputAtMs:0,lastProgressAtMs:0,nowMs:31_000,limitMs:30_000})),
-    '스캔 시간 초과 · 카드 입력을 확인하고 새 스캔을 시작해 주세요.');
+    '오랫동안 새 화면이 없어 스캔을 멈췄어요. 다시 스캔해 주세요.');
   assert.equal(scanDeadlineMessage(scanDeadline({firstInputAtMs:0,lastProgressAtMs:0,nowMs:10_000})),
-    '스캔 중 · 진행 대기 110초');
+    '스캔 중 · 110초 안에 새 카드가 없으면 멈춰요');
 });
 
 test('status line prefers timeout, then stall, then the deadline guidance',()=>{
   const deadline=scanDeadline({firstInputAtMs:0,lastProgressAtMs:0,nowMs:25_000,limitMs:30_000});
   assert.equal(scanStatusMessage({deadline,inputState:'receiving',idleMs:0,timedOut:true}),
-    '스캔 시간 초과 · 카드 입력을 확인하고 새 스캔을 시작해 주세요.');
+    '오랫동안 새 화면이 없어 스캔을 멈췄어요. 다시 스캔해 주세요.');
   assert.equal(scanStatusMessage({deadline,inputState:'stalled',idleMs:6500,timedOut:false}),
-    '입력이 7초째 멈췄습니다. 카드를 다시 보여 주세요.');
-  assert.match(scanStatusMessage({deadline,inputState:'receiving',idleMs:100,timedOut:false}),/스캔 진행이 25초째 없습니다/);
+    '7초째 화면이 바뀌지 않아요. 카드 목록을 넘겨 주세요.');
+  assert.match(scanStatusMessage({deadline,inputState:'receiving',idleMs:100,timedOut:false}),/25초째 새 카드가 없어요/);
 });
 
 test('input state separates no input, recent input and a stalled scan',()=>{

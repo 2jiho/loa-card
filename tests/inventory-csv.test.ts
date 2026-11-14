@@ -11,10 +11,10 @@ test('unread or uncertain fields cannot be exported into an unrecoverable three-
  for(const patch of [{awakening:null},{extraCopies:null},{review:['장수 확인']},{countReliable:false},{countReliable:undefined}]) {
   const cards=[{...card('카드',0,0),...patch}];
   assert.equal(inventoryCsvIssues(cards).length,1);
-  assert.throws(()=>inventoryCsv(cards),/확인 필요/);
+  assert.throws(()=>inventoryCsv(cards),/못 읽은 카드/);
  }
  for(const cards of [[card('a',4,10)],[card('a',0,0),card('a',0,0)],[{...card('a',0,1),maxAwakening:0}]])
-  assert.throws(()=>inventoryCsv(cards),/확인 필요/);
+  assert.throws(()=>inventoryCsv(cards),/못 읽은 카드/);
  assert.doesNotMatch(inventoryCsv([card('카드',0,0)]),/private|confidence|observations/);
 });
 test('names with delimiters or formulas remain a single literal spreadsheet cell',()=>{
@@ -42,20 +42,20 @@ test('every awakening level enforces its remaining extra-copy limit',()=>{
    assert.equal(parseInventoryCsv(`이름,각수,카드수\n세리아,${awakening},${limit}`,catalog)[0].extraCopies,limit);
    assert.throws(()=>parseInventoryCsv(`이름,각수,카드수\n세리아,${awakening},${limit+1}`,catalog));
  }
- assert.throws(()=>parseInventoryCsv('이름,각수,카드수\n세리아,4,10',catalog),/최대 보유량/);
+ assert.throws(()=>parseInventoryCsv('이름,각수,카드수\n세리아,4,10',catalog),/카드수는 최대/);
 });
 test('a bad row prevents the entire import and names cannot be fuzzy matched',()=>{
  for(const row of ['세리야,0,0','세리아,,0','세리아,0,','세리아,6,0','세리아,-1,0','세리아,1.5,0',
    ',,','세리아,0,1e1','세리아,0,NaN','세리아,0,Infinity','세리아,0,-1','세리아,0,16','세리아,0,0,1',
    '특별 카드,1,0','특별 카드,0,1']) {
-   assert.throws(()=>parseInventoryCsv(`이름,각수,카드수\n실리안,5,0\n${row}`,catalog),/3행/);
+   assert.throws(()=>parseInventoryCsv(`이름,각수,카드수\n실리안,5,0\n${row}`,catalog),/3번째 줄/);
  }
- assert.throws(()=>parseInventoryCsv('이름,각수,카드수\n세리아,0,0\n세리아,0,0',catalog),/중복/);
+ assert.throws(()=>parseInventoryCsv('이름,각수,카드수\n세리아,0,0\n세리아,0,0',catalog),/두 번/);
 });
 test('empty, malformed or unsupported files never replace the inventory',()=>{
  for(const source of ['', 'name,awakening,copies\na,0,0','이름,각수,카드수\n',
   '이름,각수,카드수\n"세리아,0,0','이름,각수,카드수\n"세리아"x,0,0'])
   assert.throws(()=>parseInventoryCsv(source,catalog));
  assert.throws(()=>parseInventoryCsv('x'.repeat(1_048_577),catalog),/1MB/);
- assert.throws(()=>parseInventoryCsv('이름,각수,카드수\n세리아,0,0',[]),/DB/);
+ assert.throws(()=>parseInventoryCsv('이름,각수,카드수\n세리아,0,0',[]),/카드 자료/);
 });

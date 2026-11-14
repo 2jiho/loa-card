@@ -7,6 +7,6 @@ import type {ScannedCard} from '../recognition/recognizer-types';
 export function cardTileImage(card:Pick<ScannedCard,'name'|'image'|'review'>, artwork?:string) {
   const src=card.image||artwork||'';
   const label=src&&card.review.includes(CURRENT_FIELD_REVIEW)
-    ?card.image?'참고 화면':'참고 이미지':undefined;
+    ?card.image?'이전 화면':'기본 카드 그림':undefined;
   return {src,label,alt:label?`${card.name} · ${label}`:card.name};
 }

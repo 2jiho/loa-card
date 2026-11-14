@@ -65,7 +65,7 @@ test('similar card names and edited display names cannot cross-match IDs',()=>{
 test('copy list contains only the selected regional recommendation and exact shortage',()=>{
  const group=merchants[0],cards=group.cards.map(c=>make(c.id));cards[0].awakening=4;cards[0].extraCopies=2;
  const text=merchantListText(merchantProgress(cards),'needed');
- assert.match(text,/아르테미스 \(벤\)/);assert.match(text,/시이라 3장 부족/);assert.match(text,/유디아.*확인 필요/);
+ assert.match(text,/아르테미스 \(벤\)/);assert.match(text,/시이라 3장 부족/);assert.match(text,/유디아.*못 읽음/);
 });
 
 test('a missing merchant card becomes a registration plus fifteen copies only after inventory completeness',()=>{

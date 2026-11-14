@@ -136,7 +136,7 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
     );
     presentation.flush();
     if (controller.current === abort) {
-      const reasons = finalState ? completionReasons(finalState) : ['스캔 결과 미확인'];
+      const reasons = finalState ? completionReasons(finalState) : ['스캔을 끝까지 확인하지 못했어요.'];
       if (reasons.length) {
         inventory.current = baseline;
         markScanIncomplete(reasons);
@@ -150,7 +150,7 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
     presentation.flush();
     if (controller.current === abort) {
       inventory.current = baseline;
-      markScanIncomplete(['스캔 중단']);
+      markScanIncomplete(['스캔이 중간에 멈췄어요.']);
       if (abort.signal.aborted || (e instanceof DOMException && e.name === 'AbortError'))
         setState(s => {
           const base = finalState ?? previousState ?? s;

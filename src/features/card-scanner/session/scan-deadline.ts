@@ -41,16 +41,16 @@ export function scanDeadline(input:{
 /** User-facing message for the current deadline state. */
 export function scanDeadlineMessage(deadline:ScanDeadline):string {
   const idleSeconds=Math.max(1,Math.floor(deadline.idleMs/1000));
-  if(deadline.state==='waiting')return '카드 입력을 기다리는 중입니다.';
-  if(deadline.state==='running')return `스캔 중 · 진행 대기 ${Math.ceil(deadline.remainingMs/1000)}초`;
-  if(deadline.state==='warning')return `스캔 진행이 ${idleSeconds}초째 없습니다. 카드를 다시 보여 주세요.`;
-  return '스캔 시간 초과 · 카드 입력을 확인하고 새 스캔을 시작해 주세요.';
+  if(deadline.state==='waiting')return '카드 화면을 기다리는 중이에요.';
+  if(deadline.state==='running')return `스캔 중 · ${Math.ceil(deadline.remainingMs/1000)}초 안에 새 카드가 없으면 멈춰요`;
+  if(deadline.state==='warning')return `${idleSeconds}초째 새 카드가 없어요. 카드 목록을 계속 넘겨 주세요.`;
+  return '오랫동안 새 화면이 없어 스캔을 멈췄어요. 다시 스캔해 주세요.';
 }
 /** One UI line combining the progress deadline and the input-stall state. Timeout
  * wins over stall because the scan is already stopped in that state. */
 export function scanStatusMessage(input:{deadline:ScanDeadline;inputState:ScanInputState;idleMs:number;timedOut:boolean}):string {
-  if(input.timedOut)return '스캔 시간 초과 · 카드 입력을 확인하고 새 스캔을 시작해 주세요.';
-  if(input.inputState==='stalled')return `입력이 ${Math.max(1,Math.round(input.idleMs/1000))}초째 멈췄습니다. 카드를 다시 보여 주세요.`;
+  if(input.timedOut)return '오랫동안 새 화면이 없어 스캔을 멈췄어요. 다시 스캔해 주세요.';
+  if(input.inputState==='stalled')return `${Math.max(1,Math.round(input.idleMs/1000))}초째 화면이 바뀌지 않아요. 카드 목록을 넘겨 주세요.`;
   return scanDeadlineMessage(input.deadline);
 }
 export type ScanInputState='waiting'|'receiving'|'stalled';

@@ -21,7 +21,7 @@ test('Korean weekday groups cover all 22 regions twice a day, including both Eas
 test('midnight retains yesterday weekday and ends exactly at 03:30',()=>{
  const before=merchantSchedule('merchant-3',at('2026-10-08T03:29:59'))!;
  assert.equal(before.current?.start,at('2026-10-07T22:00:00'));
- assert.equal(sessionTime(before.current!),'22:00–다음 날 03:30');
+ assert.equal(sessionTime(before.current!),'22:00~다음 날 03:30');
  assert.equal(merchantSchedule('merchant-1',at('2026-10-08T00:00:00'))?.current,undefined);
  const after=merchantSchedule('merchant-3',at('2026-10-08T03:30:00'))!;
  assert.equal(after.current,undefined);assert.equal(after.next?.start,at('2026-10-08T10:00:00'));

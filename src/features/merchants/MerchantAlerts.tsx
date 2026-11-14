@@ -25,7 +25,7 @@ export function MerchantAlerts({cards,busy,complete=false,rarityById,onReview}:{
   if(!cards.length)return null;
   return <section className="panel merchant-panel" aria-label="떠돌이 상인">
     <div className="merchant-heading"><div><h2>지역별 수집 현황</h2>
-      <p>5각에 필요한 카드 수 기준</p></div>
+      <p>5각까지 필요한 카드 수로 계산해요</p></div>
       <Button variant="outlined" startIcon={<ContentCopyOutlined />} disabled={!selected.length} onClick={async()=>{
         try{await navigator.clipboard.writeText(merchantListText(groups,filter));setCopyMessage('목록을 복사했어요.');}
         catch{setCopyMessage('복사하지 못했어요. 아래 지역명을 직접 선택해 복사해 주세요.');}
@@ -35,14 +35,14 @@ export function MerchantAlerts({cards,busy,complete=false,rarityById,onReview}:{
         onChange={(_, value) => { if(value) { setFilter(value); setCopyMessage(''); } }}>
         {(['needed','complete'] as const).map(status=><ToggleButton key={status} value={status}>{merchantStatusLabel[status]} · {groups.filter(g=>status==='needed'?g.status!=='complete':g.status==='complete').length}</ToggleButton>)}
       </ToggleButtonGroup>
-      {groups.some(group=>group.unknown.length>0)&&<p className="merchant-guidance">{held.length ? `${held.length}개 지역 확인 필요` : '일부 카드 미확인'} · <a href="#card-results" onClick={onReview}>카드 확인</a></p>}
-      <p className="merchant-guidance">{busy ? '확인된 카드 기준 · 스캔이 끝나면 알림 설정을 결정해 주세요.' : filter==='needed' ? '부족한 카드가 있는 지역의 카드 알림을 켜 주세요.' : '수집 완료 · 카드 알림을 꺼도 됩니다.'}</p>
+      {groups.some(group=>group.unknown.length>0)&&<p className="merchant-guidance">{held.length ? `못 읽은 카드가 있는 지역 ${held.length}곳` : '못 읽은 카드가 있어요'} · <a href="#card-results" onClick={onReview}>내 카드에서 보기</a></p>}
+      <p className="merchant-guidance">{busy ? '지금까지 읽은 카드로 계산했어요. 알림 설정은 스캔이 끝난 뒤 정해 주세요.' : filter==='needed' ? '카드가 모자란 지역은 게임에서 카드 알림을 켜 두세요.' : '다 모은 지역은 카드 알림을 꺼도 돼요.'}</p>
       <div className="merchant-grid" key={filter}>{[selected.slice(0,Math.ceil(selected.length/2)),selected.slice(Math.ceil(selected.length/2))].map((column,index)=><div className="merchant-column" key={index}>
         {column.map(group=><MerchantRegion key={group.id} group={group} rarityById={rarityById} now={now} />)}
       </div>)}</div>
-      {!selected.length&&<p className="merchant-empty">{busy ? '아직 해당하는 지역이 확인되지 않았어요.' : filter==='complete'?'수집 완료 지역 없음':groups.every(g=>g.status==='complete')?'모든 지역 수집 완료':'부족한 카드 없음 · 미확인 카드는 내 카드에서 확인'}</p>}
+      {!selected.length&&<p className="merchant-empty">{busy ? '아직 해당하는 지역이 없어요.' : filter==='complete'?'다 모은 지역이 없어요.':groups.every(g=>g.status==='complete')?'모든 지역의 카드를 다 모았어요.':'모자란 카드는 없어요. 못 읽은 카드는 내 카드에서 볼 수 있어요.'}</p>}
       <p role="status" className="merchant-copy-status">{copyMessage}</p>
-    <p className="merchant-footnote">각성에 사용한 카드 + 추가 장수 기준 · 알림은 게임에서 직접 설정</p>
+    <p className="merchant-footnote">각성에 쓴 카드와 추가 장수를 합쳐 계산해요. 알림은 게임에서 직접 설정해 주세요.</p>
   </section>;
 }
 
@@ -53,17 +53,17 @@ function MerchantRegion({group,rarityById,now}:{group:ReturnType<typeof merchant
   return <Accordion disableGutters elevation={0} expanded={open} onChange={(_, expanded)=>setOpen(expanded)} className={`merchant-item ${group.status}`} sx={{ border: '1px solid var(--line)', borderRadius: '8px !important', '&:before': { display: 'none' } }}>
     <AccordionSummary className="merchant-toggle" id={`${contentId}-summary`} aria-controls={contentId} expandIcon={<ExpandMore fontSize="small" />}>
       <span className="merchant-name"><strong>{group.region}</strong><small>{group.merchant}{schedule ? ` · ${schedule.group}그룹` : ''}</small>
-        <small className={`merchant-region-time ${schedule?.current?'is-active':''}`}>{schedule?.current ? `판매 시간 · ${relativeKoreanTime(schedule.current.end,now)}까지` : schedule?.next ? `다음 · ${relativeKoreanTime(schedule.next.start,now)}` : '시간표 미확인'}</small>
+        <small className={`merchant-region-time ${schedule?.current?'is-active':''}`}>{schedule?.current ? `판매 시간 · ${relativeKoreanTime(schedule.current.end,now)}까지` : schedule?.next ? `다음 · ${relativeKoreanTime(schedule.next.start,now)}` : '시간표 없음'}</small>
       </span>
-      <span className="merchant-result">{group.status==='complete'?'수집 완료':group.status==='unknown'?'수집 여부 확인 중':`${group.needed.length}종 · ${group.remaining}장 부족`}
-        <small>{group.complete}/{group.items.length}종 수집 완료{group.unknown.length?` · ${group.unknown.length}종 미확인`:''}</small>
+      <span className="merchant-result">{group.status==='complete'?'수집 완료':group.status==='unknown'?'못 읽은 카드 있음':`${group.needed.length}종 · ${group.remaining}장 부족`}
+        <small>{group.complete}/{group.items.length}종 수집 완료{group.unknown.length?` · ${group.unknown.length}종 못 읽음`:''}</small>
       </span>
     </AccordionSummary>
     <AccordionDetails>
       {schedule && <p className="merchant-region-hours">오늘 {schedule.today.map(sessionTime).join(' / ')}</p>}
       <ul>{group.items.map(card=><li key={card.id}><span className={cardRarityClass(rarityById?.get(card.id))}
         title={cardRarityName(rarityById?.get(card.id))} aria-label={`${card.name} · ${cardRarityName(rarityById?.get(card.id))}`}>{card.name}</span>
-        <span className={card.remaining===0?'verified':'needs-review'}>{card.remaining===null?'미스캔·판독 확인':card.remaining===0?'수집 완료':`${card.remaining}장 부족`}</span></li>)}</ul>
+        <span className={card.remaining===0?'verified':'needs-review'}>{card.remaining===null?'못 읽음':card.remaining===0?'수집 완료':`${card.remaining}장 부족`}</span></li>)}</ul>
     </AccordionDetails>
   </Accordion>;
 }

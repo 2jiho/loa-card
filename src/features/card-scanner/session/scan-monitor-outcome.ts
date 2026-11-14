@@ -74,22 +74,22 @@ export function scanMonitorOutcome(state:ScanMonitorOutcomeSource|null,{busy,sha
  const dropped=facts.droppedFrames,droppedUnknown=dropped===undefined;
  const base={hasInput:facts.hasInput,unresolvedCount,missingCount,...(facts.unresolvedFieldChanges===undefined?{}:{unresolvedFieldChanges:changes}),
   ...(changesUnavailable?{unresolvedFieldChangesUnavailable:true as const}:{})};
- if(busy||sharing)return {...base,kind:'active' as const,showGrid:true,header:sharing?'공유 중':'처리 중',
+ if(busy||sharing)return {...base,kind:'active' as const,showGrid:true,header:sharing?'공유 중':'읽는 중',
   message:sharing?'화면 공유 중':'남은 카드를 읽고 있어요',detail:''};
- const problems=[state?.headerConflict?'보관함 수량·용량 확인 필요':'',missingCount?`${missingCount}종 이름 미확인`:'',reviewCount?`확인 필요 ${reviewCount}종`:'',unresolvedCount?`확인할 입력 ${unresolvedCount}건`:inputUnknown&&facts.hasInput?'미식별 입력 상태 확인 필요':'',
-  dropped?`처리하지 못한 화면 최소 ${dropped}건`:droppedUnknown&&facts.hasInput?'화면 누락 상태 확인 필요':'',
-  changesUnavailable?'화면 관측 상태 확인 필요':changes?'확인할 화면 관측 있음':'',pending?`미완료 작업 ${pending}건`:''].filter(Boolean).join(' · ');
- if(state?.interrupted)return {...base,kind:'interrupted' as const,showGrid:true,header:'중단',message:'스캔이 중단됐어요',
-  detail:problems?`${problems} · 해당 구간을 다시 보여 주세요.`:'카드 성장 탭을 다시 공유해 주세요.'};
+ const problems=[state?.headerConflict?'보관함 수량을 확실히 읽지 못함':'',missingCount?`이름 못 읽음 ${missingCount}종`:'',reviewCount?`값 못 읽음 ${reviewCount}종`:'',unresolvedCount?`알아보지 못한 화면 ${unresolvedCount}개`:inputUnknown&&facts.hasInput?'알아보지 못한 화면 수를 모름':'',
+  dropped?`놓친 화면 ${dropped}개 이상`:droppedUnknown&&facts.hasInput?'놓친 화면 수를 모름':'',
+  changesUnavailable?'다시 볼 화면 수를 모름':changes?'다시 볼 화면 있음':'',pending?`남은 읽기 ${pending}개`:''].filter(Boolean).join(' · ');
+ if(state?.interrupted)return {...base,kind:'interrupted' as const,showGrid:true,header:'멈춤',message:'스캔이 중간에 멈췄어요',
+  detail:problems?`${problems} · 다시 스캔해 주세요.`:'다시 스캔해 주세요.'};
  if(!facts.hasInput&&!changes&&!changesUnavailable&&!unresolvedCount&&!dropped&&!state?.headerConflict)return {...base,kind:'idle' as const,showGrid:false,header:'대기',message:'화면 공유를 시작해 주세요',detail:''};
  if(expected!==null&&count(state?.currentRunRead)&&read===expected&&facts.unresolvedCount===0&&!inputUnknown&&dropped===0&&pending===0&&!changes&&!changesUnavailable&&!state?.headerConflict)
-  return {...base,kind:'complete' as const,showGrid:true,header:'판독 완료',message:'카드 판독 완료',detail:''};
+  return {...base,kind:'complete' as const,showGrid:true,header:'읽기 완료',message:'모든 카드를 읽었어요',detail:''};
   const allNamesRead=expected!==null&&read===expected;
   if(allNamesRead&&!unresolvedCount&&!dropped&&!changes&&!changesUnavailable&&!pending&&!state?.headerConflict&&(inputUnknown||droppedUnknown))
-   return {...base,kind:'review' as const,showGrid:true,header:'상태 확인 불가',message:'이전 스캔의 입력 상태를 확인할 수 없어요',detail:'필요하면 새 스캔으로 확인해 주세요.'};
+   return {...base,kind:'review' as const,showGrid:true,header:'확인 불가',message:'이전 스캔에서 놓친 화면이 있었는지 알 수 없어요',detail:'확실히 하려면 다시 스캔해 주세요.'};
   const unidentifiedOnly=allNamesRead&&unresolvedCount>0&&!changes&&!changesUnavailable&&!pending&&!dropped&&!droppedUnknown&&!state?.headerConflict;
-  return {...base,kind:'review' as const,showGrid:true,header:unidentifiedOnly?'미식별 입력 확인':'확인 필요',
-   message:dropped?'공유를 종료하고 처음부터 다시 스캔해 주세요':state?.headerConflict?'보관함 수량과 용량을 다시 보여 주세요':expected===null||read>expected?'보관함 수량을 다시 보여 주세요':unidentifiedOnly?'카드 수량은 확인됐지만 미식별 화면 입력이 남아 있어요':'확인할 구간을 다시 보여 주세요',
-  detail:problems||((expected!==null&&read>expected)?'판독 수량이 보관함 수량과 달라요.':
-   expected===null?'카드 성장 탭의 보관함 수량을 확인해 주세요.':'카드 판독 상태를 확인해 주세요.')};
+  return {...base,kind:'review' as const,showGrid:true,header:unidentifiedOnly?'알아보지 못한 화면':'다시 볼 곳 있음',
+   message:dropped?'놓친 화면이 있어요. 처음부터 다시 스캔해 주세요':state?.headerConflict?'보관함 수량을 확실히 읽지 못했어요. 다시 스캔해 주세요':expected===null?'보관함 수량을 읽지 못했어요. 다시 스캔해 주세요':read>expected?'읽은 카드가 보관함 수량보다 많아요. 다시 스캔해 주세요':unidentifiedOnly?'카드 수는 맞지만 알아보지 못한 화면이 남았어요':'못 읽은 카드가 있어요. 다시 스캔해 주세요',
+  detail:problems||((expected!==null&&read>expected)?'읽은 카드 수가 보관함 수량과 달라요.':
+   expected===null?'카드 성장 탭 위쪽의 보관함 수량이 보이게 해 주세요.':'못 읽은 카드가 남았어요.')};
 }

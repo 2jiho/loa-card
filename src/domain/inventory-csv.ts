@@ -43,7 +43,7 @@ function cell(value: string | number | null) {
 export function inventoryCsv(cards: readonly CsvInventoryCard[]): string {
   const issues = inventoryCsvIssues(cards);
   if (issues.length) {
-    throw new Error(`${issues.length}종 확인 필요 · ${issues[0].name}: ${issues[0].reason}. 다시 스캔한 뒤 저장해 주세요.`);
+    throw new Error(`값을 못 읽은 카드가 ${issues.length}종 있어 저장할 수 없어요(예: ${issues[0].name} - ${issues[0].reason}). 다시 스캔한 뒤 저장해 주세요.`);
   }
   const rows: [string, string | number | null, string | number | null][] = [['이름', '각수', '카드수']];
   for (const card of cards) rows.push([card.name, card.awakening, card.extraCopies]);
@@ -56,12 +56,12 @@ export function inventoryCsvIssues(cards: readonly CsvInventoryCard[]): {id: str
   return cards.flatMap(card => {
     const {awakening: a, extraCopies: n} = card, max = card.maxAwakening ?? 5;
     const normalized = card.name.normalize('NFC').trim();
-    const reason = seen.has(card.id) || names.has(normalized) ? '중복 카드'
-      : !card.id || !normalized ? '이름 확인'
-        : card.review.length ? '판독 확인'
-          : card.countReliable !== true ? '장수 확인'
-            : a === null || !Number.isInteger(a) || a < 0 || a > max ? '각성 확인'
-              : n === null || !Number.isInteger(n) || n < 0 || n > (max === 0 ? 0 : 15 - a * (a + 1) / 2) ? '장수 확인' : '';
+    const reason = seen.has(card.id) || names.has(normalized) ? '같은 카드가 두 번 있음'
+      : !card.id || !normalized ? '이름을 못 읽음'
+        : card.review.length ? '값을 못 읽음'
+          : card.countReliable !== true ? '장수를 못 읽음'
+            : a === null || !Number.isInteger(a) || a < 0 || a > max ? '각성을 못 읽음'
+              : n === null || !Number.isInteger(n) || n < 0 || n > (max === 0 ? 0 : 15 - a * (a + 1) / 2) ? '장수를 못 읽음' : '';
     seen.add(card.id);
     names.add(normalized);
     return reason ? [{id: card.id, name: card.name, reason}] : [];
@@ -99,45 +99,45 @@ function csvRows(source: string): string[][] {
       if (char === '\r' && text[i + 1] === '\n') i++;
       finishRow();
     } else if (char === '"' && !field && !closed) quoted = true;
-    else if (char === '"' || closed) throw new Error('CSV 따옴표 형식이 올바르지 않습니다.');
+    else if (char === '"' || closed) throw new Error('CSV의 따옴표(")가 잘못 쓰였어요.');
     else field += char;
   }
-  if (quoted) throw new Error('CSV의 닫는 따옴표가 없습니다.');
+  if (quoted) throw new Error('CSV에 닫는 따옴표(")가 없어요.');
   if (field || closed || row.length) finishRow();
   return rows;
 }
 
 /** Validate the whole file before returning any replacement inventory. */
 export function parseInventoryCsv(source: string, catalog: readonly CsvCatalogCard[]): CsvInventoryCard[] {
-  if (!catalog.length) throw new Error('카드 DB를 준비한 뒤 다시 불러와 주세요.');
-  if (source.length > 1_048_576) throw new Error('CSV 파일은 1MB 이내로 선택해 주세요.');
+  if (!catalog.length) throw new Error('카드 자료를 아직 불러오는 중이에요. 잠시 뒤 다시 불러와 주세요.');
+  if (source.length > 1_048_576) throw new Error('CSV 파일은 1MB 이하만 불러올 수 있어요.');
   const [header, ...rows] = csvRows(source);
   if (!header || header.map(value => value.trim()).join(',') !== '이름,각수,카드수' || header.length !== 3) {
-    throw new Error('CSV 첫 줄은 이름,각수,카드수여야 합니다.');
+    throw new Error('CSV 첫 줄은 "이름,각수,카드수"여야 해요.');
   }
-  if (!rows.length) throw new Error('불러올 카드가 없습니다.');
+  if (!rows.length) throw new Error('CSV에 카드가 한 줄도 없어요.');
   const normalize = (name: string) => name.normalize('NFC').trim();
   const byName = new Map(catalog.map(card => [normalize(card.name), card]));
   const seen = new Set<string>();
   const cards = rows.map((row, index): CsvInventoryCard => {
     const fail = (message: string): never => {
-      throw new Error(`${index + 2}행: ${message}`);
+      throw new Error(`${index + 2}번째 줄: ${message}`);
     };
-    if (row.length !== 3) fail('이름, 각수, 카드수 세 칸이 필요합니다.');
+    if (row.length !== 3) fail('이름, 각수, 카드수 세 칸이 있어야 해요.');
     const reference = byName.get(normalize(row[0]));
-    if (!reference) return fail(`카드 DB에 없는 이름입니다: ${row[0].slice(0, 80)}`);
-    if (seen.has(reference.id)) fail(`${reference.name} 카드가 중복되어 있습니다.`);
+    if (!reference) return fail(`카드 목록에 없는 이름이에요: ${row[0].slice(0, 80)}`);
+    if (seen.has(reference.id)) fail(`${reference.name} 카드가 두 번 들어 있어요.`);
     seen.add(reference.id);
     const number = (value: string, max: number, label: string): number => {
       const clean = value.trim();
-      if (!clean) fail(`${label}가 비어 있습니다. 판독이 완료된 CSV를 선택해 주세요.`);
-      if (!/^\d+$/.test(clean) || Number(clean) > max) fail(`${label}는 0~${max} 사이 정수여야 합니다.`);
+      if (!clean) fail(`${label}가 비어 있어요. 값이 모두 채워진 CSV를 골라 주세요.`);
+      if (!/^\d+$/.test(clean) || Number(clean) > max) fail(`${label}는 0~${max} 사이의 정수여야 해요.`);
       return Number(clean);
     };
     const awakening = number(row[1], reference.maxAwakening ?? 5, '각수');
     const extraCopies = number(row[2], reference.maxAwakening === 0 ? 0 : 15, '카드수');
     if (extraCopies > 15 - awakening * (awakening + 1) / 2) {
-      fail(`${reference.name}: 최대 보유량 초과 · ${awakening}각은 추가 ${15 - awakening * (awakening + 1) / 2}장까지 가능합니다.`);
+      fail(`${reference.name}: ${awakening}각이면 카드수는 최대 ${15 - awakening * (awakening + 1) / 2}장이에요.`);
     }
     return {
       id: reference.id,

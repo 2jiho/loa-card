@@ -26,18 +26,18 @@ export function completeGrowth(state: ScannerState, master: GrowthMaster, step: 
     if (!card || !definition || changed.has(upgrade.id) || upgrade.absent || upgrade.missing ||
         card.awakening !== upgrade.from || !Number.isInteger(upgrade.to) ||
         upgrade.to <= upgrade.from || upgrade.to > definition.steps.length)
-      throw new Error('카드 상태가 변경되었습니다. 다시 계산해 주세요.');
+      throw new Error('카드 목록이 바뀌었어요. 다시 계산해 주세요.');
     const cost = definition.steps.slice(upgrade.from, upgrade.to).reduce((n, s) =>
       ({ xp: n.xp + s.xp, copies: n.copies + s.copies }), { xp: 0, copies: 0 });
     if (cost.xp !== upgrade.xp || cost.copies !== upgrade.copies || card.extraCopies! < cost.copies)
-      throw new Error('성장 비용과 보유 장수가 일치하지 않습니다.');
+      throw new Error('성장에 필요한 장수와 가진 장수가 맞지 않아요. 다시 계산해 주세요.');
     xp += cost.xp;
     const original = state.cards.find(c => c.id === upgrade.id)!;
     // Do not set scanner manual-field locks: a later scan must replace these values.
     changed.set(upgrade.id, { ...original, awakening: upgrade.to, extraCopies: card.extraCopies! - cost.copies });
   }
   if (xp !== a.xp || points.current - xp !== a.remainingXp)
-    throw new Error('경험치가 변경되었습니다. 다시 계산해 주세요.');
+    throw new Error('경험치가 바뀌었어요. 다시 계산해 주세요.');
   const levels = new Map(valid.map(card => [card.id, changed.get(card.id)?.awakening ?? owned.get(card.id)!.awakening!]));
   const books = new Map(master.books.map(book => [book.id, book]));
   if (!a.requirements?.length || a.requirements.some(requirement => {
@@ -45,7 +45,7 @@ export function completeGrowth(state: ScannerState, master: GrowthMaster, step: 
     const effect = book?.effects.find(effect => effect.target === requirement.target &&
       effect.threshold === requirement.threshold && effect.requiredCount === requirement.requiredCount);
     return !book || !effect || !bookEffectActive(book,effect,levels);
-  })) throw new Error('도감 조건에 필요한 카드 상태가 변경되었습니다. 다시 계산해 주세요.');
+  })) throw new Error('도감에 필요한 카드가 바뀌었어요. 다시 계산해 주세요.');
   return { ...state, cards: state.cards.map(c => changed.get(c.id) ?? c),
     growthPoints: { ...points, current: points.current - xp }, growthPointsEstimated: true,
     growthHistory: [...(state.growthHistory ?? []), {

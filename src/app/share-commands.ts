@@ -1,3 +1,4 @@
+import {userMessage} from '../shared/user-message';
 export type CursorMode = 'unknown' | 'excluded' | 'included' | 'unsupported';
 
 /** Request a window share with cursor exclusion when the browser supports it.
@@ -74,7 +75,7 @@ export async function openWindowShare(options: ShareRefs & {
     const shared = await requestWindowShare();
     next = shared.stream;
     if (!guard.current(token)) { stopOwn(); return; }
-    if (options.preparationUncertain()) throw Error('이전 인식 엔진 준비 자원의 종료를 확인해 주세요.');
+    if (options.preparationUncertain()) throw Error('이전 스캔 정리가 끝나지 않았어요. 페이지를 새로고침해 주세요.');
     const selectedTrack = next.getVideoTracks()[0]!;
     options.setCursorMode(shared.cursorMode);
     stream.current = next;
@@ -91,9 +92,9 @@ export async function openWindowShare(options: ShareRefs & {
       options.setSharing(false);
       if (!engineReady.current) controller.current?.abort();
     });
-    if (selectedTrack.readyState !== 'live') throw Error('선택한 화면 공유가 종료되었습니다.');
+    if (selectedTrack.readyState !== 'live') throw Error('선택한 화면 공유가 끝났어요. 다시 공유해 주세요.');
     await video.current!.play();
-    if (options.preparationUncertain()) throw Error('이전 인식 엔진 준비 자원의 종료를 확인해 주세요.');
+    if (options.preparationUncertain()) throw Error('이전 스캔 정리가 끝나지 않았어요. 페이지를 새로고침해 주세요.');
     if (!guard.current(token) || stream.current !== next || selectedTrack.readyState !== 'live') {
       stopOwn();
       return;
@@ -109,7 +110,7 @@ export async function openWindowShare(options: ShareRefs & {
       }
       // Closing the picker (or a browser that refuses the share) is not a failure to explain in browser words.
       const refused = error instanceof DOMException && (error.name === 'NotAllowedError' || error.name === 'AbortError');
-      options.setActionError(refused ? '화면 공유를 시작하지 않았습니다. 다시 공유하려면 화면 공유 시작을 눌러 주세요.' : error instanceof Error ? error.message : '화면 공유 실패');
+      options.setActionError(refused ? "화면 공유를 시작하지 않았어요. 다시 공유하려면 '화면 공유 시작'을 눌러 주세요." : userMessage(error, '화면 공유를 시작하지 못했어요. 다른 창이나 화면을 골라 다시 시도해 주세요.'));
     }
   } finally {
     guard.finish(token);

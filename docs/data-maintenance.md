@@ -28,14 +28,11 @@
 
 게임 원본 `data3.lpk`(KR 암호 프로필)에서 `EFGame_Extra/ClientData/XmlData/IconInfo.loa`를 읽으면 카드 원화의 **클라이언트 선언 좌표**를 얻는다. 이 파일은 저장소에 커밋하지 않고 `work/client-data/`에만 둔다.
 
-```sh
-# 1) 아카이브에서 추출 (읽기 전용). 도구는 work/ 실험 영역에 둔다.
-#    형식: IconInfo.loa = f32 version, u32 x3, 항목마다
-#          u32 nameLen/name, u32 atlasLen/atlas, u32 x,y,w,h,pad,strLen, tag, u32 flag
-python scripts/build-client-data.py <client-assets> work/pipeline-build
-```
+아카이브 추출은 읽기 전용이며 도구는 `work/` 실험 영역에 둔다. `IconInfo.loa`의 형식은 다음과 같다: f32 version, u32 x3, 항목마다 u32 nameLen/name, u32 atlasLen/atlas, u32 x,y,w,h,pad,strLen, tag, u32 flag.
 
-`scripts/build-client-data.py`는 다음을 검증하며 빌드한다.
+이 파이프라인을 돌리는 `build-client-data.py`는 비공개 로컬 도구다. 저장소에 없으며 커밋하지 않는다. 저장소만으로는 이 단계를 다시 실행할 수 없다. 커밋된 `public/scanner` 자료와 아래 "카드 또는 판매 목록 변경" 절차, `build-client-card-art.py`는 이 도구 없이 쓸 수 있다.
+
+비공개 도구는 다음을 검증하며 빌드했다.
 
 - 카탈로그 420종의 신원(이름 키·등급·최대각성)을 `SeasonCard.db`에서 읽는다. 등급→rarity 매핑이 없으면 중단한다.
 - `IconInfo` 좌표가 아틀라스 경계를 벗어나면 중단한다.
