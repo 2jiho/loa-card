@@ -110,22 +110,14 @@ node --import tsx scripts/evaluate-run.mjs \
   - `3`: incomplete
   - `1`: 입력 오류
 
-## 5. 현재 기준선 (2026-11-08)
+## 5. 기준선 기록
 
-| 케이스 | 라벨 카드 | 이름 | 각성 | 장수 | readableButMissed | falseConfirm | review |
-|---|---:|---|---|---|---:|---:|---:|
-| screenshots-1 | 40 | 40/40 | 40/40 | 39/40 | 1 | 0 | 1 |
-| screenshots-2 | 38 | 38/38 | 38/38 | 37/38 | 1 | 0 | 1 |
-| video-1 | 4 | 4/4 | 4/4 | 4/4 | 0 | 0 | 0 |
-| video-7 | 4 | 4/4 | 4/4 | 4/4 | 0 | 0 | 0 |
-| video-3 (8종) | 8 | 8/8 | 8/8 | 8/8 | 0 | 0 | 0 |
-| video-3 (리뷰 2종) | 2 | — | — | 2/2 | 0 | 0 | 0 |
+기준선은 비공개 코퍼스 사례(사진 묶음·영상)의 결과 JSON과 사람 라벨을 대조한 값이다. 입력이 Git에 없으므로 날짜별 기준선 표는 사례 옆의 `fixtures/local/notes/`에 둔다. 기준선을 읽을 때는 다음을 지킨다.
 
-- screenshots-1·2의 `readableButMissed 1`은 베스칼 장수(라벨 0, 결과 `null`)다. 오확정은 아니다.
-- video-3 리뷰 2종 라벨은 `extraCopies`만 라벨링했으므로 `fieldScope: ["extraCopies"]`로 평가했다.
-- 이 표는 **부분 라벨** 기준이다. screenshots-1은 384장 중 40장, screenshots-2는 384장 중 38장만 라벨이 있다.
-- `unlabeledResultCards`는 각각 344·346건이며, partial scope이므로 실패로 세지 않는다. 전체 판독 완료 증거가 아니다.
-- 코퍼스 전체를 다시 실행한 결과가 아니다. 기존 결과 JSON과 사람 라벨을 대조한 기준선이다.
+- **부분 라벨** 기준이다. 라벨이 있는 카드만 분모에 들어간다. 한 필드만 라벨링한 사례는 `fieldScope`로 그 필드만 평가한다.
+- `unlabeledResultCards`는 partial scope에서 실패로 세지 않는다. 전체 판독 완료 증거가 아니다.
+- `readableButMissed`(예: 라벨 0, 결과 `null`)는 오확정이 아니다. 오확정은 `falseConfirm`으로 따로 본다.
+- 기존 결과 JSON과 라벨을 대조한 기준선은 코퍼스 전체를 다시 실행한 결과가 아니다.
 
 ## 6. 한계
 

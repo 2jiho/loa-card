@@ -65,7 +65,8 @@ export function rowCanStopSharing(snapshot:RowScanSnapshot):boolean {
 }
 
 /** Below this interface scale (1920x1080 is 0.75) the count digits are about 8 pixels high and
- * some cannot be read at all, even from a still frame (docs/dev-recording.md, 1600x900). */
+ * some cannot be read at all, even from a still frame (measured on a private 1600x900 recording;
+ * notes in fixtures/local/notes/). */
 export const SMALL_SCREEN_SCALE=.75;
 /** What to tell the person when the shared picture is smaller than 1920x1080 at the interface
  * scale, or null. Values that cannot be read stay unconfirmed; nothing is guessed. */

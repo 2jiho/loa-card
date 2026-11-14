@@ -60,28 +60,14 @@
 - 회귀 테스트: `tests/identity-fusion.test.ts`의 `the three known ambiguous synthetic cards stay unresolved under the current gates`
 - 분석 산출물: `work/identity-ambiguous-analysis.json` (`node --import tsx work/analyze-ambiguous-identity.ts`)
 
-## 4. video-1 전후
-
-| 항목 | 융합 전 `step5-video1-geometry2.json` | 융합 후 `step5-video1-fusion.json` |
-|---|---:|---:|
-| cards / names / read | 384 / 384 / 384 | 384 / 384 / 384 |
-| reviews | 0 | 0 |
-| unresolved | 0 | 0 |
-| discarded | 67 | 67 |
-| 카드별 이름·각성·장수 차이 | — | **0** |
-| 누락 / 추가 카드 | — | **0 / 0** |
-
-- 4장 사람 라벨 평가: **pass**, 이름 4/4, 각성 4/4, 장수 4/4, `falseConfirm 0`, `review 0`.
-- 리포트: `work/evaluation/video1-step5-fusion.json`
-
-## 5. 한계
+## 4. 한계
 
 - 합성 템플릿은 실제 화면보다 깨끗하다. 414/417은 실제 영상·스크린샷의 정확도가 아니다.
 - 미확정 3장은 이름 자체가 다른 카드와 겹친다. 원화 마진이 개선되거나 더 선명한 입력이 있어야 확정할 수 있다.
-- `screenshots-1·2`의 베스칼 장수 `readableButMissed 1`은 필드 판독 문제이며 Step 5.3에서 다룬다.
-- 실제 화면 공유·다른 해상도 검증은 아직이다.
+- 사진 묶음 사례에서 남은 베스칼 장수 `readableButMissed`는 신원이 아니라 필드 판독 문제다([장수 필드 증거](field-evidence.md)).
+- 이 문서의 수치는 합성 홀드아웃이다. 실제 화면 공유의 확인은 비공개 기록 재실행으로 하며 그 측정 메모는 `fixtures/local/notes/`에 둔다.
 
-## 6. 재현
+## 5. 재현
 
 ```sh
 node --import tsx --test tests/identity-fusion.test.ts
@@ -89,7 +75,7 @@ node --import tsx --test tests/identity-fusion.test.ts
 node work/cdp-identity-generalization.mjs
 ```
 
-## 7. 다음
+## 6. 다음
 
 - 각성·장수 필드 증거 분리(Step 5.3)
 - 베스칼 장수 리뷰 해소

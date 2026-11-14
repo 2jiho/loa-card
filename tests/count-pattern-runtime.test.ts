@@ -11,7 +11,7 @@ const atlas = JSON.parse(await readFile("public/scanner/counter-patterns.json", 
 const patterns = atlas.patterns.map(prepareContrastPattern);
 const beskalEvidence = JSON.parse(await readFile(
   new URL("./fixtures/beskal-single-frame.json", import.meta.url), "utf8")) as EmptyPreviewEvidence;
-// These regression strips share video-1 source data with the atlas builder.
+// These regression strips share the first test video's source data with the atlas builder.
 // Every test using them is a regression check, not an independent accuracy evaluation.
 const samples = JSON.parse(await readFile("tests/fixtures/counter-samples.json", "utf8"));
 const emptyEvidence='gray-card-marker-and-visible-background';
@@ -63,7 +63,7 @@ test('full-awakening shortcut rejects visible labelled counters but accepts an i
   assert.deepEqual(readFullAwakening({} as Raster,context,fields,patterns),{awakening:5,extraCopies:0});
 });
 
-// This regression fixture shares video-1 source strips with the atlas builder;
+// This regression fixture shares the first test video's source strips with the atlas builder;
 // it is not an independent accuracy or generalization benchmark.
 test("runtime font atlas reads its labelled regression strips with compensated vertical movement", () => {
   for (const sample of samples) for (const offset of [-2, 0, 3]) {

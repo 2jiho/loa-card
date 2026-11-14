@@ -3,7 +3,7 @@ import {createVisualClient} from '../src/features/card-scanner/recognition/visua
 import type {VisualResult} from '../src/features/card-scanner/recognition/visual-client';
 import {openRecordedShareStream} from './recorded-share-frames';
 
-/** Development prototype (docs/dev-recording.md, "가벼운 경로 시제품"). Not a scanner.
+/** Development prototype (measurement notes: fixtures/local/notes/, kept with the private recordings). Not a scanner.
  *
  * Feeds every frame of a server recording through the pieces a lean live path would keep
  * and nothing else: the acquisition worker (card window, 40 crops, the quality checks) and

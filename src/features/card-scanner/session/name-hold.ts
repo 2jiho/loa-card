@@ -1,5 +1,5 @@
-/** Holding a place after a failed name reading (docs/dev-recording.md, "이름 판독 실패와 빠진 카드의
- * 원인"); used by the row reading's name lane.
+/** Holding a place after a failed name reading (docs/scanner-pipeline.md, section 4;
+ * measurement notes in fixtures/local/notes/); used by the row reading's name lane.
  *
  * A name reading that ran the text reader and still named no card is slow (about a second) and,
  * while the picture does not change, gives the same answer again: a mouse cursor resting on a

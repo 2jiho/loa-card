@@ -5,7 +5,7 @@ import {openRecordedShareStream} from './recorded-share-frames';
 import {EMPTY,UNIDENTIFIED,UNUSABLE} from './row-analysis';
 import type {RowFrame} from './row-analysis';
 
-/** Development measurement (docs/dev-recording.md, "줄 중심 설계의 타당성 측정"). Not a scanner.
+/** Development measurement (measurement notes: fixtures/local/notes/, kept with the private recordings). Not a scanner.
  *
  * For every frame of a server recording that has a card window: what each of the 40 grid
  * slots showed and where the scrollbar thumb was. A slot is identified by the visual worker

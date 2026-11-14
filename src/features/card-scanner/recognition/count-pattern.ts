@@ -341,7 +341,7 @@ export function stablePreviewEmptyCandidate(packed: EmptyPreviewEvidence): boole
  * only make a value firmer, and a later reading that disagrees replaces it
  * (the newest valid observation wins). Measured on 9 recordings, this evidence
  * fired on none of 7344 observation images of cards with a confirmed positive
- * count (docs/dev-recording.md). An observation count below 1 proves nothing. */
+ * count (local notes in fixtures/local/notes/, with the private recordings). An observation count below 1 proves nothing. */
 export type EmptyCounterProof = 'still-image' | 'repeated-observations' | 'single-observation';
 export function emptyCounterProof(
   packed: EmptyPreviewEvidence,

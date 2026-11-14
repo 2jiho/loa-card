@@ -6,7 +6,7 @@ import {openRecordedShareStream} from './recorded-share-frames';
 import {COLUMNS,createRowReadSession,createThumbClock,EMPTY_REASON,GRID_ROWS,PROBE_COLUMNS} from './row-read';
 import type {RowReadResult,RowReadVisual} from './row-read';
 
-/** Development prototype (docs/scanner-live-redesign.md 13.9, step 3). Not a scanner.
+/** Development prototype (row-centred design: docs/scanner-pipeline.md; measurement notes: fixtures/local/notes/, kept with the private recordings). Not a scanner.
  *
  * The row-centred reading of dev/row-read.ts with a LIGHT CHECK in front of it. Once the card
  * window is known, a frame is first looked at through a small atlas: the scrollbar strip and

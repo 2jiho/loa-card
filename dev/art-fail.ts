@@ -7,7 +7,7 @@ import type {Reference} from '../src/features/card-scanner/recognition/reference
 import {readScrollGeometry} from '../src/features/card-scanner/session/scroll-position';
 import {openRecordedShareStream} from './recorded-share-frames';
 
-/** Development measurement (docs/dev-recording.md, "원화로 식별되지 않는 카드"). Not a scanner.
+/** Development measurement (measurement notes: fixtures/local/notes/, kept with the private recordings). Not a scanner.
  *
  * Runs the scanner's own artwork matcher, with its diagnostics on, over the usable crops of a
  * recording (one frame per scroll position) and keeps the numbers of the crops it does NOT

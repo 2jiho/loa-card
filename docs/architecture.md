@@ -98,7 +98,7 @@ npm run check:architecture -- --json --out work/architecture-check.json
 - 기능 간 직접 의존: 0
 - 타입 전용 순환 경고: 0
 - 앱 셸 모듈은 [App 모듈](app-decomposition.md)에 정리했다.
-- 폴더 이동 단계의 기록은 [물리 분할](physical-split.md)과 [마이그레이션](architecture-migration.md)에 있다. 그 문서가 인용한 파일 상당수는 v0.3.0에서 지웠다.
+- 폴더 이동 단계의 날짜별 기록은 Git 이력과 로컬 메모(`fixtures/local/notes/`)에만 있다. 그 기록이 인용한 파일 상당수는 v0.3.0에서 지웠다.
 
 ## 6. 타입 전용 순환 방지
 

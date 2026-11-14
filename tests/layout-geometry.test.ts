@@ -103,7 +103,7 @@ test('invalid origin, media size and observed grid are rejected', () => {
 });
 
 test('every card of a window drawn at a fractional scale lies inside the card area', () => {
-  // A 2560x1440 window drawn at 0.98 (share-...-81a0): the first row and column were rejected
+  // A 2560x1440 window drawn at 0.98: the first row and column were rejected
   // as cut off at the screen edge because the rounded cell started inside a fractional area edge.
   for (const origin of [{x: 786.4, y: 222.6, scale: .9799}, {x: 799.7, y: 223.2, scale: .97}, {x: 600.25, y: 160.5, scale: .75}]) {
     const layout = normalizeLayoutGeometry(origin, 2510, 1438);

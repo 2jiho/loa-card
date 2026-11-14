@@ -209,7 +209,7 @@ export async function runRowScan(options:{
       // The name lane also runs the artwork match with fractional registration (the scanner's
       // refined match for structurally intact crops). At 1920x1080 a crop is 105x158 pixels and
       // the whole-cell artwork match misses cards it names at 2560x1440; the refined one names
-      // them (docs/dev-recording.md). ?refine=0 turns it off, for comparison.
+      // them (measured on private recordings; notes in fixtures/local/notes/). ?refine=0 turns it off, for comparison.
       async identify(image,stable,structural){const identity=await reader.identify(image,true,stable,structural,undefined,
         typeof location==='undefined'||new URLSearchParams(location.search).get('refine')!=='0');return identity?{id:identity.id,name:identity.name,full:identity}:null;},
       async values(image,id){const values=await reader.read(image,id,false,false);return {awakening:values.awakening,extraCopies:values.extraCopies,full:values};},

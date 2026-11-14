@@ -2,7 +2,7 @@
 
 - 작성일: 2026-11-08
 - 단계: Step 5 recognition v2 — 첫 번째 하위 단계
-- 코드: `src/features/card-scanner/layout-geometry.ts`, `detector.ts`
+- 코드: `src/features/card-scanner/acquisition/layout-geometry.ts`, `acquisition/detector.ts`
 - 테스트: `tests/layout-geometry.test.ts`, `tests/detector-candidate.test.ts`
 
 ## 1. 변경
@@ -35,40 +35,21 @@
 | 잘못된 원점·화면 크기·2:3이 아닌 카드 | 거부 |
 | 균등 배율 | 기준 셀 좌표와 ±1px 이내 |
 
-## 3. video-1 전후 비교
-
-같은 입력·같은 라벨로 재실행했다. 기존 결과는 변경하지 않았다.
-
-| 항목 | 이전 `video1-live-discard2.json` | 이후 `step5-video1-geometry2.json` |
-|---|---:|---:|
-| cards | 384 | 384 |
-| names | 384 | 384 |
-| read | 384 | 384 |
-| reviews | 0 | 0 |
-| unresolved | 0 | 0 |
-| discarded | 62 | 67 |
-| 카드별 이름·각성·장수 차이 | — | **0** |
-| 누락/추가 카드 | — | **0 / 0** |
-
-- 4장 사람 라벨 평가: **pass**, 이름 4/4, 각성 4/4, 장수 4/4, `falseConfirm 0`, `review 0`.
-- 버린 관측 수 62→67은 프레임 타이밍에 따른 진단 차이다. 카드 값 변경이나 오확정이 아니다.
-- `unresolved 0`은 인식 100%가 아니며, 버린 관측은 별도 목록으로 유지한다.
-
-## 4. 한계
+## 3. 한계
 
 - 실제 1080p·4K·다른 UI 배율 캡처가 아니다. 균등 스케일 변형과 관측 격자 계약만 검증했다.
 - 이미지 레벨의 앵커 검출·카드 테두리 검출은 이 행렬에 포함되지 않는다.
 - 실제 UI 배율이 헤더와 카드 격자에 다르게 적용되는 경우, `ObservedGrid`를 실제 획득 단계에서 공급해야 한다.
-- 코퍼스 전체 재실행·실제 화면 공유·다른 해상도 검증은 아직이다.
+- 이 문서의 검사는 합성 기하 테스트다. 실제 화면 공유의 다른 해상도 확인은 비공개 기록 재실행으로 하며 그 측정 메모는 `fixtures/local/notes/`에 둔다.
 
-## 5. 재현
+## 4. 재현
 
 ```sh
 node --import tsx --test tests/layout-geometry.test.ts
 node --import tsx --test tests/detector-candidate.test.ts
 ```
 
-## 6. 다음
+## 5. 다음
 
 - 이름+원화 융합 신원 해석
 - 각성·장수 필드 증거 분리

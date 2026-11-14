@@ -1,6 +1,6 @@
 import type {ListCell} from './list-table';
 
-/** Which slots of one visible grid row need reading (docs/scanner-live-redesign.md 13.9, step 2).
+/** Which slots of one visible grid row need reading (docs/scanner-pipeline.md, section 4).
  *
  * Two PROBE slots of the row are read first. When both are cards the list table already has,
  * side by side in one row of one island, at the columns they are seen in now, the grid row is

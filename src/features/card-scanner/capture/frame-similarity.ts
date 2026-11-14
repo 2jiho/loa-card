@@ -10,7 +10,8 @@
  * Every `forceEvery`-th frame in a row is processed regardless, which bounds how long a
  * change that both measures miss could stay unseen.
  *
- * Pure: no canvas, no clock. docs/dev-recording.md has the measurements behind the numbers. */
+ * Pure: no canvas, no clock. The measurements behind the numbers are local notes
+ * (fixtures/local/notes/), kept with the private recordings. */
 export const THUMBNAIL_WIDTH=256,THUMBNAIL_HEIGHT=144,BLOCK_SIZE=16;
 
 export interface FrameSkipPolicy {

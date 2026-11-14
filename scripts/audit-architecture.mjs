@@ -357,7 +357,7 @@ function argumentValue(args, name) {
 function main() {
   const args = process.argv.slice(2);
   const out = argumentValue(args, '--out') ?? 'work/architecture-audit.json';
-  const markdown = argumentValue(args, '--md') ?? 'docs/architecture-audit.md';
+  const markdown = argumentValue(args, '--md') ?? 'work/architecture-audit.md';
   const result = summarize(buildRecords());
   const outPath = resolve(ROOT, out);
   mkdirSync(dirname(outPath), {recursive: true});

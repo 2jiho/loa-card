@@ -3,7 +3,7 @@ import {readScrollGeometry} from '../src/features/card-scanner/session/scroll-po
 import {openRecordedShareStream} from './recorded-share-frames';
 import {fitLine,parabolaPeak,summarize} from './grid-fit-math';
 
-/** Development measurement (docs/card-image-structure.md, "테두리 윤곽으로 격자 맞추기"). Not a scanner.
+/** Development measurement (docs/card-image-structure.md, "측정 도구"). Not a scanner.
  *
  * Finds where each card's border really is on screen from the SHAPE of the border, not its
  * colour: the outer contour of the client's border sprite (crest, corners and sides) is laid

@@ -23,7 +23,7 @@ const unknown:ScannerState['unidentified']=[
  {image:unknownImageB,time:3.9,group:64,pending:false,reason:'이름 확인 필요'},
 ];
 
-// The row-centred scan's guidance (session/list-guidance.ts), as the 816e and a04e recordings ended with.
+// The row-centred scan's guidance (session/list-guidance.ts), as two recorded scans ended with.
 const listGuidance={asks:[
  '라제니스를 이끄는 니나브: 다시 보여 주세요 (1번째 줄 8번째 칸, 목록의 약 0% 지점) · 최신 각성·장수 확인',
  '5번째 줄(목록의 약 7% 지점): 8, 9, 10번째 칸은 가려졌거나 온전히 보이지 않음',

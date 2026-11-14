@@ -4,7 +4,7 @@ import {readScrollGeometry} from '../src/features/card-scanner/session/scroll-po
 import {openRecordedShareStream} from './recorded-share-frames';
 import {createThumbClock} from './row-read';
 
-/** Development measurement (docs/card-image-structure.md, "카드 배치도"). Not a scanner.
+/** Development measurement (docs/card-image-structure.md, "측정 도구"). Not a scanner.
  *
  * Takes the card crops of a server recording (one frame per scroll position), lines each crop up with the client's grade border for its card, and
  * stacks them. Whatever the game draws at a fixed place on every card (border, plates, jewel

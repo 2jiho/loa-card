@@ -160,7 +160,7 @@ node --import tsx scripts/derive-recording.mjs <기록 id> <새 id> middle=<프�
 node scripts/check-monitor-timeline.mjs <기록 id> [run 파일]
 ```
 
-배치 변화와 넘침은 `/dev/monitor-timeline.html?id=<기록 id>&run=<run 파일>&width=340`에서 기록된 상태를 앱의 진행 창 컴포넌트로 다시 그려 측정한다. `&fill=1`은 별도 진행 창(창 높이를 채우는 배치), `&at=<번호>`는 한 상태만 그린다. 검사 항목과 한계는 [화면 공유 기록](dev-recording.md#진행-창-자동-점검-2026-11-14)에 있다.
+배치 변화와 넘침은 `/dev/monitor-timeline.html?id=<기록 id>&run=<run 파일>&width=340`에서 기록된 상태를 앱의 진행 창 컴포넌트로 다시 그려 측정한다. `&fill=1`은 별도 진행 창(창 높이를 채우는 배치), `&at=<번호>`는 한 상태만 그린다. 검사 항목과 한계는 [화면 공유 기록](dev-recording.md#진행-창-자동-점검)에 있다.
 
 v0.3.0에서 이전 프레임 단위 스캐너 루프와 앱의 "스캔 진단"(진단 기록·입력 재현)을 제거했다. 그 루프 전용이던 개발 페이지(`/dev/scanner.html` 등)와 실험 기록 설명도 함께 지웠으며, 지난 내용은 Git 이력에 남아 있다.
 

@@ -1,4 +1,4 @@
-/** The card list as a table of rows and columns (docs/scanner-live-redesign.md, section 13).
+/** The card list as a table of rows and columns (docs/scanner-pipeline.md, section 4).
  *
  * The row-centred scan places every card it reads here. It is a pure state machine, so a live
  * scan and a replay of recorded observations go through the same code.

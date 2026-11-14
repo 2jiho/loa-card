@@ -1,4 +1,4 @@
-/** Development analysis (docs/dev-recording.md, "줄 중심 설계의 타당성 측정"). Not a scanner.
+/** Development analysis (measurement notes: fixtures/local/notes/, kept with the private recordings). Not a scanner.
  *
  * Input: for every frame with a card window, what each of the 40 grid slots showed
  * (a card id, an unidentified card, an empty slot, or nothing usable) and where the scrollbar

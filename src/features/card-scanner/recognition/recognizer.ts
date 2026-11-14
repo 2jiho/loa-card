@@ -242,7 +242,8 @@ export async function createRecognizer(status: (message: string) => void, signal
       // the hover glow, or a covered band. The text reader would read nothing (it did, at length, on a
       // share where the cursor moved over the list), so it is not run. Only a band that is nearly even is
       // refused: those crops stood at 4 to 11, names read by text at 42 or more, and a higher limit (30)
-      // also refused names blurred while scrolling up (docs/dev-recording.md).
+      // also refused names blurred while scrolling up (measured on private recordings; notes in
+      // fixtures/local/notes/).
       {
         const pixels = canvas.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, canvas.width, canvas.height).data;
         if (nameBandSpread(pixels, canvas.width, canvas.height) < NAME_TEXT_SPREAD) return rejectBeforeOcr('이름 영역에 글자 획 없음 · OCR 미실행');
