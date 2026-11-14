@@ -32,6 +32,23 @@ export function readFieldReliability(values:ReadFieldValues,crop:{stable:boolean
   return values.extraCopies!==null&&values.countDiagnostics?.ocrConfirmedValue===values.extraCopies?'stable-frame':own;
 }
 
+/** A crop's count as an independent text reading: a fresh reading by the text reader (not reused from
+ * its cache) that agrees with the count patterns' first candidate, on an intact card. Null otherwise. */
+export interface TextCountReading {readonly frameId:number;readonly time:number;readonly awakening:number|null;readonly value:number}
+export function textCountReading(values:ReadFieldValues,crop:{frameId:number;time:number;borderAlignment:number}):TextCountReading|null {
+  const count=values.countDiagnostics;
+  if(values.extraCopies===null||values.extraCopies<=0||crop.borderAlignment<.8||count?.reason==='캐시 판독')return null;
+  if(count?.ocrConfirmedValue!==values.extraCopies||count.pattern?.candidate!==values.extraCopies)return null;
+  return {frameId:crop.frameId,time:crop.time,awakening:values.awakening,value:values.extraCopies};
+}
+/** Whether an earlier text reading of the same card, from another frame at least 0.25 s apart, read the
+ * same awakening and count: two independent readings then confirm it. A retry of the same frame is
+ * not another reading. */
+export function agreesWithEarlierReading(earlier:readonly TextCountReading[],reading:TextCountReading):boolean {
+  return earlier.some(other=>other.frameId!==reading.frameId&&Math.abs(other.time-reading.time)>=.25&&
+    other.awakening===reading.awakening&&other.value===reading.value);
+}
+
 /** Settle the values of a crop once its count reliability is final. Changes `values` in place:
  * a zero that could not be confirmed becomes unread (null), never an observed zero. Returns
  * the review flags of the observation: the identity's own, plus one per value left unread. */

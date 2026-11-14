@@ -2,7 +2,8 @@ import {InventoryEvidence,CURRENT_INVENTORY_CONSENSUS_POLICY} from './inventory-
 import type {InventorySource} from './inventory-evidence';
 import {confirmedReadingCount} from './recovery-completion';
 import {timedCaptureOrder} from './live-scan-policy';
-import {observedCard,readFieldReliability,settleReadFields} from './field-acceptance';
+import {agreesWithEarlierReading,observedCard,readFieldReliability,settleReadFields,textCountReading} from './field-acceptance';
+import type {TextCountReading} from './field-acceptance';
 import type {ReadFieldValues} from './field-acceptance';
 import type {CatalogName} from '../recognition/card-dictionary';
 import type {ScannedCard} from '../recognition/recognizer-types';
@@ -133,6 +134,8 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150,
   };
   const cardPictures=new Map<string,{url:string;stable:boolean;version:number}>();
   const accepts=new Map<string,unknown[]>();
+  /** Per card: its fresh text readings of the count that agreed with the patterns' candidate (see accept). */
+  const textReads=new Map<string,TextCountReading[]>();
   const resolvedZero=new Map<string,NonNullable<ScannedCard['countDiagnostics']>>();
   /** Observations accepted per card, to notice one arriving while the zero check reads that card's crops. */
   const acceptCount=new Map<string,number>();
@@ -156,7 +159,17 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150,
       const {identity,time,slot,stable,borderAlignment}=input;
       // Acceptance settles the values in place; the reader's own object is left alone.
       const values:ReadFieldValues=input.values?structuredClone(input.values):{awakening:null,extraCopies:null};
-      const reliability=readFieldReliability(values,{stable,borderAlignment,maxAwakening:identity.maxAwakening});
+      let reliability=readFieldReliability(values,{stable,borderAlignment,maxAwakening:identity.maxAwakening});
+      // Two readings of this card from different frames, each a fresh text reading that agrees with the
+      // count patterns' first candidate on an intact card, confirm the count (where the patterns cannot
+      // read the digits, as on a 1920x1080 window, a still list was the only other way). A reading
+      // reused from the cache or a retry of the same frame is not another one.
+      const reading=textCountReading(values,{frameId:input.frameId,time,borderAlignment});
+      if(reading){
+        const seen=textReads.get(identity.id)??[];
+        if(reliability==='unconfirmed'&&agreesWithEarlierReading(seen,reading))reliability='repeated-pattern';
+        seen.push(reading);textReads.set(identity.id,seen.slice(-6));
+      }
       const asRead=values.extraCopies;
       const review=settleReadFields(values,identity.review,reliability);
       const order=timedCaptureOrder(0,time,slot),frame=`row:${input.frameId}`;

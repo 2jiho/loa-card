@@ -63,3 +63,20 @@ test('a still list does not certify a count the patterns alone read; it does one
   assert.equal(readFieldReliability(read,{stable:true,borderAlignment:1}),'stable-frame');
   assert.equal(readFieldReliability(read,{stable:false,borderAlignment:1}),'unconfirmed');
 });
+
+test('two fresh text readings of the count from different frames confirm it; a cached one or the same frame does not', async () => {
+  const {textCountReading,agreesWithEarlierReading}=await import('../src/features/card-scanner/session/field-acceptance');
+  const read=(extra:Partial<CountDiagnostics>={})=>({awakening:0,extraCopies:15 as number|null,
+    countDiagnostics:{maximum:15,reason:'숫자 후보와 독립 숫자 OCR 일치',readings:[],ocrConfirmedValue:15,iconPresent:true,
+      pattern:{value:null,candidate:15,score:.2,gap:.01,reason:'숫자 획과 외곽선 대비 부족'},...extra}});
+  const first=textCountReading(read(),{frameId:1,time:6.4,borderAlignment:1})!;
+  assert.ok(first);
+  assert.equal(agreesWithEarlierReading([first],textCountReading(read(),{frameId:2,time:14.4,borderAlignment:1})!),true);
+  assert.equal(agreesWithEarlierReading([first],textCountReading(read(),{frameId:1,time:6.4,borderAlignment:1})!),false,'the same frame');
+  assert.equal(agreesWithEarlierReading([first],textCountReading(read(),{frameId:2,time:6.5,borderAlignment:1})!),false,'0.1 s later');
+  assert.equal(textCountReading(read({reason:'캐시 판독'}),{frameId:3,time:20,borderAlignment:1}),null,'reused from the cache');
+  assert.equal(textCountReading(read({pattern:{value:null,candidate:13,score:.2,gap:.01,reason:'숫자 획과 외곽선 대비 부족'}}),{frameId:3,time:20,borderAlignment:1}),null,'the patterns disagree');
+  assert.equal(textCountReading(read(),{frameId:3,time:20,borderAlignment:.7}),null,'a card not intact');
+  const other={...textCountReading(read(),{frameId:4,time:21,borderAlignment:1})!,value:14};
+  assert.equal(agreesWithEarlierReading([first],other),false,'another value');
+});

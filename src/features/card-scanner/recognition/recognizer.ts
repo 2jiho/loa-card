@@ -1,6 +1,9 @@
 import { drawVisualRaster, inspectVisual, portraitIdentity, readVisual, readFullAwakening } from './visual-fields';
 import { confirmCatalogName } from "./name-confidence";
 import { normalizeName } from "./card-dictionary";
+import { nameBandSpread } from "./name-visibility";
+/** The name band's spread (name-visibility.ts) below which no name is read by text: a nearly even band. */
+export const NAME_TEXT_SPREAD = 12;
 import { readSortArrow } from "./capture-metadata";
 import type { Layout } from "../acquisition/detector";
 import type { Box } from "../acquisition/detector";
@@ -235,6 +238,15 @@ export async function createRecognizer(status: (message: string) => void, signal
         variant:'이름 영역 사전 검사',reason,candidates:[]});return null;};
       if (fields.blankName) return rejectBeforeOcr('이름 첫 줄이 가려짐 · OCR 미실행');
       if (fields.labelPixels < 35 && !structural) return rejectBeforeOcr('이름 픽셀 부족 · OCR 미실행');
+      // No bright strokes above the name plate: an empty slot under the cursor, a plate washed out by
+      // the hover glow, or a covered band. The text reader would read nothing (it did, at length, on a
+      // share where the cursor moved over the list), so it is not run. Only a band that is nearly even is
+      // refused: those crops stood at 4 to 11, names read by text at 42 or more, and a higher limit (30)
+      // also refused names blurred while scrolling up (docs/dev-recording.md).
+      {
+        const pixels = canvas.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, canvas.width, canvas.height).data;
+        if (nameBandSpread(pixels, canvas.width, canvas.height) < NAME_TEXT_SPREAD) return rejectBeforeOcr('이름 영역에 글자 획 없음 · OCR 미실행');
+      }
       const onAttempt = (attempt: import("./name-diagnostics").NameAttempt) => {
         attempts.push(attempt);
         if (attempts.length > 24) attempts.splice(8, 1);
