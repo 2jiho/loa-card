@@ -5,6 +5,7 @@ export interface CountPattern { value: number; bits: string; pixels: number }
 export interface ContrastPattern { value: number; foreground: number[]; outline: number[]; plus: number[]; plusOutline: number[] }
 export type CountEmptyEvidence = 'gray-card-marker-and-visible-background';
 export const COUNT_UNEXPLAINED_TRAILING_GLYPH = '단일 숫자 후보 뒤 미설명 숫자 획';
+export const COUNT_SUPERSET_STROKES = '더 많은 획의 숫자 획이 보임';
 export interface CountPatternReading {
   value: number | null;
   candidate: number | null;
@@ -176,12 +177,40 @@ export function matchCountPattern(rgba: ArrayLike<number>, patterns: ContrastPat
     : best[0] < 10 && placements.has(best[0]) && hasTrailingCountStroke(gray,placements.get(best[0])!)
       ? COUNT_UNEXPLAINED_TRAILING_GLYPH
     : gap < .018 ? "장수 패턴 후보 간 차이 부족"
+    : placements.has(best[0]) && supersetStrokesVisible(gray,placements.get(best[0])!,placements,best[0],minContrast,scores) ? COUNT_SUPERSET_STROKES
     : "장수 전체 패턴 일치";
   return { value: reason === "장수 전체 패턴 일치" ? best[0] : null,
     candidate: best[0], score: best[1], gap, reason,
     ...(reason === COUNT_UNEXPLAINED_TRAILING_GLYPH && strongScore !== .45 ? { strongScore } : {}),
     ...(minContrast !== .30 ? { contrastFloor: minContrast } : {}),
     ...(agreementScale !== 1 && agreementScale !== .22 / .30 ? { agreementScale } : {}) };
+}
+
+/** A count drawn with more strokes than the winner can score below it when its own templates fit
+ * this rendering less well: a 5120x2880 "+8" read as 3 (score 0.48, gap 0.068; 3 is 8 without its
+ * left strokes), and 6 read as 5 with templates of that scale. When another plausible value's
+ * glyph covers the winner's and the strokes only it has are lit like ink where the winner has
+ * none, the crop may show that value: no value is read. A veto only: the other value is never
+ * read instead (an OCR reading or another crop decides). */
+function supersetStrokesVisible(gray:Float32Array,winner:{pattern:ContrastPattern;dx:number;dy:number},
+  placements:ReadonlyMap<number,{pattern:ContrastPattern;dx:number;dy:number}>,value:number,minContrast:number,scores:ReadonlyMap<number,number>):boolean {
+  const at=(placement:{dx:number;dy:number},p:number)=>p+placement.dy*50+placement.dx;
+  const own=winner.pattern.foreground.map(p=>at(winner,p)),outline=winner.pattern.outline.map(p=>at(winner,p));
+  const mean=(positions:readonly number[])=>{let sum=0;for(const p of positions)sum+=gray[p];return positions.length?sum/positions.length:0;};
+  const ink=mean(own);
+  for(const [other,placement] of placements){
+    if(other===value||(scores.get(other)??0)<minContrast)continue;
+    const theirs=new Set(placement.pattern.foreground.map(p=>at(placement,p)));
+    // The other glyph covers the winner's strokes (one pixel of slack) ...
+    const covered=own.filter(p=>theirs.has(p)||theirs.has(p-1)||theirs.has(p+1)||theirs.has(p-50)||theirs.has(p+50)).length;
+    if(covered<own.length*.9)continue;
+    // ... and has strokes where the winner has its dark outline: are they lit like ink?
+    const lit=outline.filter(p=>theirs.has(p)),dark=outline.filter(p=>!theirs.has(p));
+    if(lit.length<8)continue;
+    const shadow=mean(dark);
+    if(ink>shadow&&mean(lit)>=shadow+.6*(ink-shadow))return true;
+  }
+  return false;
 }
 
 /** A positive, font-shaped unexplained stroke can be a second digit. This is

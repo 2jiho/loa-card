@@ -92,7 +92,8 @@ export function sameListMap(a:ListGuidanceMap|undefined,b:ListGuidanceMap|undefi
 
 /** The small progress window publishes independently of the card-list transition.
  * Retains no card crops, recording pixels, or recognition evidence. */
-export function createScanMonitorStore(options:{notifyIntervalMs?:number}={}) {
+export function createScanMonitorStore(options:{notifyIntervalMs?:number;/** Clock for the notify interval (ms). */now?:()=>number}={}) {
+  const now=options.now??(()=>performance.now());
   let value:ScanMonitorState|null=null;
   let liveObstructionHint:LiveObstructionHint|undefined;
   let feedback:ScannerFeedback|undefined;
@@ -101,11 +102,15 @@ export function createScanMonitorStore(options:{notifyIntervalMs?:number}={}) {
   let stableLiveTop:number|undefined, stableLiveTracking=false;
   const listeners=new Set<()=>void>();
   const notifyInterval=options.notifyIntervalMs??0;
-  let notifyTimer:ReturnType<typeof setTimeout>|undefined;
-  const flush=()=>{notifyTimer=undefined;listeners.forEach(listener=>listener());};
+  let notifyTimer:ReturnType<typeof setTimeout>|undefined,lastFlush=-Infinity;
+  const flush=()=>{notifyTimer=undefined;lastFlush=now();listeners.forEach(listener=>listener());};
+  // A change after a quiet spell is told at once (the list map follows the scroll); changes in quick
+  // succession are told at most once per interval, the latest value.
   const notify=(immediate=false)=>{
     if(notifyInterval<=0||immediate){if(notifyTimer!==undefined){clearTimeout(notifyTimer);notifyTimer=undefined;}flush();return;}
-    if(notifyTimer===undefined)notifyTimer=setTimeout(flush,notifyInterval);
+    if(notifyTimer!==undefined)return;
+    const wait=notifyInterval-(now()-lastFlush);
+    if(wait<=0)flush();else notifyTimer=setTimeout(flush,wait);
   };
   return {
     getSnapshot:()=>value,

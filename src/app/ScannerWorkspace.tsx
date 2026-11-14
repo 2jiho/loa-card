@@ -1,4 +1,4 @@
-import {useSyncExternalStore} from 'react';
+import {useEffect, useState, useSyncExternalStore} from 'react';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import ScreenShareOutlined from '@mui/icons-material/ScreenShareOutlined';
@@ -9,10 +9,8 @@ import RestartAltOutlined from '@mui/icons-material/RestartAltOutlined';
 import {ScanConveyor} from '../features/card-scanner/ui/ScanConveyor';
 import {ScanMonitor} from '../features/card-scanner/ui/ScanMonitor';
 import {ScanReadProgress} from '../features/card-scanner/ui/ScanReadProgress';
-import {DevPreviewLatency} from './DevPreviewLatency';
 import {scanDeadline, scanInputState} from '../features/card-scanner/session/scan-deadline';
-import type {ScanMonitorState, ScanMonitorStore} from '../features/card-scanner/ui/scan-monitor-store';
-import type {MonitorLatencyProbe} from '../shared/monitor-latency';
+import type {ScanMonitorStore} from '../features/card-scanner/ui/scan-monitor-store';
 import type {ScannedCard} from '../features/card-scanner/recognition/recognizer';
 import type {ScannerState} from '../features/card-scanner/orchestration/scanner';
 
@@ -77,7 +75,6 @@ export interface ScannerWorkspaceProps {
   ready: boolean;
   onReady: () => void;
   onVideoError: () => void;
-  monitorLatency: {current: MonitorLatencyProbe<ScanMonitorState> | null};
 }
 
 function LiveRowPosition({store,sharing}:{store:ScanMonitorStore;sharing:boolean}) {
@@ -86,8 +83,27 @@ function LiveRowPosition({store,sharing}:{store:ScanMonitorStore;sharing:boolean
     () => { const row=store.getSnapshot()?.map?.currentRow; return row==null ? undefined : row+1; },
     () => undefined,
   );
-  if(!sharing||!Number.isInteger(top))return null;
-  return <p className="scan-live-position">현재 화면 약 {top}–{Math.min(55, top!+3)}행 보는 중</p>;
+  if(!sharing)return null;
+  // Kept while the position is unknown for a moment, so the lines below do not jump.
+  return <p className="scan-live-position">{Number.isInteger(top) ? `현재 화면 약 ${top}–${Math.min(55, top!+3)}행 보는 중` : '현재 화면 위치 확인 중'}</p>;
+}
+
+/** The names collected, from every snapshot (the page itself takes a new state once a second while sharing). */
+function LiveCollected({store}:{store:ScanMonitorStore}) {
+  const names=useSyncExternalStore(store.subscribe,()=>store.getSnapshot()?.currentRunNames,()=>undefined);
+  const expected=useSyncExternalStore(store.subscribe,()=>store.getSnapshot()?.expected,()=>undefined);
+  return <p>{expected != null ? `화면 수집 ${names ?? 0} / ${expected}종 · 수집 완료 시 자동 종료` : '보관함 수량 확인 중'}</p>;
+}
+
+/** True once `value` has held for `ms`: a notice about one passing frame would appear and vanish. */
+function useLasting(value:boolean,ms:number):boolean {
+  const [lasted,setLasted]=useState(false);
+  useEffect(()=>{
+    if(!value)return;
+    const timer=window.setTimeout(()=>setLasted(true),ms);
+    return ()=>{window.clearTimeout(timer);setLasted(false);};
+  },[value,ms]);
+  return value&&lasted;
 }
 
 /** Card-scan controls and live progress. Scan lifecycle, capture and final
@@ -103,6 +119,9 @@ export function ScannerWorkspace(props: ScannerWorkspaceProps) {
     () => p.scanMonitorStore.getSnapshot()?.located ?? state?.located ?? false,
     () => false,
   );
+  // The card window is missed for single frames while scrolling fast or under a tooltip. Before it
+  // was first found, the status line already says the card screen is being looked for.
+  const windowLost = useLasting((p.busy || p.sharing) && p.engineReady && (state?.stable ?? 0) > 0 && !gridCurrent, 1500);
   const reviewNames = (state?.cards ?? []).filter(card => card.review.length > 0).map(card => card.name);
   const resultCompleted = state?.currentRunRead ?? 0;
   const resultExpected = state?.expected ?? null;
@@ -172,14 +191,14 @@ export function ScannerWorkspace(props: ScannerWorkspaceProps) {
         <LiveRowPosition store={p.scanMonitorStore} sharing={p.sharing} />
         {(p.sharing || p.scanTimedOut) && <p className="scan-deadline" data-state={p.scanTimedOut ? 'exceeded' : p.inputState.state === 'stalled' ? 'stalled' : p.deadline.state}>{p.deadlineText}</p>}
         {p.sharing && p.cursorMode === 'included' && <p className="scan-cursor-note">브라우저가 마우스 커서를 화면에 포함하고 있습니다. 게임 창 밖으로 마우스를 이동해 주세요.</p>}
-        {(p.busy || p.sharing) && p.engineReady && (state?.sampled ?? 0) > 0 && !gridCurrent && <p className="notice">현재 화면에서 카드 영역을 찾지 못했습니다. 표시된 수치는 마지막으로 확인된 프레임 기준입니다.</p>}
-        {reviewNames.length > 0 && <p className="notice">확인 필요 {reviewNames.length}장: {reviewNames.slice(0, 6).join(', ')}</p>}
+        {windowLost && <p className="notice">현재 화면에서 카드 영역을 찾지 못했습니다. 표시된 수치는 마지막으로 확인된 프레임 기준입니다.</p>}
+        {!p.busy && reviewNames.length > 0 && <p className="notice">확인 필요 {reviewNames.length}장: {reviewNames.slice(0, 6).join(', ')}</p>}
         {p.busy && p.engineReady && <ScanReadProgress store={p.scanMonitorStore} completed={state?.currentRunRead ?? 0} expected={state?.expected ?? null}
-          collected={state?.currentRunNames ?? 0} review={state?.cards?.filter(card => card.review.length > 0).length ?? 0}
+          collected={state?.currentRunNames ?? 0}
           phase={p.workPhase as 'capture' | 'reading' | 'recovery' | 'verifying' | 'cleanup'} startedAt={p.scanStartedAt}
           autoCompletionEnabled={p.sharing}
-          queued={state?.queued} activeReadings={state?.activeReadings} stale={!gridCurrent} />}
-        {p.sharing && <p>{state?.expected != null ? `화면 수집 ${state?.currentRunNames ?? 0} / ${state.expected}종 · 수집 완료 시 자동 종료` : '보관함 수량 확인 중'}</p>}
+          queued={state?.queued} activeReadings={state?.activeReadings} stale={windowLost} />}
+        {p.sharing && <LiveCollected store={p.scanMonitorStore} />}
       </div>
       {!p.busy && state && (resultExpected != null || resultCompleted > 0) && <div className="scan-result-summary" role="status" aria-label="현재 목록 판독 상태">
         <span className="scan-result-summary-title">현재 목록</span>
@@ -198,7 +217,6 @@ export function ScannerWorkspace(props: ScannerWorkspaceProps) {
       </div>
       <figcaption><span className={`status-dot ${p.sharing ? 'active' : ''}`} />{p.sharing ? '화면 공유 연결됨' : p.ready ? '화면 공유 종료' : '공유 대기'}</figcaption>
     </figure>
-    {import.meta.env.DEV && <DevPreviewLatency store={p.scanMonitorStore} probe={p.monitorLatency} />}
     <ScanMonitor state={state ?? null} store={p.scanMonitorStore} busy={p.busy} sharing={p.sharing} engineReady={p.engineReady} onStop={p.onStopSharing} />
     {p.busy && p.engineReady && <ScanConveyor items={state?.activity ?? []} queued={state?.queued ?? 0} reading={(state?.activeReadings ?? 0) > 0} />}
   </section>;

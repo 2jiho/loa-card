@@ -41,7 +41,7 @@ export async function runRowScannerInternal(options:{video:HTMLVideoElement;sign
   });
   update({status:'인식 엔진 준비 중',percent:0,sampled:0,stable:0,expected:null,capacity:null,cards:[],
     located:false,unreadable:0,queued:0,droppedFrames:0,liveInput:'track',workPhase:'capture',unidentified:[]});
-  let last:RowScanSnapshot|undefined;
+  let last:RowScanSnapshot|undefined,lastState:ScannerState|undefined;
   // As the scanner does: when everything is confirmed and stays so for a second, the share is
   // ended here, and the scan finishes from what it has.
   let readySince:number|null=null,autoStopped=false;
@@ -54,6 +54,13 @@ export async function runRowScannerInternal(options:{video:HTMLVideoElement;sign
     ...(pool&&pool.readers[0]?{prepared:{acquisition:pool.acquisition,visuals:pool.visuals,recognizer:pool.readers[0]}}:{}),
     input:{start:()=>ended,dispose:()=>{}},
     onReady:options.onReady,onLocated:options.onLocated,
+    // The screen's place on the list map follows each arriving frame; the rest of the state is the last snapshot.
+    onPosition:row=>{
+      const map=lastState?.listGuidance?.map;
+      if(!lastState||!map||signal.aborted||last?.phase!=='capture')return;
+      lastState={...lastState,listGuidance:{...lastState.listGuidance!,map:{...map,currentRow:row}}};
+      update(lastState);
+    },
     onSnapshot:snapshot=>{
       last=snapshot;
       if(signal.aborted)return;
@@ -66,7 +73,8 @@ export async function runRowScannerInternal(options:{video:HTMLVideoElement;sign
           if(stream)stopCompletedShare(stream,endShare);else endShare();
         }
       }
-      update(state(snapshot));
+      lastState=state(snapshot);
+      update(lastState);
     }});
   signal.throwIfAborted();
   if(last&&last.phase!=='done')update(state({...last,phase:'done'}));

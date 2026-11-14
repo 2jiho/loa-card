@@ -208,29 +208,6 @@ async function archiveDirect(request:IncomingMessage,response:ServerResponse,roo
 
 /** Dev-only presentation timing upload. Writes one server-named JSON file so a
  * manual Chrome/Edge share can be inspected without exposing a path parameter. */
-async function archivePreviewLatency(request:IncomingMessage,response:ServerResponse,sourceRoot:string){
- if(request.method!=='POST'){response.setHeader('Allow','POST');json(response,405,{error:'POST only.'});return;}
- const type=request.headers['content-type'];
- if(typeof type!=='string'||!type.toLowerCase().startsWith('application/json')){json(response,415,{error:'Use application/json.'});return;}
- const length=request.headers['content-length'];
- if(length!==undefined&&(!/^\d+$/.test(length)||Number(length)>BODY_BLOCK_BYTES)){json(response,413,{error:'Latency payload is too large.'});return;}
- try{
-  const chunks:Buffer[]=[];let bytes=0;
-  for await (const chunk of request){
-   const buffer=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk as Uint8Array);
-   bytes+=buffer.byteLength;
-   if(bytes>BODY_BLOCK_BYTES)throw Error('too large');
-   chunks.push(buffer);
-  }
-  const value:unknown=JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('invalid payload');
-  const record={receivedAt:new Date().toISOString(),host:request.headers.host??null,value};
-  await mkdir(join(sourceRoot,'work'),{recursive:true});
-  await writeFile(join(sourceRoot,'work','preview-latency.json'),JSON.stringify(record,null,1),'utf8');
-  json(response,200,{stored:true,file:'work/preview-latency.json'});
- }catch{json(response,400,{error:'Preview latency could not be stored.'});}
-}
-
 const GRID_MANIFEST_MAX_BYTES=2*1024*1024;
 const RESCUE_PROOF_MAX_BYTES=1024*1024;
 /** Dev-only storage for the evidence-only fixed-row rescue proof. */
@@ -309,7 +286,6 @@ export async function serveCorpusRequest(request: IncomingMessage, response: Ser
   if(route==='/replay'){await archiveReplay(request,response,root,readReplay??replayReaderFromSource(sourceRoot));return true;}
   if(route==='/raw-session'){await archiveReplay(request,response,root,readRaw??rawSessionReaderFromSource(sourceRoot),'raw-session');return true;}
   if(route==='/direct-input'){await archiveDirect(request,response,root,readReplay??replayReaderFromSource(sourceRoot));return true;}
-  if(route==='/preview-latency'){await archivePreviewLatency(request,response,sourceRoot);return true;}
   if(route==='/grid-reconstruction'){await archiveGridReconstruction(request,response,sourceRoot);return true;}
   if(route==='/fixed-row-rescue-proof'){await archiveFixedRowRescueProof(request,response,sourceRoot);return true;}
   if (run) { await archiveRun(request, response, run[1], root); return true; }

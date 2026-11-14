@@ -10,7 +10,6 @@
 |---|---|
 | `src/app/AppShell.tsx` | 헤더, 내비게이션, main 랜드마크, 푸터, 사용법 대화상자 |
 | `src/app/ScannerWorkspace.tsx` | 공유 시작·중지, CSV, 준비·진행 상태, 미리보기, 모니터 |
-| `src/app/DevPreviewLatency.tsx` | 개발 모드 표시 지연 계측 |
 | `src/app/InventoryWorkspace.tsx` | 카드 목록 필터·검색·그리드·페이지·정렬/용량 표시 |
 | `src/app/use-inventory-view.ts` | 이름 검색, 한국어 숫자 정렬, 40장 페이지 계산 |
 | `src/app/ScannerSummary.tsx` | 비카드 탭의 스캔 요약 카드 |
@@ -31,7 +30,6 @@
 | `src/App.tsx` | 74,923 B | 40,824 B |
 | `src/app/AppShell.tsx` | — | 3,929 B |
 | `src/app/ScannerWorkspace.tsx` | — | 12,667 B |
-| `src/app/DevPreviewLatency.tsx` | — | 1,486 B |
 | `src/app/InventoryWorkspace.tsx` | — | 5,730 B |
 | `src/app/use-inventory-view.ts` | — | 1,494 B |
 | `src/app/use-scanner-session.ts` | — | 7,825 B |

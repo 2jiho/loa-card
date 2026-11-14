@@ -310,3 +310,24 @@ test('diagnostic IDs and text snapshots are bounded and detached while returned 
  const frozen=JSON.stringify(packet);text.rawText='changed';text.ocrConfidence=1;assert.equal(JSON.stringify(packet),frozen);
  assert.equal(JSON.stringify(packet).includes('Visible name'),false);assert.equal(JSON.stringify(packet).includes(fixture.atlas['registration-target']),false);
 });
+test('a ranking computed elsewhere (a worker) decides exactly as ranking the crop here, with and without text',()=>{
+ const screen=json('../public/scanner/screen-artwork-details.json');
+ const match=createPortraitMatcher(cards,atlas,screen.cards);
+ const masked=json('./fixtures/masked-portrait-corroboration.json'),orelda=json('./fixtures/portrait-corroboration.json');
+ const grays:{gray:ArrayLike<number>;text?:PortraitTextEvidence&{id:string}}[]=[
+  ...samples.map((sample:{gray:string})=>({gray:Uint8Array.from(Buffer.from(sample.gray,'base64'))})),
+  {gray:orelda.gray},{gray:orelda.gray,text:{id:orelda.id,rawText:'오텔다',ocrConfidence:70,score:8/9,gap:2/9}},
+  ...masked.flatMap((sample:{id:string;name:string;gray:number[]})=>[{gray:sample.gray},
+   {gray:sample.gray,text:{id:sample.id,rawText:sample.name,canonicalName:sample.name,complete:true,ocrConfidence:58,score:5/6,gap:.5}}]),
+ ];
+ let compared=0;
+ for(const {gray,text} of grays){
+  // As a worker hands it over: through structured cloning.
+  const ranking=structuredClone(match.rank(gray));
+  const here:PortraitMatchDiagnostic[]=[],given:PortraitMatchDiagnostic[]=[];
+  const a=match(gray,text,value=>here.push(value)),b=match(gray,text,value=>given.push(value),ranking);
+  assert.deepEqual(b,a);assert.deepEqual(given,here);compared++;
+ }
+ assert.ok(compared>=400);
+ assert.equal(match.rank(new Uint8Array(10)),null,'a crop of another size is not ranked');
+});

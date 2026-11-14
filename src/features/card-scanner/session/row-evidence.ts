@@ -7,6 +7,7 @@ import type {ReadFieldValues} from './field-acceptance';
 import type {CatalogName} from '../recognition/card-dictionary';
 import type {ScannedCard} from '../recognition/recognizer-types';
 import {packCount} from '../recognition/count-pattern';
+import type {CardPictureReply,CardPictureRequest} from './card-picture-worker';
 import {PREVIEW_ZERO_REASON,needsPreviewZeroProof,previewZeroReading,selectZeroPreview} from './preview-zero';
 
 /** Acceptance and merge for the row-centred scan (docs/scanner-pipeline.md, section 5): every crop
@@ -80,6 +81,10 @@ export interface RowEvidence {
   /** For the card strip of the interface: the cards as they were first read, newest last (at most
    * 16), with a small picture of the crop and whether its values were read. Presentation only. */
   activity():readonly {readonly id:number;readonly image:string;readonly name:string;readonly status:'read'|'review'}[];
+  /** Resolves once every card picture asked for so far is encoded (they are encoded off the main thread). */
+  picturesSettled():Promise<void>;
+  /** Ends the picture worker. */
+  dispose():void;
   summary(detail?:boolean):{confirmed:number;cards:{id:string;name:string;awakening:number|null;extraCopies:number|null;confirmed:boolean;review:readonly string[];observations:number;
     /** Diagnosis, unconfirmed cards only: each accepted crop as read (at most 60): time, slot, stable, border alignment, the count as read and after acceptance, reliability, whether an icon was seen, and the reader's reason. */
     log?:readonly unknown[];
@@ -87,23 +92,43 @@ export interface RowEvidence {
     picture?:string}[]};
 }
 
-export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEvidence {
+export function createRowEvidence(catalog:CatalogName[],refreshMs=150,
+  /** Development diagnosis: cards whose accepted crops (pictures and full count readings) are kept and
+   * reported by summary(true) whether or not they are confirmed. */
+  options:{trace?:readonly string[]}={}):RowEvidence {
+  const traced=new Set(options.trace??[]);
+  const traces=new Map<string,{time:number;slot:number;stable:boolean;awakening:number|null;read:number|null;accepted:number|null;reliability:string;count:unknown;canvas:HTMLCanvasElement}[]>();
   const sessionId=crypto.randomUUID();
   const inventory=new InventoryEvidence([],{seedPolicy:'prior-run-v3',consensusPolicy:CURRENT_INVENTORY_CONSENSUS_POLICY,countConflictPolicy:{version:3,sessionId}});
   let sequence=0,dirty=false,refreshed=-Infinity,projected:ScannedCard[]=[],confirmedIds=new Set<string>();
   /** Kept crops per card not yet confirmed, and the cards the zero check resolved. */
   const previews=new Map<string,{canvas:HTMLCanvasElement;order:number;stable:boolean;url?:string}[]>(),PREVIEWS=8;
   /** The interface's card strip (activity()). */
-  const strip:{id:number;image:string;name:string;status:'read'|'review'}[]=[];let stripId=0;
+  const strip:{id:number;card:string;image:string;name:string;status:'read'|'review'}[]=[];let stripId=0;
   // One small picture per card (the card list's tile size), made when the card is first read and
   // made again once from a still frame if the first was taken while the list moved: the card list
   // shows the card as it was on screen, not the game's artwork.
-  const thumbnail=(image:HTMLCanvasElement)=>{
-    const small=Object.assign(document.createElement('canvas'),{width:80,height:120});
-    small.getContext('2d')!.drawImage(image,0,0,80,120);
-    const url=small.toDataURL('image/jpeg',.85);small.width=0;return url;
+  // The picture is scaled by createImageBitmap and encoded in a worker (session/card-picture-worker.ts),
+  // so that a picture per card costs the scan's main thread nothing; it arrives a moment later.
+  // (Encoding on the main thread, even with toBlob, took about a second of it per scan.)
+  let encoding=0,settled:(()=>void)[]=[],encoder:Worker|undefined,pictureId=0;
+  const encoded=new Map<number,(url:string|null)=>void>();
+  const finish=()=>{if(--encoding===0){const waiting=settled;settled=[];for(const resolve of waiting)resolve();}};
+  const thumbnail=(image:HTMLCanvasElement,done:(url:string)=>void)=>{
+    if(typeof Worker==='undefined'||typeof createImageBitmap==='undefined')return;
+    encoding++;
+    const id=++pictureId;
+    void createImageBitmap(image,{resizeWidth:80,resizeHeight:120,resizeQuality:'medium'}).then(bitmap=>{
+      if(!encoder){
+        encoder=new Worker(new URL('./card-picture-worker.ts',import.meta.url),{type:'module'});
+        encoder.onmessage=(event:MessageEvent<CardPictureReply>)=>{const reply=encoded.get(event.data.id);encoded.delete(event.data.id);reply?.(event.data.url);};
+        encoder.onerror=()=>{for(const reply of encoded.values())reply(null);encoded.clear();};
+      }
+      encoded.set(id,url=>{if(url)done(url);finish();});
+      encoder.postMessage({id,bitmap} satisfies CardPictureRequest,[bitmap]);
+    }).catch(finish);
   };
-  const cardPictures=new Map<string,{url:string;stable:boolean}>();
+  const cardPictures=new Map<string,{url:string;stable:boolean;version:number}>();
   const accepts=new Map<string,unknown[]>();
   const resolvedZero=new Map<string,NonNullable<ScannedCard['countDiagnostics']>>();
   /** Observations accepted per card, to notice one arriving while the zero check reads that card's crops. */
@@ -143,13 +168,28 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
       const log=accepts.get(identity.id)??[];accepts.set(identity.id,log);
       if(log.length<60)log.push({time:Math.round(time*1000)/1000,slot,stable,alignment:Math.round(borderAlignment*100)/100,awakening:values.awakening,read:asRead,accepted:values.extraCopies,reliability,
         icon:values.countDiagnostics?.iconPresent??null,reason:values.countDiagnostics?.reason??null,pattern:values.countDiagnostics?.pattern?.value??null});
+      if(traced.has(identity.id)&&input.image?.width){
+        const kept=traces.get(identity.id)??[];traces.set(identity.id,kept);
+        if(kept.length<60)kept.push({time:Math.round(time*1000)/1000,slot,stable,awakening:values.awakening,read:asRead,accepted:values.extraCopies,reliability,
+          count:values.countDiagnostics?{...values.countDiagnostics,readings:undefined}:null,
+            canvas:(()=>{const copy=Object.assign(document.createElement('canvas'),{width:input.image!.width,height:input.image!.height});copy.getContext('2d')!.drawImage(input.image!,0,0);return copy;})()});
+      }
       // A new observation of the card replaces what the zero check concluded from older crops.
       resolvedZero.delete(identity.id);
       // The strip shows each card once, when it is first read.
-      const picture=cardPictures.get(identity.id);
-      if(input.image&&input.image.width&&(!picture||(!picture.stable&&stable)))cardPictures.set(identity.id,{url:thumbnail(input.image),stable});
-      if(!acceptCount.has(identity.id)&&cardPictures.has(identity.id)){
-        strip.push({id:++stripId,image:cardPictures.get(identity.id)!.url,name:identity.name,
+      const picture=cardPictures.get(identity.id),id=identity.id;
+      if(input.image&&input.image.width&&(!picture||(!picture.stable&&stable))){
+        const version=(picture?.version??0)+1;
+        cardPictures.set(id,{url:picture?.url??'',stable,version});
+        thumbnail(input.image,url=>{
+          const now=cardPictures.get(id);
+          if(now?.version===version)now.url=url;
+          // The strip entry made before its picture was ready takes it now.
+          for(const item of strip)if(item.card===id&&!item.image)item.image=url;
+        });
+      }
+      if(!acceptCount.has(id)&&cardPictures.has(id)){
+        strip.push({id:++stripId,card:id,image:cardPictures.get(id)!.url,name:identity.name,
           status:values.awakening!==null&&values.extraCopies!==null?'read':'review'});
         if(strip.length>16)strip.shift();
       }
@@ -210,14 +250,16 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
       return {checked,resolved,previewReads,withoutPreview,unresolved};
     },
     confirmed(id){refresh(false);return confirmedIds.has(id);},
-    activity(){return strip.map(item=>({...item}));},
+    activity(){return strip.map(({card:_card,...item})=>({...item}));},
+    picturesSettled(){return encoding===0?Promise.resolve():new Promise<void>(resolve=>{settled.push(resolve);});},
+    dispose(){encoder?.terminate();encoder=undefined;for(const reply of encoded.values())reply(null);encoded.clear();},
     cards(pictures=false){
       refresh(true);
       if(!pictures)return {cards:projected,confirmed:confirmedIds.size};
       // A card still to check shows the screen crop it was last read from (the newest kept one);
       // every other card its own small picture from the screen.
       return {confirmed:confirmedIds.size,cards:projected.map(card=>{
-        const own=cardPictures.get(card.id)?.url;
+        const own=cardPictures.get(card.id)?.url||undefined;
         if(confirmedIds.has(card.id))return own?{...card,image:own}:card;
         const newest=[...(previews.get(card.id)??[])].sort((a,b)=>b.order-a.order)[0];
         if(!newest?.canvas.width)return own?{...card,image:own}:card;
@@ -229,6 +271,7 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150):RowEviden
       refresh(true);
       return {confirmed:confirmedIds.size,cards:projected.map(card=>({id:card.id,name:card.name,awakening:card.awakening,extraCopies:card.extraCopies,
         confirmed:confirmedIds.has(card.id),review:card.review,observations:card.observations,
+        ...(detail&&traces.has(card.id)?{trace:traces.get(card.id)!.map(({canvas,...item})=>({...item,picture:canvas.toDataURL('image/png')}))}:{}),
         ...(confirmedIds.has(card.id)||!detail?{}:{log:accepts.get(card.id)??[],
           ...(()=>{const newest=[...(previews.get(card.id)??[])].sort((a,b)=>b.order-a.order)[0];return newest?.canvas.width?{picture:newest.canvas.toDataURL('image/png')}:{};})()})}))};
     },

@@ -13,18 +13,29 @@
  * and a new frame over that memory, same pixels, time and colour description) and the captured one
  * is closed at once. A frame that cannot be copied is kept as it is and counted.
  *
+ * It also reads the list's scrollbar from every frame as it arrives (`bar`: where the scrollbar is,
+ * from the last frame the main thread found the card window in) and sends its position at once
+ * (`position`), so the progress window follows the scroll while waiting frames are still to be read.
+ *
  * Messages in: `start` (the track's readable and the limit), `take` (send the next frame; answered
  * when one is there or the track has ended), `newest` (drop all waiting frames but the newest and
- * count them as passed), `stop`. Messages out: `frame`, `done`. */
+ * count them as passed), `bar`, `stop`. Messages out: `frame`, `position`, `done`. */
+import {readScrollGeometry} from '../session/scroll-position';
+
 export type TrackLineRequest=
   |{type:'start';readable:ReadableStream<VideoFrame>;limit:number;/** Copy each frame out of the capture pool (default true). */copy?:boolean}
-  |{type:'take'}|{type:'newest'}|{type:'stop'};
+  |{type:'take'}|{type:'newest'}|{type:'stop'}
+  /** The scrollbar's box in frame pixels, or null when the card window was not found, and the thumb's
+   * length (share of the bar) read there: a frame whose thumb is another length does not show the list. */
+  |{type:'bar';box:{x:number;y:number;width:number;height:number}|null;span?:number};
 export interface TrackLineStats {received:number;dropped:number;passed:number;longest:number;
   /** Frames copied out of the capture pool, frames kept as captured because copying failed, and the copying time in all (ms). */
   copied:number;uncopied:number;copyMs:number}
 export type TrackLineReply=
   |{type:'frame';frame:VideoFrame;/** Arrival, ms since the epoch. */arrivedAt:number;stats:TrackLineStats}
-  |{type:'done';stats:TrackLineStats};
+  |{type:'done';stats:TrackLineStats}
+  /** The scrollbar thumb's position (0 to 1) in a frame that just arrived, or null when it was not read. */
+  |{type:'position';position:number|null;/** Arrival of the frame, ms since the epoch. */arrivedAt:number};
 
 const scope=self as unknown as {onmessage:((event:MessageEvent<TrackLineRequest>)=>void)|null;postMessage(message:TrackLineReply,transfer?:Transferable[]):void};
 const waiting:{frame:VideoFrame;arrivedAt:number}[]=[];
@@ -47,6 +58,25 @@ async function detach(frame:VideoFrame):Promise<VideoFrame> {
   }catch{stats.uncopied++;return frame;}
 }
 let limit=12,asked=false,ended=false,stopped=false,reader:ReadableStreamDefaultReader<VideoFrame>|undefined;
+let bar:{x:number;y:number;width:number;height:number}|null=null,barSpan:number|undefined,lastPosition:number|null|undefined;
+const STRIP_WIDTH=16,STRIP_HEIGHT=942;
+let strip:OffscreenCanvasRenderingContext2D|null|undefined;
+/** The thumb position in this frame, sent when it changed (the same strip the main thread reads). */
+function sendPosition(frame:VideoFrame,arrivedAt:number):void {
+  if(!bar)return;
+  try{
+    strip??=new OffscreenCanvas(STRIP_WIDTH,STRIP_HEIGHT).getContext('2d',{willReadFrequently:true});
+    if(!strip)return;
+    strip.drawImage(frame,bar.x,bar.y,bar.width,bar.height,0,0,STRIP_WIDTH,STRIP_HEIGHT);
+    const geometry=readScrollGeometry(strip.getImageData(0,0,STRIP_WIDTH,STRIP_HEIGHT).data,STRIP_WIDTH,STRIP_HEIGHT);
+    // Something else over the list (another screen, a notice) can read as a thumb of another length.
+    if(geometry&&barSpan!==undefined&&Math.abs(geometry.pageSpan-barSpan)>barSpan*.15)return;
+    const position=geometry?.position??null;
+    if(position===lastPosition)return;
+    lastPosition=position;
+    scope.postMessage({type:'position',position,arrivedAt});
+  }catch{/* The frame cannot be drawn here; the main thread still reads the scrollbar. */}
+}
 
 function answer():void {
   if(!asked||stopped)return;
@@ -68,6 +98,7 @@ scope.onmessage=event=>{
           if(stopped){next.value.close();continue;}
           stats.received++;
           const arrivedAt=performance.timeOrigin+performance.now();
+          sendPosition(next.value,arrivedAt);
           const frame=await detach(next.value);
           if(stopped){frame.close();continue;}
           waiting.push({frame,arrivedAt});
@@ -79,6 +110,7 @@ scope.onmessage=event=>{
       finally{ended=true;answer();}
     })();
   }else if(message.type==='take'){asked=true;answer();}
+  else if(message.type==='bar'){bar=message.box;barSpan=message.span;lastPosition=undefined;}
   else if(message.type==='newest'){
     while(waiting.length>1){waiting.shift()!.frame.close();stats.passed++;}
   }else if(message.type==='stop'){

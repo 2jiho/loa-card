@@ -28,8 +28,8 @@ export function ScanReadCount({inline=false,...props}:ReadCountsProps & {inline?
   return <>{completed.toLocaleString('ko-KR')}{inline?` / ${total}종`:<small> / {total}종</small>}</>;
 }
 
-export function ScanReadProgress({completed:completedProp,expected:expectedProp,store,collected:collectedProp=0,review:reviewProp=0,phase='capture',recoveryPercent,startedAt,autoCompletion,autoCompletionEnabled=false,lagging=false,queued:queuedProp,activeReadings:activeProp,stale=false}:ReadCountsProps & {
-  collected?:number;review?:number;phase?:ScanWorkPhase;recoveryPercent?:number;startedAt:number;autoCompletion?:AutoCompletionDiagnostic;autoCompletionEnabled?:boolean;lagging?:boolean;queued?:number;activeReadings?:number;stale?:boolean;
+export function ScanReadProgress({completed:completedProp,expected:expectedProp,store,collected:collectedProp=0,phase='capture',recoveryPercent,startedAt,autoCompletion,autoCompletionEnabled=false,lagging=false,queued:queuedProp,activeReadings:activeProp,stale=false}:ReadCountsProps & {
+  collected?:number;phase?:ScanWorkPhase;recoveryPercent?:number;startedAt:number;autoCompletion?:AutoCompletionDiagnostic;autoCompletionEnabled?:boolean;lagging?:boolean;queued?:number;activeReadings?:number;stale?:boolean;
 }) {
   const {completed,expected}=useReadCounts({completed:completedProp,expected:expectedProp,store});
   // Subscribe to the diagnostic object, not just the gate string: if input →
@@ -44,9 +44,7 @@ export function ScanReadProgress({completed:completedProp,expected:expectedProp,
   const queued=useSyncExternalStore(store?.subscribe??subscribeToNothing,getQueued,emptySnapshot)??queuedProp;
   const active=useSyncExternalStore(store?.subscribe??subscribeToNothing,getActive,emptySnapshot)??activeProp;
   const getCollected=useCallback(()=>store?.getSnapshot()?.currentRunNames,[store]);
-  const getReview=useCallback(()=>store?.getSnapshot()?.review,[store]);
   const collected=useSyncExternalStore(store?.subscribe??subscribeToNothing,getCollected,emptySnapshot)??collectedProp;
-  const review=useSyncExternalStore(store?.subscribe??subscribeToNothing,getReview,emptySnapshot)??reviewProp;
   const getLiveObstruction=useCallback(()=>store?.getSnapshot()?.liveObstructionHint,[store]);
   const liveObstruction=useSyncExternalStore(store?.subscribe??subscribeToNothing,getLiveObstruction,emptySnapshot);
   const showObstruction=useLiveObstructionHint(liveObstruction,autoCompletionEnabled&&phase==='capture');
@@ -119,10 +117,8 @@ export function ScanReadProgress({completed:completedProp,expected:expectedProp,
     {total!==null ? <progress aria-label="카드 판독 진행" aria-valuetext={label} max={total} value={Math.min(completed,total)} />
       : <small>보관함 수량 확인 중</small>}
     <div className="scan-read-heading"><span>{stage}</span>{remaining !== null && remaining > 0 && <span>남은 판독 {remaining}종</span>}</div>
-    {total !== null && (collected < total || review > 0) && <small className="scan-read-breakdown">
-      {collected < total && <span>이름 미확인 {total - collected}종</span>}
-      {review > 0 && <span className="is-review">확인 필요 {review}종</span>}
-    </small>}
+    {/* Shown only while scanning: cards not confirmed yet are progress here, counted for review once the scan ends. */}
+    {total !== null && collected < total && <small className="scan-read-breakdown"><span>이름 미확인 {total - collected}종</span></small>}
     <small aria-live="off">경과 {formatScanTime((now-startedAt)/1000)}</small>
     <small className="scan-read-detail" aria-live="off" aria-hidden={!detail}>{detail||'\u00a0'}</small>
     <span className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">{announcedAdvice}</span>

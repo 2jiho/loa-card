@@ -44,6 +44,12 @@ export interface ScanLifecycleDeps {
   setScanStartedAt: Dispatch<SetStateAction<number>>;
 }
 
+/** How often the whole page takes a new scanner state. While frames are taken the page shares the
+ * main thread with the scan, and redrawing it (the card list and every control) five times a
+ * second cost a real share cards it then had no time to read. The progress counts, the progress
+ * window and its list map follow every snapshot through the monitor store meanwhile. */
+const PRESENTATION_MS = 200, CAPTURE_PRESENTATION_MS = 1000;
+
 /**
  * One scan run from claim to finalization. This owns scanner invocation and
  * completion bookkeeping, but not capture acquisition or the React shell.
@@ -92,7 +98,7 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
     // A transition here was starved by the 33ms monitor lane, leaving the list
     // at zero for many seconds while the progress counters advanced.
     setState(next);
-  }, 200);
+  }, next => next.workPhase === 'capture' ? CAPTURE_PRESENTATION_MS : PRESENTATION_MS);
   abort.signal.addEventListener('abort', () => presentation.flush(), {once: true});
   let finalState: ScannerState | undefined;
   let completed = false;

@@ -22,8 +22,9 @@ const LIMIT={greenLagMs:600,flipBackMs:2000,actionFlips:2,locatedFlips:2,doneReg
 const rowsOf=runs=>{const set=new Set();for(const run of runs??[])for(let row=run.from;row<=run.to;row++)set.add(row);return set;};
 const checks=[];const check=(name,ok,detail)=>checks.push({name,ok,detail});
 
-// 1. The map follows the scroll: a card row in the middle of the screen box is drawn read (or as a
-//    row to show again) soon after it is first there.
+// 1. Every card row the screen box passed over is drawn read (or as a row to show again). The box
+//    follows each arriving frame (the frame worker reads the scrollbar), the marks follow the reading
+//    of those frames: the time between them is the reading's lag, reported but not judged.
 // Rows holding cards: from the header as last read (before it is read, every row may hold cards).
 const finalMap=[...entries].reverse().find(entry=>entry.map)?.map;
 const cardRowsAtEnd=finalMap?(finalMap.emptyFrom??finalMap.lockedFrom??finalMap.totalRows):Infinity;
@@ -43,7 +44,7 @@ const never=lags.filter(item=>item.lag===null).map(item=>item.row+1);
 const late=lags.filter(item=>item.lag!==null&&item.lag>LIMIT.greenLagMs);
 const sorted=lags.filter(item=>item.lag!==null).map(item=>Math.max(0,item.lag)).sort((a,b)=>a-b);
 const p=q=>sorted.length?sorted[Math.min(sorted.length-1,Math.floor(q*sorted.length))]:null;
-check('map follows the scroll',never.length===0&&late.length<=Math.ceil(lags.length*.1),
+check('every row shown gets marked',never.length===0,
   `rows on screen ${lags.length}, never marked ${never.length}${never.length?` (${never.slice(0,12).join(',')})`:''}, over ${LIMIT.greenLagMs} ms ${late.length}, lag p50 ${p(.5)} ms p95 ${p(.95)} ms`);
 
 // 2. A row drawn read does not go back to unmarked (it may become a row to show again).

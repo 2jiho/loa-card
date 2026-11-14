@@ -68,9 +68,11 @@ export function ScanMonitorPanel({state:input,busy,sharing,engineReady,onStop,fi
     {!preparing&&<div className="monitor-total"><span>확정</span><strong>{count}<small> / {total??'—'}종</small></strong></div>}
     {/* Kept after the share too, so the window does not jump when the scan ends. */}
     {!preparing&&(busy||!!state)&&(()=>{const collected=state?.currentRunNames??count,missing=total==null?null:Math.max(0,total-collected);
+      // Cards not confirmed yet are progress while the scan runs; what is left to check is counted once it ends.
+      const review=busy?0:state?.review??0;
       return <div className="monitor-breakdown" role="status">
         <span>이름 미확인 {missing??'—'}종</span>
-        <span className={state?.review?'is-review':''}>확인 필요 {state?.review??0}종</span>
+        <span className={review?'is-review':''}>확인 필요 {review}종</span>
         <span>판독 대기 {state?.queued??0}</span>
       </div>;})()}
     {!preparing&&<div className="monitor-progress-slot">{!!total&&<progress value={count} max={total} aria-label="전체 카드 판독"/>}</div>}

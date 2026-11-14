@@ -43,7 +43,7 @@ function App() {
   const controller = useRef<AbortController | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const {store:scanMonitorStore,probe:monitorLatency,publish:publishMonitor}=useScanMonitorSession();
+  const {store:scanMonitorStore,publish:publishMonitor}=useScanMonitorSession();
   const pendingEngines=useRef(0);
   const [engineSettling,setEngineSettling]=useState(false);
   const [engineCleanupUncertain,setEngineCleanupUncertain]=useState(false);
@@ -368,7 +368,12 @@ function App() {
   const merchantIssues = busy || unowned === null ? [] : merchantCardIssues(cards, true);
   const missingCards = merchantIssues.filter(card=>card.missing);
   const uncertainIds = new Set(merchantIssues.filter(card=>!card.missing).map(card=>card.id));
-  const displayCards = cards.map(card=>uncertainIds.has(card.id)&&!card.review.length ? {...card,review:['각성·장수 확인']} : card);
+  // While the scan runs, a card whose values are not confirmed yet is progress, not something to
+  // check: it is usually confirmed a moment later, and the counts and the list map already show it.
+  // Showing it made the review notices and the card tiles' review lines appear and vanish during
+  // every scan. Values not read yet still show as '?'; the saved list keeps every review reason.
+  const displayCards = busy ? cards.map(card=>card.review.length ? {...card,review:[]} : card)
+    : cards.map(card=>uncertainIds.has(card.id)&&!card.review.length ? {...card,review:['각성·장수 확인']} : card);
   const reviewCards = displayCards.filter((c) => c.review.length > 0);
   const knownReviewCards = knownReviewCardCount(reviewCards,missingCards);
   const review = reviewCards.length + missingCards.length;
@@ -461,7 +466,7 @@ function App() {
         cursorMode={cursorMode} engineReady={engineReady} scanMonitorStore={scanMonitorStore}
         workPhase={workPhase} scanStartedAt={scanStartedAt}
         video={video} ready={ready} onReady={()=>setReady(true)}
-        onVideoError={()=>setError("공유 화면을 표시할 수 없습니다.")} monitorLatency={monitorLatency}
+        onVideoError={()=>setError("공유 화면을 표시할 수 없습니다.")}
       />
       {catalogError && <p className="error" role="alert">{catalogError} <button className="text-button" onClick={() => { setCatalogError(''); setCatalogAttempt(n => n + 1); }}>다시 시도</button></p>}
       {legacyChoices.length > 0 && <div className="notice" role="group" aria-label="이전 백업 선택">{legacyChoices.map((item, i) => <Button key={item.key} disabled={!backupReady || busy} onClick={() => void restoreBackup(item.key)} title={item.names}>백업 {i + 1} · {item.count}종 · 경험치 {item.xp?.toLocaleString('ko-KR') ?? '미확인'}</Button>)}</div>}

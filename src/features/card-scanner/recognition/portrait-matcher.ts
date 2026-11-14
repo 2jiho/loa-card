@@ -142,6 +142,15 @@ function sampleGray(gray:ArrayLike<number>,x:number,y:number) {
 /** Only controls whether to spend more registration work. It cannot confirm a
  * card or replace the independent region/margin/text acceptance gates. */
 const nearPortrait=(p:PortraitEvidence)=>p.upper>=.85&&p.lower>=.85&&p.correlation>=.90;
+/** The two integer-registration rankings of one 24x32 gray crop (the heavy part of a match), as
+ * plain data: computed where it is cheap to wait (a worker, portrait-worker.ts) and handed to the
+ * matcher, which then decides exactly as if it had ranked the crop itself. */
+export interface PortraitRankingStage {
+ readonly queries:readonly {readonly dx:number;readonly dy:number}[];
+ readonly ranked:readonly {readonly id:string;readonly upper:number;readonly lower:number;readonly correlation:number;readonly queryIndex:number;
+  readonly left?:number;readonly right?:number}[];
+}
+export interface PortraitRanking {readonly normal:PortraitRankingStage;readonly masked:PortraitRankingStage}
 export interface PortraitMatcherOptions {fractionalRegistration?:boolean;competitors?:Record<string,string>;
  /** Further trusted references per card (public/scanner/screen-artwork-extra.json): each is one
   * more reference of that card, ranked like the others; none replaces another. */
@@ -164,7 +173,54 @@ export function createPortraitMatcher(cards: Reference[], atlas: Record<string,s
  // A missing overlapping-name reference cannot be ranked as a defeated rival.
  // This applies to both sides of an overlap and to every registration path.
  const uncovered=new Set([...competitors].filter(([,ids])=>ids.some(id=>!referenceIds.has(id))).map(([id])=>id));
- return(gray:ArrayLike<number>, text?: PortraitTextEvidence & { id: string },onDiagnostic?:PortraitDiagnosticObserver)=>{
+ const cardById=new Map(refs.map(ref=>[ref.card.id,ref.card]));
+ type Ranked={card:Reference;upper:number;lower:number;correlation:number;queryIndex:number;left?:number;right?:number};
+ type Stage={queries:{dx:number;dy:number}[];ranked:Ranked[]};
+ const normalStage=(gray:ArrayLike<number>)=>{
+  const queries=[-1,0,1].flatMap(dy=>[-1,0,1].flatMap(dx=>{const part=(row:number)=>unit(Float32Array.from({length:100},(_,i)=>gray[(row+Math.floor(i/20)+dy)*24+2+i%20+dx]));const upper=part(9),lower=part(14);return upper&&lower?[{upper,lower,dx,dy}]:[];}));
+  const ranked=rankCards(refs.map(ref=>{
+   let best={upper:0,lower:0,correlation:-1},queryIndex=-1;
+   for(let index=0;index<queries.length;index++){const q=queries[index],upper=dot(ref.upper,q.upper),lower=dot(ref.lower,q.lower),correlation=(upper+lower)/2;
+    if(correlation>best.correlation){best={upper,lower,correlation};queryIndex=index;}}
+   return {card:ref.card,...best,queryIndex};
+  }));
+  return {queries,ranked};
+ };
+ // The equipped banner starts below these fixed, disjoint artwork regions.
+ // Rank the complete catalog again; never remove pixels based on the winner.
+ const maskedStage=(gray:ArrayLike<number>)=>{
+  const maskedQueries=[-1,0,1].flatMap(dy=>[-1,0,1].flatMap(dx=>{
+   const raw=Float32Array.from({length:100},(_,i)=>gray[(9+Math.floor(i/20)+dy)*24+2+i%20+dx]);
+   const upper=unit(raw),middle=unit(Float32Array.from({length:40},(_,i)=>gray[(14+Math.floor(i/20)+dy)*24+2+i%20+dx]));
+   const left=unit(Float32Array.from({length:50},(_,i)=>raw[Math.floor(i/10)*20+i%10]));
+   const right=unit(Float32Array.from({length:50},(_,i)=>raw[Math.floor(i/10)*20+i%10+10]));
+   return upper&&middle&&left&&right?[{upper,middle,left,right,dx,dy}]:[];
+  }));
+  const masked=rankCards(refs.map(ref=>{let result={upper:0,lower:0,left:0,right:0,correlation:-1},queryIndex=-1;
+   for(let index=0;index<maskedQueries.length;index++){const q=maskedQueries[index],upper=dot(ref.upper,q.upper),lower=dot(ref.middle,q.middle),correlation=(upper+lower)/2;
+    if(correlation>result.correlation){result={upper,lower,correlation,left:0,right:0};queryIndex=index;}}
+   // Rank only by the full upper/middle score. The left/right checks are not
+   // part of ranking and need to be calculated for the two finalists only.
+   return {card:ref.card,...result,queryIndex,ref};}));
+  for(const ranked of masked)if(ranked.queryIndex>=0){
+   const q=maskedQueries[ranked.queryIndex];
+   ranked.left=dot(ranked.ref.left,q.left);ranked.right=dot(ranked.ref.right,q.right);
+  }
+  return {queries:maskedQueries,ranked:masked.map(({ref:_ref,...item})=>item)};
+ };
+ const wire=(stage:Stage):PortraitRankingStage=>({queries:stage.queries.map(q=>({dx:q.dx,dy:q.dy})),
+  ranked:stage.ranked.map(item=>({id:item.card.id,upper:item.upper,lower:item.lower,correlation:item.correlation,queryIndex:item.queryIndex,
+   ...(item.left===undefined?{}:{left:item.left}),...(item.right===undefined?{}:{right:item.right})}))});
+ /** A ranking from rank() of the same matcher (same references); null if it names an unknown card. */
+ const unwire=(stage:PortraitRankingStage):Stage|null=>{
+  const ranked:Ranked[]=[];
+  for(const item of stage.ranked){const card=cardById.get(item.id);if(!card)return null;
+   ranked.push({card,upper:item.upper,lower:item.lower,correlation:item.correlation,queryIndex:item.queryIndex,
+    ...(item.left===undefined?{}:{left:item.left}),...(item.right===undefined?{}:{right:item.right})});}
+  return ranked.length>=2?{queries:stage.queries.map(q=>({dx:q.dx,dy:q.dy})),ranked}:null;
+ };
+ const match=(gray:ArrayLike<number>, text?: PortraitTextEvidence & { id: string },onDiagnostic?:PortraitDiagnosticObserver,
+  /** The crop's rankings from rank(), computed elsewhere; without them the crop is ranked here. */ranking?:PortraitRanking|null)=>{
   let missingCompetitor=false;
   const ambiguousText=!!text&&exactNameCompetitors(nameIndex,text.id,text.rawText??'').length>0;
   const permitted=(id:string,plausible:boolean)=>{if(plausible&&uncovered.has(id))missingCompetitor=true;return plausible&&!uncovered.has(id)&&!competitorsOnly.has(id);};
@@ -179,37 +235,16 @@ export function createPortraitMatcher(cards: Reference[], atlas: Record<string,s
    publishDiagnostic(onDiagnostic,stages,'unavailable','missing-text-reference',fractionalRegistration,identities,text);
    return null;
   }
-  const queries=[-1,0,1].flatMap(dy=>[-1,0,1].flatMap(dx=>{const part=(row:number)=>unit(Float32Array.from({length:100},(_,i)=>gray[(row+Math.floor(i/20)+dy)*24+2+i%20+dx]));const upper=part(9),lower=part(14);return upper&&lower?[onDiagnostic?{upper,lower,dx,dy}:{upper,lower}]:[];}));
-  const ranked=rankCards(refs.map(ref=>{
-   let best={upper:0,lower:0,correlation:-1},queryIndex=-1;
-   for(let index=0;index<queries.length;index++){const q=queries[index],upper=dot(ref.upper,q.upper),lower=dot(ref.lower,q.lower),correlation=(upper+lower)/2;
-    if(correlation>best.correlation){best={upper,lower,correlation};queryIndex=index;}}
-   return onDiagnostic?{card:ref.card,...best,queryIndex}:{card:ref.card,...best};
-  }));
+  // The quarter-cell matcher extends the integer queries, so it always ranks the crop itself.
+  const local=fractionalRegistration||!ranking?{normal:normalStage(gray),masked:undefined as ReturnType<typeof maskedStage>|undefined}:null;
+  const {queries,ranked}:Stage=local?.normal??(ranking?unwire(ranking.normal):null)??normalStage(gray);
   const best=ranked[0],portrait={upper:best.upper,lower:best.lower,correlation:best.correlation,margin:best.correlation-ranked[1].correlation};
   const accepted=permitted(best.card.id,(!text||text.id===best.card.id) && (confirmPortrait(portrait) ||
       !!(!ambiguousText&&text?.id===best.card.id&&confirmPortraitWithText(portrait,text))));
   if(stages)recordDiagnosticStage(stages,'normal',ranked,queries,text,accepted,!ambiguousText);
   if(accepted){publishDiagnostic(onDiagnostic,stages,'accepted','accepted',fractionalRegistration,identities,text);return {card:best.card,portrait};}
-  // The equipped banner starts below these fixed, disjoint artwork regions.
-  // Rank the complete catalog again; never remove pixels based on the winner.
-  const maskedQueries=[-1,0,1].flatMap(dy=>[-1,0,1].flatMap(dx=>{
-   const raw=Float32Array.from({length:100},(_,i)=>gray[(9+Math.floor(i/20)+dy)*24+2+i%20+dx]);
-   const upper=unit(raw),middle=unit(Float32Array.from({length:40},(_,i)=>gray[(14+Math.floor(i/20)+dy)*24+2+i%20+dx]));
-   const left=unit(Float32Array.from({length:50},(_,i)=>raw[Math.floor(i/10)*20+i%10]));
-   const right=unit(Float32Array.from({length:50},(_,i)=>raw[Math.floor(i/10)*20+i%10+10]));
-   return upper&&middle&&left&&right?[onDiagnostic?{upper,middle,left,right,dx,dy}:{upper,middle,left,right}]:[];
-  }));
-  const masked=rankCards(refs.map(ref=>{let result={upper:0,lower:0,left:0,right:0,correlation:-1},queryIndex=-1;
-   for(let index=0;index<maskedQueries.length;index++){const q=maskedQueries[index],upper=dot(ref.upper,q.upper),lower=dot(ref.middle,q.middle),correlation=(upper+lower)/2;
-    if(correlation>result.correlation){result={upper,lower,correlation,left:0,right:0};queryIndex=index;}}
-   // Rank only by the full upper/middle score. The left/right checks are not
-   // part of ranking and need to be calculated for the two finalists only.
-   return {card:ref.card,...result,queryIndex,ref};}));
-  for(const ranked of masked)if(ranked.queryIndex>=0){
-   const q=maskedQueries[ranked.queryIndex];
-   ranked.left=dot(ranked.ref.left,q.left);ranked.right=dot(ranked.ref.right,q.right);
-  }
+  if(local)local.masked=maskedStage(gray);
+  const {queries:maskedQueries,ranked:masked}:Stage=local?.masked??(ranking?unwire(ranking.masked):null)??maskedStage(gray);
   const candidate=masked[0],evidence:PortraitEvidence={region:'above-badge',upper:candidate.upper,lower:candidate.lower,
    left:candidate.left,right:candidate.right,correlation:candidate.correlation,margin:candidate.correlation-masked[1].correlation};
   const maskedAccepted=permitted(candidate.card.id,(!text||text.id===candidate.card.id)&&(confirmPortrait(evidence)||
@@ -226,7 +261,7 @@ export function createPortraitMatcher(cards: Reference[], atlas: Record<string,s
   // positions win exact-score ties, and no candidate-specific mask is made.
   // Bilinear samples may share one source bin across a region boundary; these
   // refined measurements are not an extra independent observation.
-  const refinedQueries=[...queries,...fractionalShifts.flatMap(({dx,dy})=>{
+  const refinedQueries=[...(local?.normal??normalStage(gray)).queries,...fractionalShifts.flatMap(({dx,dy})=>{
    const part=(row:number)=>unit(Float32Array.from({length:100},(_,i)=>sampleGray(gray,2+i%20+dx,row+Math.floor(i/20)+dy)));
    const upper=part(9),lower=part(14);return upper&&lower?[onDiagnostic?{upper,lower,dx,dy}:{upper,lower}]:[];
   })];
@@ -242,7 +277,7 @@ export function createPortraitMatcher(cards: Reference[], atlas: Record<string,s
    !!(!ambiguousText&&text?.id===refinedBest.card.id&&confirmPortraitWithText(refinedPortrait,text))));
   if(stages)recordDiagnosticStage(stages,'refined-normal',refined,refinedQueries,text,refinedAccepted,!ambiguousText);
   if(refinedAccepted){publishDiagnostic(onDiagnostic,stages,'accepted','accepted',fractionalRegistration,identities,text);return{card:refinedBest.card,portrait:{...refinedPortrait,registration:'quarter-cell-v1' as const}};}
-  const refinedMaskedQueries=[...maskedQueries,...fractionalShifts.flatMap(({dx,dy})=>{
+  const refinedMaskedQueries=[...(local?.masked??maskedStage(gray)).queries,...fractionalShifts.flatMap(({dx,dy})=>{
    const raw=Float32Array.from({length:100},(_,i)=>sampleGray(gray,2+i%20+dx,9+Math.floor(i/20)+dy));
    const upper=unit(raw),middle=unit(Float32Array.from({length:40},(_,i)=>sampleGray(gray,2+i%20+dx,14+Math.floor(i/20)+dy)));
    const left=unit(Float32Array.from({length:50},(_,i)=>raw[Math.floor(i/10)*20+i%10]));
@@ -267,6 +302,9 @@ export function createPortraitMatcher(cards: Reference[], atlas: Record<string,s
   publishDiagnostic(onDiagnostic,stages,refinedMaskedAccepted?'accepted':'rejected',refinedMaskedAccepted?'accepted':missingCompetitor?'missing-competitor-reference':'all-stages-rejected',fractionalRegistration,identities,text);
   return refinedMaskedAccepted?{card:refinedCandidate.card,portrait:{...refinedEvidence,registration:'quarter-cell-v1' as const}}:null;
  };
+ /** The crop's rankings, for match() elsewhere: null when the crop or the references cannot be ranked. */
+ match.rank=(gray:ArrayLike<number>):PortraitRanking|null=>gray.length!==768||identities<2?null:{normal:wire(normalStage(gray)),masked:wire(maskedStage(gray))};
+ return match;
 }
 
 /** The extra references file as matcher input: one record per position in the per-card lists

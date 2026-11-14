@@ -19,9 +19,10 @@ export function ScanAttention({cards,unknown,discarded=[],missing,artworkById,gu
   const {unresolved,advice,hasLocation}=unidentifiedAttention(unknown,mode,sharing);
   const missingReference=unresolved.some(item=>(!item.reason||item.reason==='이름 확인 필요')&&
     unidentifiedReferenceAdvice(item.portraitDiagnostics)!==null);
-  // While sharing, rows not yet seen are progress, not something to check: the progress window
-  // shows them on its list map. What is still missing after the share is asked for here.
-  const asks=sharing?[]:guidance?.asks??[];
+  // While scanning, rows not yet seen are progress, not something to check: the progress window
+  // shows them on its list map. What is still missing once reading ends is asked for here.
+  // After the share, until reading ends, the rows to show again are not final yet either.
+  const asks=sharing||busy?[]:guidance?.asks??[];
   const count=cards.length+unresolved.length+discarded.length+missing.length+(asks.length?1:0),hasAttention=count>0;
   // Keep the panel briefly after the last item clears, without retaining stale
   // cards or delaying newly observed issues. A new issue cancels the close.

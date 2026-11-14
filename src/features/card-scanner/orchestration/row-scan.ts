@@ -51,7 +51,9 @@ export interface RowLiveResult extends RowReadResult {
     readonly track?:{readonly frameRate:number|null;readonly stats:{readonly deliveredFrames:number;readonly discardedFrames:number;readonly totalFrames:number}|null};
     readonly source:'track'|'video';/** Where the track is read: a worker that keeps the line, or the main thread. */readonly reader?:'worker'|'main';
     /** The longest the main thread went without a turn, and how often for more than 100 ms. */
-    readonly mainThread:{readonly maxGapMs:number;readonly gapsOver100Ms:number};readonly sourceDiscarded?:number;
+    readonly mainThread:{readonly maxGapMs:number;readonly gapsOver100Ms:number;
+      /** Screen rows sent at once by the line worker: from the frame's arrival there to the main thread (ms). */
+      readonly positionDelay?:{readonly count:number;readonly median:number;readonly p95:number;readonly max:number}};readonly sourceDiscarded?:number;
     /** Per frame read: milliseconds from taking the frame to the end of its reading. */
     readonly frameMs:{readonly median:number;readonly p95:number;readonly max:number};
     /** Where a frame's time goes, median and 95th percentile ms per frame read: drawing the video
@@ -156,6 +158,11 @@ export async function runRowScan(options:{
   /** Read the track on the main thread instead of in the worker that keeps the line (as before); for comparison. */mainReader?:boolean;
   /** Called a few times a second and at each change of phase with what is known now. */
   onSnapshot?:(snapshot:RowScanSnapshot)=>void;
+  /** The list row at the top of the screen, as soon as a frame shows it moved: read from every frame
+   * as it arrives (capture/track-line-worker.ts), ahead of the frames still waiting to be read. */
+  onPosition?:(row:number)=>void;
+  /** Development diagnosis: card ids whose accepted crops and readings the report keeps (session/row-evidence.ts). */
+  traceCards?:readonly string[];
   /** Frame times count from the first frame taken (a live track's timestamps start anywhere). */relativeTime?:boolean;
   target:HTMLVideoElement;signal:AbortSignal;scrollSteps?:number;names?:boolean;nameHoldSeconds?:number;/** Name reading beside the frame loop (default) or inside it. */backgroundNames?:boolean;/** Place background-named cards in the list table (default). */placeNames?:boolean;/** Draw each video frame to a canvas kept in main memory (as before) instead of a graphics-backed one; for comparison. */softwareFrame?:boolean;/** Finish reading a frame before the next one is taken (as before); for comparison. */serial?:boolean;/** Visual reading workers (default 2). */readers?:number;/** Presented frames kept waiting for the reader, oldest dropped beyond this (default 12; 1 = only the newest frame, as before). */queue?:number;/** Run one name reading on a blank crop before the share starts (default). */warmNames?:boolean;/** After the share, run the scanner's zero check on kept crops (default; needs evidence). */zeroCheck?:boolean|'diagnose'|'end';/** Take frames from the video element's frame callback (as before) instead of the track; for comparison. */videoSource?:boolean;/** Put named crops through the scanner's acceptance and merge (default; needs name reading). */evidence?:boolean;
   /** Readers prepared before the share (session/scanner-preparation.ts): used instead of loading
@@ -177,7 +184,7 @@ export async function runRowScan(options:{
   // strip, so it stays graphics-backed: a canvas marked for frequent reading copies every video
   // frame into main memory first.
   const frame=document.createElement('canvas'),frameContext=frame.getContext('2d',options.softwareFrame?{willReadFrequently:true}:{})!;
-  let recognizer:Awaited<ReturnType<typeof createRecognizer>>|undefined,closeWaiting=()=>{},stopLag=()=>{},endWorker=()=>{};
+  let recognizer:Awaited<ReturnType<typeof createRecognizer>>|undefined,closeWaiting=()=>{},stopLag=()=>{},endWorker=()=>{},endEvidence=()=>{};
   const input=options.input;
   try{
     await Promise.all([acquisition.ready(),...visuals.map(visual=>visual!.ready())]);
@@ -206,7 +213,8 @@ export async function runRowScan(options:{
       async count(image,id,corroborate){const values=await reader.read(image,id,corroborate,true);return {awakening:values.awakening,extraCopies:values.extraCopies,full:values};},
     }:undefined;
     // The scanner's acceptance and merge for what this reading names (needs the reader's catalogue).
-    const evidence:RowEvidence|undefined=reader&&options.evidence!==false?createRowEvidence(reader.catalog):undefined;
+    const evidence:RowEvidence|undefined=reader&&options.evidence!==false?createRowEvidence(reader.catalog,150,{trace:options.traceCards??[]}):undefined;
+    if(evidence)endEvidence=()=>evidence.dispose();
     const session=createRowReadSession(visuals as RowReadVisual[],scrollSteps,Infinity,names,options.nameHoldSeconds,options.backgroundNames!==false,options.placeNames!==false,evidence);
     const thumbClock=createThumbClock();
     // Presented frames wait in a short line, each a graphics-memory snapshot taken in the frame
@@ -221,6 +229,8 @@ export async function runRowScan(options:{
     // How long the main thread went without a turn (a 20 ms timer's lateness): a busy main thread
     // is what makes a track read here lose frames.
     let lagLast=performance.now(),lagMax=0,lagOver100=0;
+    /** From a frame's arrival in the line worker to its new screen row reaching the main thread (ms). */
+    const positionDelays:number[]=[];
     const lagTimer=setInterval(()=>{const now=performance.now(),late=now-lagLast-20;lagLast=now;if(late>lagMax)lagMax=late;if(late>100)lagOver100++;},20);
     stopLag=()=>clearInterval(lagTimer);
     let ended=false,wake:(()=>void)|undefined,dropped=0,passed=0,longestLine=0;
@@ -253,7 +263,17 @@ export async function runRowScan(options:{
       lineWorker=worker;endWorker=()=>worker.terminate();
       const ask=()=>worker.postMessage({type:'take'} satisfies TrackLineRequest);
       worker.onmessage=(event:MessageEvent<TrackLineReply>)=>{
-        const reply=event.data;workerLine=reply.stats;trackFrames=reply.stats.received;
+        const reply=event.data;
+        if(reply.type==='position'){
+          const row=reply.position===null?null:Math.round(reply.position*scrollSteps);
+          if(row!==null&&row!==liveRow&&!ended){
+            liveRow=row;
+            if(positionDelays.length<4000)positionDelays.push(performance.timeOrigin+performance.now()-reply.arrivedAt);
+            try{options.onPosition?.(row);}catch{/* A display callback cannot stop the scan. */}
+          }
+          return;
+        }
+        workerLine=reply.stats;trackFrames=reply.stats.received;
         if(reply.type==='done'){sourceDone=true;wake?.();return;}
         firstStamp??=reply.frame.timestamp;
         // Frames the track still held when the share ended were captured before the end: they are read.
@@ -288,6 +308,14 @@ export async function runRowScan(options:{
     let lastLocated=false,lastSnapshot=-Infinity;
     /** The list row at the top of the screen in the latest frame the scrollbar was read in. */
     let screenRow:number|null=null,lastThumbRow:number|null=null;
+    /** The row the newest arrived frame shows (the line worker reads it), and where its scrollbar is. */
+    let liveRow:number|null=null,barKey='';
+    const tellBar=(box:{x:number;y:number;width:number;height:number}|null,span?:number)=>{
+      const key=box?`${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.width)},${Math.round(box.height)},${span===undefined?'?':Math.round(span*50)}`:'none';
+      if(key===barKey||!lineWorker)return;
+      barKey=key;if(!box)liveRow=null;
+      lineWorker.postMessage({type:'bar',box:box?{x:box.x,y:box.y,width:box.width,height:box.height}:null,...(span===undefined?{}:{span})} satisfies TrackLineRequest);
+    };
     const headerCanvas=document.createElement('canvas'),headerContext=headerCanvas.getContext('2d',{willReadFrequently:true})!;
     const header={expected:null as number|null,capacity:null as number|null,finalExpected:null as number|null,time:0,kept:false,nextTry:-Infinity,
       firstAt:null as number|null,reads:0,failures:0,fresh:null as number|null,freshTried:-Infinity};
@@ -339,7 +367,7 @@ export async function runRowScan(options:{
         activity:evidence?.activity()??[],
         unidentifiedCells:guidance.cells.filter(cell=>cell.kind==='unidentified').length+guidance.unplaced.unidentified,
         guidance:(()=>{return {...describeListGuidance(guidance,{totalRows}),
-          map:(()=>{const map=listGuidanceMap(guidance,{totalRows,visibleRows:GRID_ROWS,currentRow:screenRow});
+          map:(()=>{const map=listGuidanceMap(guidance,{totalRows,visibleRows:GRID_ROWS,currentRow:phase==='capture'?liveRow??screenRow:screenRow});
             const shown=phase!=='done'?holdNewCardTargets(map,cardTargetSince,performance.now(),CARD_TARGET_HOLD_MS,drawnRead):map;
             drawnRead.clear();for(const run of shown.done??[])for(let row=run.from;row<=run.to;row++)drawnRead.add(row);
             return shown;})()};})()});}catch{/* A display callback cannot stop the scan. */}
@@ -380,7 +408,7 @@ export async function runRowScan(options:{
       if(timing){stage.freeze.push(timing.freezeMs);stage.detect.push(timing.detectMs);stage.crop.push(timing.cropMs);stage.transfer.push(timing.roundTripMs-timing.workerMs);stage.materialize.push(timing.materializeMs);}
       // No card window in this frame: looking for it is slow, and frames without it hold no cards.
       // Only the newest waiting frame is kept, so the line is empty when the window appears.
-      if(!acquired.layout){skipToNewest();while(waiting.length>1){waiting.shift()!.snapshot.close();passed++;}}
+      if(!acquired.layout){tellBar(null);skipToNewest();while(waiting.length>1){waiting.shift()!.snapshot.close();passed++;}}
       const release=()=>{for(const cell of acquired.cells)if(cell.image)cell.image.width=0;};
       let read:(()=>Promise<void>)|undefined,thumbRow:number|null=null;
       if(acquired.layout&&acquired.cells.length===COLUMNS*GRID_ROWS){
@@ -410,7 +438,9 @@ export async function runRowScan(options:{
         const thumbStarted=performance.now();
         const bar=acquired.layout.scrollbar;
         stripContext.drawImage(frame,bar.x,bar.y,bar.width,bar.height,0,0,16,942);
-        const thumb=thumbClock(time,readScrollGeometry(stripContext.getImageData(0,0,16,942).data,16,942)?.position??null);
+        const geometry=readScrollGeometry(stripContext.getImageData(0,0,16,942).data,16,942);
+        if(geometry)tellBar(bar,geometry.pageSpan);
+        const thumb=thumbClock(time,geometry?.position??null);
         stage.thumb.push(performance.now()-thumbStarted);thumbRow=thumb.position===null?null:Math.round(thumb.position*scrollSteps);
         if(thumbRow!==null){screenRow=thumbRow;
           const moving=lastThumbRow===null||thumbRow===lastThumbRow?null:thumbRow>lastThumbRow?'down' as const:'up' as const;
@@ -474,6 +504,8 @@ export async function runRowScan(options:{
         visual:brief(await reader.read(image,id,false,false)),full:brief(await reader.read(image,id,false,true)),corroborated:brief(await reader.read(image,id,true,true))}));
       afterZeroCheck={...check,ms:Math.round(performance.now()-zeroStarted),confirmed:evidence.summary().confirmed};
     }
+    // The card pictures still being encoded belong in the final list.
+    if(evidence)await evidence.picturesSettled();
     publishSnapshot('done');
     const sorted=[...frameMs].sort((a,b)=>a-b),at=(share:number)=>sorted.length?Math.round(sorted[Math.min(sorted.length-1,Math.floor(share*sorted.length))]):0;
     const namesSummary=session.names();
@@ -483,7 +515,8 @@ export async function runRowScan(options:{
       live:{shareSeconds,presentedFrames:processor?trackFrames:firstPresented===null?0:lastPresented-firstPresented+1,readFrames:frames,
         source:processor?'track':'video',...(processor?{reader:lineWorker?'worker' as const:'main' as const}:{}),
         ...(workerLine?{lineCopy:{copied:workerLine.copied,uncopied:workerLine.uncopied,meanMs:workerLine.copied?Math.round(workerLine.copyMs/workerLine.copied*10)/10:0}}:{}),
-        mainThread:{maxGapMs:Math.round(lagMax),gapsOver100Ms:lagOver100},
+        mainThread:{maxGapMs:Math.round(lagMax),gapsOver100Ms:lagOver100,
+          ...(positionDelays.length?{positionDelay:{count:positionDelays.length,...share(positionDelays),max:Math.round(Math.max(...positionDelays))}}:{})},
         growthPoints:growth.points,
         header:{expected:header.expected,capacity:header.capacity,finalExpected:header.finalExpected,firstAtSeconds:header.firstAt,reads:header.reads,failures:header.failures},
         guidance:(()=>{const totalRows=scrollSteps+GRID_ROWS,guidance=session.guidance(totalRows,header.capacity,header.expected);return {totalRows,...guidance,...describeListGuidance(guidance,{totalRows})};})(),
@@ -499,7 +532,7 @@ export async function runRowScan(options:{
         stages:{draw:share(stage.draw),freeze:share(stage.freeze),detect:share(stage.detect),crop:share(stage.crop),transfer:share(stage.transfer),materialize:share(stage.materialize),thumb:share(stage.thumb),read:share(stage.read)},atShareEnd,afterNames,...(afterZeroCheck?{afterZeroCheck}:{}),
         ...(zeroLive.runs?{zeroDuringShare:{runs:zeroLive.runs,ms:Math.round(zeroLive.ms),previewReads:zeroLive.previewReads,resolved:zeroLive.resolved}}:{})}};
   }finally{
-    closeWaiting();stopLag();endWorker();input.dispose();
+    closeWaiting();stopLag();endWorker();endEvidence();input.dispose();
     if(!prepared){acquisition.dispose();for(const visual of visuals)visual?.dispose();await recognizer?.dispose();}
     frame.width=0;strip.width=0;
   }

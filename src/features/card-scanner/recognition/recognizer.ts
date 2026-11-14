@@ -11,7 +11,8 @@ import { prepareContrastPattern, matchCountPattern, countContrastFloor, countStr
 import type { CountPattern } from "./count-pattern";import { nameMask } from "./name-pattern";
 import { createPortraitMatcher, screenExtraReferences } from "./portrait-matcher";
 import {loadPortraitCompetitors} from './portrait-competitors';
-import type {PortraitMatchDiagnostic} from './portrait-matcher';
+import type {PortraitMatchDiagnostic,PortraitRanking} from './portrait-matcher';
+import type {PortraitRankReply,PortraitRankRequest} from './portrait-worker';
 import type {PortraitDiagnosticCall,PortraitDiagnostics} from './portrait-diagnostics';
 import { areaGray } from "../acquisition/area-gray";
 import type {NameLabelObserver} from './recognition-input-observer';
@@ -130,6 +131,30 @@ export async function createRecognizer(status: (message: string) => void, signal
   const matchPortrait = createPortraitMatcher(cards,portraitAtlas,screen.cards,{competitors,extra:extraReferences});
   let refinePortrait:ReturnType<typeof createPortraitMatcher>|undefined;
   const portraits = new WeakMap<HTMLCanvasElement, ReturnType<typeof matchPortrait>>();
+  // Ranking a crop against every artwork is the heavy part of the artwork check; a worker does it
+  // (portrait-worker.ts) and the check below decides on that ranking exactly as on its own (see the
+  // matcher's `rank`). Without workers, or when the worker fails, the crop is ranked here.
+  const rankings = new WeakMap<HTMLCanvasElement, PortraitRanking>();
+  let rankWorker:Worker|undefined,rankFailed=false,rankId=0;
+  const rankReplies=new Map<number,(ranking:PortraitRanking|null)=>void>();
+  const endRankWorker=()=>{rankWorker?.terminate();rankWorker=undefined;for(const reply of rankReplies.values())reply(null);rankReplies.clear();};
+  function rankElsewhere(gray:Float32Array):Promise<PortraitRanking|null> {
+    if(rankFailed||typeof Worker==='undefined')return Promise.resolve(null);
+    if(!rankWorker){
+      try{rankWorker=new Worker(new URL('./portrait-worker.ts',import.meta.url),{type:'module'});}catch{rankFailed=true;return Promise.resolve(null);}
+      rankWorker.onmessage=(event:MessageEvent<PortraitRankReply>)=>{const reply=rankReplies.get(event.data.id);rankReplies.delete(event.data.id);reply?.(event.data.ranking);};
+      rankWorker.onerror=()=>{rankFailed=true;endRankWorker();};
+    }
+    const id=++rankId;
+    return new Promise(resolve=>{rankReplies.set(id,resolve);rankWorker!.postMessage({id,gray} satisfies PortraitRankRequest,[gray.buffer]);});
+  }
+  /** Rank the crop's artwork in the worker before checking it (once per crop). */
+  async function rankPortrait(canvas: HTMLCanvasElement) {
+    if (portraits.has(canvas) || rankings.has(canvas)) return;
+    const pixels = canvas.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, canvas.width, canvas.height).data;
+    const ranking = await rankElsewhere(areaGray(pixels, canvas.width, canvas.height));
+    if (ranking) rankings.set(canvas, ranking);
+  }
   const cachedPortraitDiagnostics=new WeakMap<HTMLCanvasElement,PortraitMatchDiagnostic>();
   // Each immutable crop owns at most one packet per evaluated path. A cache
   // hit reuses the original measurement and is never a new similarity pass.
@@ -151,7 +176,7 @@ export async function createRecognizer(status: (message: string) => void, signal
     const result = matchPortrait(areaGray(pixels, canvas.width, canvas.height), text,diagnostic=>{
       if(!text)cachedPortraitDiagnostics.set(canvas,diagnostic);
       notePortrait(canvas,text?'text':'visual','computed',diagnostic);
-    });
+    },rankings.get(canvas));
     if (!text) portraits.set(canvas, result);
     return result;
   }
@@ -221,6 +246,7 @@ export async function createRecognizer(status: (message: string) => void, signal
       // previous short/full read of the same retained canvas.
       budget?.check();
       const fields = inspect(canvas);
+      await rankPortrait(canvas);
       const artwork = portrait(canvas);
       if (artwork) return portraitIdentity(artwork);
       // The fast visual lanes keep the integer-only matcher. Spend the extra
@@ -410,6 +436,7 @@ export async function createRecognizer(status: (message: string) => void, signal
     },
     async dispose() {
       native.width = 0;
+      endRankWorker();
       await reader.dispose();
     },
   };

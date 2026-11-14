@@ -1,7 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import {createScanMonitorStore} from '../features/card-scanner/ui/scan-monitor-store';
-import type {ScanMonitorInput, ScanMonitorState} from '../features/card-scanner/ui/scan-monitor-store';
-import type {MonitorLatencyProbe} from '../shared/monitor-latency';
+import type {ScanMonitorInput} from '../features/card-scanner/ui/scan-monitor-store';
 import {monotonicNow} from '../features/card-scanner/capture/monotonic-clock';
 import {scanDeadline, scanInputState, scanStatusMessage} from '../features/card-scanner/session/scan-deadline';
 import {createPreparedSlot} from '../features/card-scanner/acquisition/prepared-slot';
@@ -10,24 +9,12 @@ import {prepareScanner} from '../features/card-scanner/session/scanner-preparati
 import type {PreparedScanner} from '../features/card-scanner/session/scanner-preparation';
 import {NORMAL_SCANNER_NAME_CONFIGURATION} from '../features/card-scanner/session/scanner-name-configuration';
 
-/** Owns the in-memory monitor store and the dev-only presentation probe.
+/** Owns the in-memory monitor store.
  * Capture, OCR and completion are not owned by this hook. */
 export function useScanMonitorSession() {
-  const [store] = useState(() => createScanMonitorStore({notifyIntervalMs: 100}));
-  const probe = useRef<MonitorLatencyProbe<ScanMonitorState> | null>(null);
-  useEffect(() => {
-    if (!import.meta.env.DEV) return;
-    let cancelled = false;
-    void import('../shared/monitor-latency').then(({createMonitorLatencyProbe}) => {
-      if (!cancelled) probe.current = createMonitorLatencyProbe<ScanMonitorState>();
-    }).catch(() => { probe.current = null; });
-    return () => { cancelled = true; };
-  }, []);
-  const publish = (input: ScanMonitorInput) => {
-    store.publish(input);
-    if (import.meta.env.DEV) probe.current?.notify(store.getSnapshot());
-  };
-  return {store, probe, publish};
+  const [store] = useState(() => createScanMonitorStore({notifyIntervalMs: 50}));
+  const publish = (input: ScanMonitorInput) => store.publish(input);
+  return {store, publish};
 }
 
 /** The 2-minute input deadline and its display. `firstInputAt`/`lastInputAt`

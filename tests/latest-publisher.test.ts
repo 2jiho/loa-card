@@ -46,3 +46,22 @@ test('file input keeps immediate presentation', () => {
   publisher.publish(1); publisher.publish(2); publisher.flush();
   assert.deepEqual(values, [1, 2]);
 });
+
+test('the wait after a delivery can follow the value delivered (slower while frames are taken)', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const values: string[] = [];
+  const publisher = createLatestPublisher<string>(v => values.push(v), v => v.startsWith('capture') ? 1000 : 200);
+  publisher.publish('capture 1');
+  publisher.publish('capture 2');
+  t.mock.timers.tick(999);
+  assert.deepEqual(values, ['capture 1'], 'nothing more within a second while capturing');
+  publisher.publish('reading 1');
+  t.mock.timers.tick(1);
+  assert.deepEqual(values, ['capture 1', 'reading 1'], 'the newest value only');
+  publisher.publish('reading 2');
+  t.mock.timers.tick(200);
+  assert.deepEqual(values, ['capture 1', 'reading 1', 'reading 2'], 'after reading values the shorter wait');
+  publisher.publish('done');
+  publisher.flush();
+  assert.deepEqual(values.at(-1), 'done', 'flush still delivers at once');
+});

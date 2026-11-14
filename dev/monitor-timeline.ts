@@ -28,11 +28,12 @@ export interface MonitorTimelineEntry {
 
 export function createMonitorTimeline(limit=1500) {
   const entries:MonitorTimelineEntry[]=[];
-  let began:number|null=null,dropped=0;
-  return {
+  let began:number|null=null,dropped=0,last:RowScanSnapshot|undefined;
+  const timeline={
     entries,
     get dropped(){return dropped;},
     onSnapshot(snapshot:RowScanSnapshot){
+      last=snapshot;
       const now=performance.now();began??=now;
       if(entries.length>=limit){dropped++;return;}
       const state=rowScannerState(snapshot),sharing=snapshot.phase==='capture',busy=snapshot.phase!=='done';
@@ -43,5 +44,13 @@ export function createMonitorTimeline(limit=1500) {
         review:monitor.review??0,queued:monitor.queued??0,located:monitor.located,pictures:snapshot.cards.filter(card=>!!card.image).length,map:monitor.map?JSON.parse(JSON.stringify(monitor.map)) as ListGuidanceMap:null,
         monitor:JSON.parse(JSON.stringify({...monitor,grid:undefined})) as ScanMonitorState});
     },
+    /** The app's fast position update: the last snapshot with the screen's new place on the map. */
+    onPosition(row:number){
+      const map=last?.guidance.map;
+      if(!last||!map||last.phase!=='capture')return;
+      const snapshot={...last,guidance:{...last.guidance,map:{...map,currentRow:row}}};
+      timeline.onSnapshot(snapshot);
+    },
   };
+  return timeline;
 }
