@@ -150,7 +150,10 @@ export interface PortraitRankingStage {
  readonly ranked:readonly {readonly id:string;readonly upper:number;readonly lower:number;readonly correlation:number;readonly queryIndex:number;
   readonly left?:number;readonly right?:number}[];
 }
-export interface PortraitRanking {readonly normal:PortraitRankingStage;readonly masked:PortraitRankingStage}
+export interface PortraitRanking {readonly normal:PortraitRankingStage;readonly masked:PortraitRankingStage;
+ /** How many references ranked it: a ranking from another set (a reference file that failed to load
+  * on one side) is not used. */
+ readonly references:number}
 export interface PortraitMatcherOptions {fractionalRegistration?:boolean;competitors?:Record<string,string>;
  /** Further trusted references per card (public/scanner/screen-artwork-extra.json): each is one
   * more reference of that card, ranked like the others; none replaces another. */
@@ -236,6 +239,7 @@ export function createPortraitMatcher(cards: Reference[], atlas: Record<string,s
    return null;
   }
   // The quarter-cell matcher extends the integer queries, so it always ranks the crop itself.
+  if(ranking&&ranking.references!==refs.length)ranking=null;
   const local=fractionalRegistration||!ranking?{normal:normalStage(gray),masked:undefined as ReturnType<typeof maskedStage>|undefined}:null;
   const {queries,ranked}:Stage=local?.normal??(ranking?unwire(ranking.normal):null)??normalStage(gray);
   const best=ranked[0],portrait={upper:best.upper,lower:best.lower,correlation:best.correlation,margin:best.correlation-ranked[1].correlation};
@@ -303,7 +307,7 @@ export function createPortraitMatcher(cards: Reference[], atlas: Record<string,s
   return refinedMaskedAccepted?{card:refinedCandidate.card,portrait:{...refinedEvidence,registration:'quarter-cell-v1' as const}}:null;
  };
  /** The crop's rankings, for match() elsewhere: null when the crop or the references cannot be ranked. */
- match.rank=(gray:ArrayLike<number>):PortraitRanking|null=>gray.length!==768||identities<2?null:{normal:wire(normalStage(gray)),masked:wire(maskedStage(gray))};
+ match.rank=(gray:ArrayLike<number>):PortraitRanking|null=>gray.length!==768||identities<2?null:{normal:wire(normalStage(gray)),masked:wire(maskedStage(gray)),references:refs.length};
  return match;
 }
 

@@ -119,7 +119,7 @@ export function rowScannerState(snapshot:RowScanSnapshot):ScannerState {
     status,
     percent:done?100:expected?Math.min(99,Math.floor(shown/expected*100))
       :snapshot.cards.length?Math.min(99,Math.floor(shown/snapshot.cards.length*100)):0,
-    sampled:snapshot.frames,stable:snapshot.locatedFrames,
+    sampled:snapshot.frames,stable:snapshot.locatedFrames,workDone:snapshot.workDone,
     expected,capacity:snapshot.capacity,
     ...(snapshot.growthPoints?{growthPoints:{current:snapshot.growthPoints.current,maximum:snapshot.growthPoints.maximum}}:{}),
     cards:shownCards(snapshot.cards),

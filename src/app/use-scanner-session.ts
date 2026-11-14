@@ -28,7 +28,6 @@ export function useScannerClock(options: {
   onTimeout: () => void;
 }) {
   const {sharing, firstInputAt, lastInputAt, lastProgressAt, holdIdle, onTimeout} = options;
-  const [clockNow, setClockNow] = useState(0);
   const [scanTimedOut, setScanTimedOut] = useState(false);
   const [deadline, setDeadline] = useState(() => scanDeadline({firstInputAtMs: firstInputAt,lastProgressAtMs: lastProgressAt, nowMs: 0}));
   const [inputState, setInputState] = useState(() => scanInputState({lastInputAtMs: lastInputAt, nowMs: 0}));
@@ -67,14 +66,13 @@ export function useScannerClock(options: {
       if (firstInputRef.current !== null) firstInputRef.current += hiddenMs;
       if (lastProgressRef.current !== null) lastProgressRef.current += hiddenMs;
       if (lastInputRef.current !== null) lastInputRef.current += hiddenMs;
-      setClockNow(now); publishDeadline(now);
+      publishDeadline(now);
     };
     document.addEventListener('visibilitychange', visibility);
     if (document.visibilityState === 'hidden') hiddenAtRef.current = monotonicNow();
     const timer = setInterval(() => {
       if (document.visibilityState === 'hidden') return;
-      const now = monotonicNow();
-      setClockNow(now); publishDeadline(now);
+      publishDeadline(monotonicNow());
     }, 1000);
     return () => {
       active = false;
@@ -98,13 +96,12 @@ export function useScannerClock(options: {
   };
   const syncClock = () => {
     const now = monotonicNow();
-    setClockNow(now);
     const current = scanDeadline({firstInputAtMs: firstInputRef.current,lastProgressAtMs: lastProgressRef.current, nowMs: now});
     setDeadline(current.state === 'exceeded' && current.reason === 'idle' && holdIdle?.current
       ? {...current, state: 'warning' as const} : current);
     setInputState(scanInputState({lastInputAtMs: lastInputRef.current, nowMs: now}));
   };
-  return {clockNow, scanTimedOut, deadline, inputState, deadlineText, resetTimeout, syncClock};
+  return {scanTimedOut, deadline, inputState, deadlineText, resetTimeout, syncClock};
 }
 
 /** Scanner engine preparation. The caller still owns the scan abort controller

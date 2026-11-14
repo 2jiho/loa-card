@@ -21,8 +21,6 @@ export interface ScannerOptions {
   onInternalCleanupUncertain?:()=>void;
   /** A message about the scan's own resources (diagnostics only). */
   recordingError?:(message:string)=>void;
-  /** Development only: a frame the card window was found in. */
-  onFrameLocated?:(captureTime:number)=>void;
   /** Development only: server-side recording of a live share (docs/dev-recording.md). */
   shareRecording?:'on'|'off';onShareRecording?:(id:string)=>void;
   /** Development probe of display feedback timing; cancelled with the scan. */
@@ -49,7 +47,7 @@ export async function runScanner(video:HTMLVideoElement,signal:AbortSignal,updat
     run:(guardSignal,_configuration,transferred)=>import('./row-scanner').then(({runRowScannerInternal})=>runRowScannerInternal({video,signal:guardSignal,update:publish,
       ...(transferred?{prepared:transferred}:{}),
       onReady:()=>{if(guardSignal.aborted)return;ready();onReady?.();},
-      onLocated:()=>{try{debug.onFrameLocated?.(0);locatedFrameSink?.();}catch{/* Development recording is optional. */}}})),
+      onLocated:()=>{try{locatedFrameSink?.();}catch{/* Development recording is optional. */}}})),
   });
   // Development only: record the frames the scanner locates the card window in
   // to the local server, off the scan's path. Never alters or delays the scan;

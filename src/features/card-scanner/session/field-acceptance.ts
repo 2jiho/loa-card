@@ -1,4 +1,4 @@
-import {countReliability} from '../recognition/count-confidence';
+import {currentCountReliability} from '../recognition/count-confidence';
 import type {CountReliability} from '../recognition/count-confidence';
 import type {CountDiagnostics,ScannedCard} from '../recognition/recognizer-types';
 
@@ -14,14 +14,22 @@ export interface ReadFieldValues {
   countDiagnostics?:CountDiagnostics;
 }
 
-/** How far this crop's count can be trusted. */
+/** How far this crop's count can be trusted, from this crop's own evidence (pattern, text reader, the
+ * empty counter on an intact card; count-confidence.ts, currentCountReliability).
+ *
+ * A still list alone certifies nothing: a misread repeats exactly on the same pixels. It still counts
+ * for a value the text reader read on its own (where the count patterns cannot read the digits, as
+ * on a 1920x1080 window): such a value read on a still list is as trusted as before. A value from the
+ * count patterns alone is not, however still the list. */
 export function readFieldReliability(values:ReadFieldValues,crop:{stable:boolean;borderAlignment:number;maxAwakening?:number}):CountReliability {
-  return countReliability({stable:crop.stable,borderAlignment:crop.borderAlignment,awakening:values.awakening,
+  const own=currentCountReliability({stable:crop.stable,borderAlignment:crop.borderAlignment,awakening:values.awakening,
     maxAwakening:crop.maxAwakening,extraCopies:values.extraCopies,
     pattern:values.countDiagnostics?.pattern,
     iconPresent:values.countDiagnostics?.iconPresent,
     patternOcrAgreed:values.countDiagnostics?.patternOcrAgreed,
     ocrConfirmedValue:values.countDiagnostics?.ocrConfirmedValue});
+  if(own!=='unconfirmed'||!crop.stable)return own;
+  return values.extraCopies!==null&&values.countDiagnostics?.ocrConfirmedValue===values.extraCopies?'stable-frame':own;
 }
 
 /** Settle the values of a crop once its count reliability is final. Changes `values` in place:

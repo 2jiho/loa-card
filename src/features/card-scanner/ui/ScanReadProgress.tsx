@@ -111,7 +111,8 @@ export function ScanReadProgress({completed:completedProp,expected:expectedProp,
     inputWaitGuidance:inputWaitVisible,lagGuidance:autoCompletionEnabled&&(lagging||lagHeld?.session===lagSession&&lagHeld.value),liveObstruction:showObstruction,
     processing:!validCount(queued)||!validCount(active)||queued>0||active>0,queued,estimate});
   const announcedAdvice=detail==='화면을 잠시 멈춰 주세요.'||detail==='판독 대기 중이에요. 화면을 잠시 멈춰 주세요.'||detail==='카드 목록이 따라올 때까지 잠시 스크롤을 멈춰 주세요.'||detail===LIVE_OBSTRUCTION_MESSAGE?detail:'';
-  return <div className="scan-read-progress">
+  // Counts change continuously: only the advice line below is announced.
+  return <div className="scan-read-progress" aria-live="off">
     <div className="scan-read-heading"><span>{label}</span>{percent !== null && <b>{percent}%</b>}</div>
     {recheck>0&&<small className="scan-read-peak" title="최신 관측에서 필드가 아직 확인되지 않아 생긴 차이입니다. 이전에 확인된 카드가 목록에서 삭제된 것은 아닙니다.">누적 확인 {peak.toLocaleString('ko-KR')}종 · 최신 재확인 {recheck.toLocaleString('ko-KR')}종</small>}
     {total!==null ? <progress aria-label="카드 판독 진행" aria-valuetext={label} max={total} value={Math.min(completed,total)} />

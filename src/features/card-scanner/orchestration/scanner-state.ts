@@ -21,6 +21,8 @@ export interface ScannerState {
   status: string;
   percent: number;
   sampled: number;
+  /** Work finished so far; it grows while the scan makes progress (the stall guard watches it). */
+  workDone?: number;
   stable: number;
   expected: number | null;
   capacity: number | null;

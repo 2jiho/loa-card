@@ -63,14 +63,17 @@ export function inspectVisual(canvas: Raster, context: RasterContext, templates:
     };
 }
 export function readFullAwakening(canvas: Raster, context: RasterContext,
-  fields: ReturnType<typeof inspectVisual>, patterns: ContrastPattern[],snapshot?:Uint8ClampedArray) {
+  fields: ReturnType<typeof inspectVisual>, patterns: ContrastPattern[],snapshot?:Uint8ClampedArray,
+  /** The width of the crop as captured (a kept copy may be drawn at another size): it sets the count thresholds. */cropWidth=canvas.width) {
   if (fields.awakening !== 5) return undefined;
   if (fields.hasIcon !== false) {
     if(!snapshot)drawVisualRaster(canvas,context);
     // Five independently read jewels imply zero. A readable positive numeric
     // overlay contradicts that reading even when its icon is covered. Merely
     // bright artwork fragments must not invalidate a legitimate five-star card.
-    const pattern = matchCountPattern(snapshot??context.getImageData(0, 0, 140, 210).data, patterns, fields.offsetY, 15, false);
+    // The thresholds of the crop as captured, as for the count itself (a resampled crop scores lower).
+    const pattern = matchCountPattern(snapshot??context.getImageData(0, 0, 140, 210).data, patterns, fields.offsetY, 15, false,
+      countContrastFloor(cropWidth), countStrongScore(cropWidth), countAgreementScale(cropWidth));
     if(pattern.reason===COUNT_UNEXPLAINED_TRAILING_GLYPH)return {
       awakening:null,extraCopies:null,
       countDiagnostics:{maximum:15,reason:pattern.reason,readings:[],pattern,iconPresent:fields.hasIcon??undefined} as CountDiagnostics,
@@ -83,10 +86,11 @@ export function readFullAwakening(canvas: Raster, context: RasterContext,
   }
   return { awakening: 5, extraCopies: 0 };
 }
-export function readVisual(canvas: Raster, context: RasterContext, fields: ReturnType<typeof inspectVisual>, patterns: ContrastPattern[], maxAwakening?: number,snapshot?:Uint8ClampedArray) {
+export function readVisual(canvas: Raster, context: RasterContext, fields: ReturnType<typeof inspectVisual>, patterns: ContrastPattern[], maxAwakening?: number,snapshot?:Uint8ClampedArray,
+  /** The width of the crop as captured (see readFullAwakening). */cropWidth=canvas.width) {
  if(maxAwakening===0)return {awakening:0,extraCopies:0};
  const level=fields.awakening;
- const full=readFullAwakening(canvas,context,fields,patterns,snapshot);if(full)return full;
+ const full=readFullAwakening(canvas,context,fields,patterns,snapshot,cropWidth);if(full)return full;
  if(fields.hasIcon===false)return {awakening:level,extraCopies:level===null?null:0,
   countDiagnostics:{maximum:level===null?15:15-level*(level+1)/2,
    reason:fields.emptyEvidence?'회색 카드 표식 · 빈 장수 배경 확인'+(level===null?' · 각성 영역 미확정':' · 0장 후보'):
@@ -94,6 +98,6 @@ export function readVisual(canvas: Raster, context: RasterContext, fields: Retur
    ...(fields.emptyEvidence?{emptyEvidence:fields.emptyEvidence}:{})} as CountDiagnostics};
  const maximum=level===null?15:15-level*(level+1)/2;
  if(!snapshot)drawVisualRaster(canvas,context);
- const pattern=matchCountPattern(snapshot??context.getImageData(0,0,140,210).data,patterns,fields.offsetY,maximum,true,countContrastFloor(canvas.width),countStrongScore(canvas.width),countAgreementScale(canvas.width));
+ const pattern=matchCountPattern(snapshot??context.getImageData(0,0,140,210).data,patterns,fields.offsetY,maximum,true,countContrastFloor(cropWidth),countStrongScore(cropWidth),countAgreementScale(cropWidth));
  return {awakening:level,extraCopies:pattern.value,countDiagnostics:{maximum,reason:fields.hasIcon===null?'장수 숫자 미검출 또는 불명확':pattern.reason,readings:[],pattern,iconPresent:fields.hasIcon??undefined} as CountDiagnostics};
 }

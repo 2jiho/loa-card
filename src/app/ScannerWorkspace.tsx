@@ -48,6 +48,9 @@ export interface ScannerWorkspaceProps {
   progressRestored: boolean;
   savedBackupAvailable: boolean;
   onRestoreBackup: () => void;
+  /** The list on screen before an incomplete scan replaced it can be shown again. */
+  replacedAvailable: boolean;
+  onRestoreReplaced: () => void;
   preparationMessage: string;
   onRetryPreparation: () => void;
   csvPending: CsvPending;
@@ -83,16 +86,19 @@ function LiveRowPosition({store,sharing}:{store:ScanMonitorStore;sharing:boolean
     () => { const row=store.getSnapshot()?.map?.currentRow; return row==null ? undefined : row+1; },
     () => undefined,
   );
+  const rows=useSyncExternalStore(store.subscribe,()=>store.getSnapshot()?.map?.totalRows,()=>undefined);
+  const visible=useSyncExternalStore(store.subscribe,()=>store.getSnapshot()?.map?.visibleRows,()=>undefined);
   if(!sharing)return null;
-  // Kept while the position is unknown for a moment, so the lines below do not jump.
-  return <p className="scan-live-position">{Number.isInteger(top) ? `현재 화면 약 ${top}–${Math.min(55, top!+3)}행 보는 중` : '현재 화면 위치 확인 중'}</p>;
+  // Kept while the position is unknown for a moment, so the lines below do not jump. Not announced:
+  // it changes with every scroll.
+  return <p className="scan-live-position" aria-live="off">{Number.isInteger(top) ? `현재 화면 약 ${top}–${Math.min(rows ?? 55, top!+(visible ?? 4)-1)}행 보는 중` : '현재 화면 위치 확인 중'}</p>;
 }
 
 /** The names collected, from every snapshot (the page itself takes a new state once a second while sharing). */
 function LiveCollected({store}:{store:ScanMonitorStore}) {
   const names=useSyncExternalStore(store.subscribe,()=>store.getSnapshot()?.currentRunNames,()=>undefined);
   const expected=useSyncExternalStore(store.subscribe,()=>store.getSnapshot()?.expected,()=>undefined);
-  return <p>{expected != null ? `화면 수집 ${names ?? 0} / ${expected}종 · 수집 완료 시 자동 종료` : '보관함 수량 확인 중'}</p>;
+  return <p aria-live="off">{expected != null ? `화면 수집 ${names ?? 0} / ${expected}종 · 수집 완료 시 자동 종료` : '보관함 수량 확인 중'}</p>;
 }
 
 /** True once `value` has held for `ms`: a notice about one passing frame would appear and vanish. */
@@ -157,16 +163,17 @@ export function ScannerWorkspace(props: ScannerWorkspaceProps) {
       </div>
       {!p.busy && p.scanIncomplete && <div className="notice" role="status">
         <p>스캔 미완료 · {p.scanIncompleteReasons.join(' · ')} · 기존 저장 목록은 변경하지 않았습니다.</p>
-        {state && <p>{p.progressRestored ? '복원한 진행 기록은 판독이 끝나지 않아 CSV로 저장할 수 없습니다. 새 스캔은 이 카드 목록에서 이어집니다.' : '현재 결과는 확인이 끝나지 않아 CSV로 저장할 수 없습니다.'}</p>}
-        {p.progressRestored && p.savedBackupAvailable && <button className="text-button" onClick={p.onRestoreBackup}>저장된 목록으로 돌아가기</button>}
+        {state && <p>{p.progressRestored ? '복원한 진행 기록은 판독이 끝나지 않아 CSV로 저장할 수 없습니다. 새 스캔은 처음부터 다시 읽습니다.' : '이번 결과는 확인이 끝나지 않아 CSV로 저장할 수 없습니다.'}</p>}
+        {p.replacedAvailable ? <button className="text-button" onClick={p.onRestoreReplaced}>이전 목록으로 돌아가기</button>
+          : p.progressRestored && p.savedBackupAvailable && <button className="text-button" onClick={p.onRestoreBackup}>저장된 목록으로 돌아가기</button>}
       </div>}
       {!p.busy && p.csvReviewCount > 0 && <small className="muted">{`확인할 카드 ${p.csvIssues.length}종을 다시 읽으면 CSV로 저장할 수 있습니다.`}</small>}
       {!p.busy && (p.preparationState !== 'ready' || !p.cardsLength || p.preparationSettling || p.engineSettling) && <div role="status" className="scan-preparation">
         {p.preparationState === 'loading' && p.preparationMessage && <span className="scan-spinner" aria-hidden="true" />}
         <span>{p.preparationMessage}</span>
         {p.preparationState === 'error' && !p.preparationCleanupUncertain && <Button size="small" disabled={p.preparationSettling} onClick={p.onRetryPreparation}>준비 다시 시도</Button>}
-        {p.preparationSettling && !p.preparationCleanupUncertain && <span role="status">이전 준비 작업을 정리하고 있습니다.</span>}
-        {p.engineSettling && !p.busy && <span role="status">{p.engineCleanupUncertain ? '인식 엔진 종료를 확인하지 못해 새 스캔을 잠갔습니다.' : '이전 인식 엔진 종료를 기다리고 있습니다.'}</span>}
+        {p.preparationSettling && !p.preparationCleanupUncertain && <span>이전 준비 작업을 정리하고 있습니다.</span>}
+        {p.engineSettling && !p.busy && <span>{p.engineCleanupUncertain ? '인식 엔진 종료를 확인하지 못해 새 스캔을 잠갔습니다.' : '이전 인식 엔진 종료를 기다리고 있습니다.'}</span>}
       </div>}
       {p.csvPending && <div className="import-confirm" role="group" aria-label="CSV 불러오기 확인">
         <div><strong>{p.csvPending.name} · {p.csvPending.cards.length}종</strong>

@@ -49,3 +49,17 @@ test('a positive count keeps its value whatever its reliability; only the reliab
   assert.deepEqual(card.nameEvidence,[{engine:'portrait',text:'카드',confidence:1,stable:false,frame:'f1'}]);
   assert.equal(observedCard({identity,values:weak,review:[],reliability:'clear-pattern',image:'',time:1.5,order:42,stable:false,position}).countReliable,true);
 });
+
+test('a still list does not certify a count the patterns alone read; it does one the text reader read', () => {
+  // A weak pattern reading (score 0.23, gap 0.02 at a resampled crop): on a still list the same
+  // misread repeats on the same pixels, so stillness adds nothing.
+  const weak={awakening:1,extraCopies:4 as number|null,countDiagnostics:{maximum:14,reason:'장수 전체 패턴 일치',readings:[],iconPresent:true,
+    pattern:{value:4,candidate:4,score:.23,gap:.02,reason:'장수 전체 패턴 일치',contrastFloor:.22}}};
+  assert.equal(readFieldReliability(weak,{stable:true,borderAlignment:.95}),'unconfirmed');
+  // The text reader read the same value on its own (where the patterns cannot read the digits):
+  // a still list counts, as before.
+  const read={awakening:0,extraCopies:15 as number|null,countDiagnostics:{maximum:15,reason:'숫자 근거 일치로 확정',readings:[],iconPresent:true,ocrConfirmedValue:15,
+    pattern:{value:null,candidate:13,score:.2,gap:.01,reason:'숫자 획과 외곽선 대비 부족',contrastFloor:.22}}};
+  assert.equal(readFieldReliability(read,{stable:true,borderAlignment:1}),'stable-frame');
+  assert.equal(readFieldReliability(read,{stable:false,borderAlignment:1}),'unconfirmed');
+});

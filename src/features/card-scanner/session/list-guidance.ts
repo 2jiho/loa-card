@@ -79,8 +79,11 @@ export function listGuidance(snapshot:ListTableSnapshot,options:{
   for(const row of [...anchored].sort((a,b)=>a-b)){if(before===null||row!==before+1)runs++;before=row;}
   const likely=new Set<number>();
   for(const row of options.viewedRows??[])if(row>=0&&row<totalRows&&!anchored.has(row))likely.add(row);
+  // A row of a piece whose place is only likely counts as seen when every cell of it was read: a
+  // cell covered there (a notice over the list) is asked for by showing that row again.
   for(const island of snapshot.floating)if(island.likelyTop!==null)
-    for(let row=Math.max(0,island.likelyTop);row<Math.min(totalRows,island.likelyTop+island.rows);row++)if(!anchored.has(row))likely.add(row);
+    for(let row=Math.max(0,island.likelyTop);row<Math.min(totalRows,island.likelyTop+island.rows);row++)
+      if(!anchored.has(row)&&!(island.cells[row-island.likelyTop]??[]).some(cell=>cell===null||cell.state==='unidentified'))likely.add(row);
   const missingRows:{from:number;to:number}[]=[];
   const lockedFrom=typeof options.slotRows==='number'&&options.slotRows>0?Math.min(totalRows,Math.floor(options.slotRows)):totalRows;
   const cardsTo=typeof options.cardRows==='number'&&options.cardRows>0?Math.min(lockedFrom,Math.floor(options.cardRows)):lockedFrom;
@@ -112,8 +115,11 @@ export function listGuidance(snapshot:ListTableSnapshot,options:{
     return {code,name:card.name,reasons:[...card.reasons],row:at?.row??null,column:at?.column??null};
   }).sort((a,b)=>(a.row??Infinity)-(b.row??Infinity)||(a.column??0)-(b.column??0)||a.name.localeCompare(b.name,'ko'));
   const conflicts=snapshot.counts.overlapConflicts+snapshot.counts.anchorConflicts+snapshot.counts.cellConflicts;
-  return {missingRows,missingRowsUnseen:rows===0,seenRows,likelyRows,emptyFromRow,conflicts,pieces:runs+snapshot.floating.length,unplaced:{islands:snapshot.floating.length,rows,cards,unidentified,unread},
-    cells:cells.sort((a,b)=>a.row-b.row||a.column-b.column),cards:cardList,
+  // With the header read, the rows holding cards are known: one cell taken for an empty slot does not
+  // end the list there, and a cell in a row that cannot hold a card is not asked for.
+  const headerRows=typeof options.cardRows==='number'&&options.cardRows>0;
+  return {missingRows,missingRowsUnseen:rows===0,seenRows,likelyRows,emptyFromRow:headerRows?null:emptyFromRow,conflicts,pieces:runs+snapshot.floating.length,unplaced:{islands:snapshot.floating.length,rows,cards,unidentified,unread},
+    cells:cells.filter(cell=>!headerRows||cell.row<cardsTo).sort((a,b)=>a.row-b.row||a.column-b.column),cards:cardList,
     ...(cardsTo<totalRows?{cardRows:cardsTo}:{}),...(lockedFrom<totalRows?{slotRows:lockedFrom}:{})};
 }
 

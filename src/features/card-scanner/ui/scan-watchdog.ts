@@ -3,6 +3,7 @@ interface WatchdogState {
   ledger?: {stages?: Partial<Record<string, number>>};
   sampled: number;
   stable: number;
+  workDone?: number;
   recoveryFrames?: number;
   currentRunRead?: number;
   queued?: number;
@@ -34,7 +35,7 @@ export class ScanProgressClock {
       this.recoveryAt=state.workPhase==='recovery'?now:undefined;}
     if(state.workPhase==='cleanup')this.cleanupAt??=now;
     const stages=state.ledger?.stages;
-    const values=[state.sampled,state.stable,state.recoveryFrames??0,state.currentRunRead??0,
+    const values=[state.sampled,state.stable,state.recoveryFrames??0,state.currentRunRead??0,state.workDone??0,
       ...( ['identified','unidentified','rejected','duplicate','superseded'] as const).map(k=>stages?.[k]??0)];
     if(values.some((value,i)=>value>(this.high[i]??0)))this.last=now;
     this.high=values.map((value,i)=>Math.max(value,this.high[i]??0));

@@ -212,3 +212,13 @@ test('a stalled transaction aborts within its budget and allows later operations
  tx.oncomplete?.call(tx,new Event('complete'));
  stall=false;await backup.load();await backup.save(state('retry'));assert.equal((await backup.load())?.status,'retry');
 });
+
+test('a stored list that cannot be read can still be cleared, and is never loaded or overwritten', async () => {
+  const factory = new IDBFactory();
+  await seed(factory, [['current', {version: 1, revision: 'r', savedAt: 1, state: {cards: 'not a list'}}]]);
+  const backup = createScanBackup(() => factory, () => null);
+  await assert.rejects(backup.load(), /형식을 읽을 수 없습니다/);
+  await assert.rejects(backup.save(state()));
+  await backup.clear();
+  assert.equal(await createScanBackup(() => factory, () => null).load(), undefined);
+});

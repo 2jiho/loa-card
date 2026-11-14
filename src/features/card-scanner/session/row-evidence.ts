@@ -56,9 +56,9 @@ export interface RowEvidence {
    * after everything was read, and it may also run while the share goes on (a card it resolved is
    * not checked again): a crop accepted afterwards cancels its card's result, and a card that gets
    * a new observation during a run is left for the next one. */
-  confirmZeros(read:(image:HTMLCanvasElement,id:string)=>Promise<ReadFieldValues>,
+  confirmZeros(read:(image:HTMLCanvasElement,id:string,/** The crop's width as captured (the kept copy is 140 wide). */width:number)=>Promise<ReadFieldValues>,
     /** Diagnosis only: other readings of an unresolved card's preferred crop, stored as given. */
-    diagnose?:(image:HTMLCanvasElement,id:string)=>Promise<unknown>):Promise<RowZeroCheck>;
+    diagnose?:(image:HTMLCanvasElement,id:string,width:number)=>Promise<unknown>):Promise<RowZeroCheck>;
   /** Accept one named crop. Returns its values after acceptance (an unconfirmed zero is null). */
   accept(input:RowEvidenceInput):{awakening:number|null;extraCopies:number|null};
   /** Whether this crop's count is unconfirmed as read (whatever the reason). Such a crop is read
@@ -102,7 +102,7 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150,
   const inventory=new InventoryEvidence([],{seedPolicy:'prior-run-v3',consensusPolicy:CURRENT_INVENTORY_CONSENSUS_POLICY,countConflictPolicy:{version:3,sessionId}});
   let sequence=0,dirty=false,refreshed=-Infinity,projected:ScannedCard[]=[],confirmedIds=new Set<string>();
   /** Kept crops per card not yet confirmed, and the cards the zero check resolved. */
-  const previews=new Map<string,{canvas:HTMLCanvasElement;order:number;stable:boolean;url?:string}[]>(),PREVIEWS=8;
+  const previews=new Map<string,{canvas:HTMLCanvasElement;order:number;stable:boolean;width:number;alignment:number;url?:string}[]>(),PREVIEWS=8;
   /** The interface's card strip (activity()). */
   const strip:{id:number;card:string;image:string;name:string;status:'read'|'review'}[]=[];let stripId=0;
   // One small picture per card (the card list's tile size), made when the card is first read and
@@ -111,7 +111,7 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150,
   // The picture is scaled by createImageBitmap and encoded in a worker (session/card-picture-worker.ts),
   // so that a picture per card costs the scan's main thread nothing; it arrives a moment later.
   // (Encoding on the main thread, even with toBlob, took about a second of it per scan.)
-  let encoding=0,settled:(()=>void)[]=[],encoder:Worker|undefined,pictureId=0;
+  let encoding=0,settled:(()=>void)[]=[],encoder:Worker|undefined,encoderFailed=false,pictureId=0;
   const encoded=new Map<number,(url:string|null)=>void>();
   const finish=()=>{if(--encoding===0){const waiting=settled;settled=[];for(const resolve of waiting)resolve();}};
   const thumbnail=(image:HTMLCanvasElement,done:(url:string)=>void)=>{
@@ -119,10 +119,13 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150,
     encoding++;
     const id=++pictureId;
     void createImageBitmap(image,{resizeWidth:80,resizeHeight:120,resizeQuality:'medium'}).then(bitmap=>{
+      if(encoderFailed){bitmap.close();finish();return;}
       if(!encoder){
         encoder=new Worker(new URL('./card-picture-worker.ts',import.meta.url),{type:'module'});
         encoder.onmessage=(event:MessageEvent<CardPictureReply>)=>{const reply=encoded.get(event.data.id);encoded.delete(event.data.id);reply?.(event.data.url);};
-        encoder.onerror=()=>{for(const reply of encoded.values())reply(null);encoded.clear();};
+        // A worker that fails (it could not load) is not used again: every picture asked for gets an
+        // answer (none), so the end of the scan never waits for one.
+        encoder.onerror=encoder.onmessageerror=()=>{encoderFailed=true;encoder?.terminate();encoder=undefined;for(const reply of encoded.values())reply(null);encoded.clear();};
       }
       encoded.set(id,url=>{if(url)done(url);finish();});
       encoder.postMessage({id,bitmap} satisfies CardPictureRequest,[bitmap]);
@@ -139,7 +142,7 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150,
     if(!dirty||(!force&&performance.now()-refreshed<refreshMs))return;
     projected=inventory.project(catalog).map(card=>{
       const diagnostics=resolvedZero.get(card.id);
-      return diagnostics?{...card,extraCopies:0,countReliable:true,review:card.review.filter(reason=>!reason.includes('장수')&&!reason.includes('각성')),
+      return diagnostics?{...card,extraCopies:0,countReliable:true,review:card.review.filter(reason=>!reason.includes('장수')),
         countDiagnostics:{...diagnostics,reason:diagnostics.reason||PREVIEW_ZERO_REASON}}:card;
     });
     const evidence={latest:inventory.latestIdentityOrder,confirmed:inventory.confirmedFieldOrder,agreed:inventory.agreedFieldOrder};
@@ -198,7 +201,7 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150,
         const canvas=Object.assign(document.createElement('canvas'),{width:140,height:210});
         canvas.getContext('2d',{willReadFrequently:true})!.drawImage(input.image,0,0,140,210);
         const kept=previews.get(identity.id)??[];previews.set(identity.id,kept);
-        kept.push({canvas,order,stable});kept.sort(preferred);
+        kept.push({canvas,order,stable,width:input.image.width,alignment:borderAlignment});kept.sort(preferred);
         for(const extra of kept.splice(PREVIEWS))extra.canvas.width=0;
       }
       dirty=true;
@@ -216,12 +219,15 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150,
       dirty=true;refresh(true);
       const resolved:string[]=[];let checked=0,previewReads=0,withoutPreview=0;
       const unresolved:{name:string;awakening:number;picture?:string;other?:unknown;readings:RowZeroCheck['unresolved'][number]['readings'][number][]}[]=[];
+      // The check may run while crops are still being accepted: a card that gets a new observation
+      // after the check began (it may have changed what the card needs) is left for the next run.
+      const acceptsAtStart=new Map(acceptCount);
       for(const card of projected){
         if(card.awakening===null||!needsPreviewZeroProof(card))continue;
+        // A zero settles the count only: a card whose awakening itself is in doubt is not settled by it.
+        if(card.review.some(reason=>reason.includes('각성')&&!reason.includes('장수')))continue;
         checked++;
-        // The check may run while crops are still being accepted: a card that gets a new
-        // observation while its kept crops are being read is left for the next run.
-        const acceptsBefore=acceptCount.get(card.id)??0;
+        const acceptsBefore=acceptsAtStart.get(card.id)??0;
         const kept=[...(previews.get(card.id)??[])].sort(preferred);
         if(!kept.length){withoutPreview++;continue;}
         // As in the scanner: every kept crop is read before deciding.
@@ -229,11 +235,15 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150,
         const detail:RowZeroCheck['unresolved'][number]['readings'][number][]=[];
         for(const preview of kept){
           try{
-            const values=await read(preview.canvas,card.id);previewReads++;
+            const values=await read(preview.canvas,card.id,preview.width);previewReads++;
             const pixels=preview.canvas.getContext('2d',{willReadFrequently:true})!.getImageData(0,0,140,210).data;
             const packed=packCount(pixels,140,0,true);
             const reading=previewZeroReading({values,packed,card:{awakening:card.awakening,observations:card.observations},stillImage:false});
-            readings.push({order:preview.order,...reading});
+            // A kept crop proves zero only on the terms its acceptance had: a still list or an intact
+            // card, and the card's own awakening. Re-reading the crop acceptance refused proves nothing
+            // new. A positive count in any kept crop still vetoes.
+            const eligible=(preview.stable||preview.alignment>=.8)&&values.awakening===card.awakening;
+            readings.push({order:preview.order,...reading,zero:reading.zero&&eligible});
             detail.push({order:preview.order,stable:preview.stable,readAwakening:values.awakening,readCopies:values.extraCopies,
               iconPresent:values.countDiagnostics?.iconPresent??null,zero:reading.zero,positive:reading.positive,counter:{hasIcon:packed.hasIcon,...packed.diagnostic}});
           }catch{/* Try another kept crop. */}
@@ -241,7 +251,7 @@ export function createRowEvidence(catalog:CatalogName[],refreshMs=150,
         if((acceptCount.get(card.id)??0)!==acceptsBefore)continue;
         const chosen=readings[selectZeroPreview(readings)];
         if(!chosen){unresolved.push({name:card.name,awakening:card.awakening,...(diagnose?{picture:kept[0].canvas.toDataURL('image/png')}:{}),
-          ...(diagnose?{other:await diagnose(kept[0].canvas,card.id).catch(error=>String(error))}:{}),readings:detail});continue;}
+          ...(diagnose?{other:await diagnose(kept[0].canvas,card.id,kept[0].width).catch(error=>String(error))}:{}),readings:detail});continue;}
         resolvedZero.set(card.id,chosen.diagnostics??{maximum:15,reason:'',readings:[]});
         inventory.confirmPreviewField(card.id,inventory.latestIdentityOrder.get(card.id)??card.captureOrder??0);
         resolved.push(card.name);

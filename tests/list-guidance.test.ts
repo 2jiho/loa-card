@@ -123,3 +123,18 @@ test('row numbers carry a warning when the table counted disagreements', () => {
   assert.equal(quiet.conflicts,0);
   assert.ok(!describeListGuidance(quiet,{totalRows:4}).notes.some(note=>note.includes('어긋났을')));
 });
+
+test('with the header read, one cell taken for an empty slot does not end the list, and no cell past the card rows is asked for', () => {
+  const table=createListTable();
+  // Row 1 has a cell read as an empty slot (a card misread as a card back); rows 4..7 are unseen.
+  table.observe(frame(0,0,{row:0,settledMs:400},slots=>{slots[12]=SLOT_EMPTY;}));
+  // Row 9 (past the 8 rows the header's total fills) has a covered cell.
+  table.observe(frame(1,8,{row:8,settledMs:400},slots=>{slots[13]=SLOT_UNUSABLE;}));
+  const withHeader=listGuidance(table.snapshot(),{totalRows:12,unconfirmed:none,cardRows:8,slotRows:12});
+  assert.equal(withHeader.emptyFromRow,null);
+  assert.deepEqual(withHeader.missingRows,[{from:4,to:7}]);
+  assert.deepEqual(withHeader.cells,[],'row 10 cannot hold a card');
+  assert.ok(describeListGuidance(withHeader,{totalRows:12}).asks.some(ask=>ask.includes('5~8번째 줄')));
+  // Without the header the empty cell still ends what is asked (the table cannot know more).
+  assert.equal(listGuidance(table.snapshot(),{totalRows:12,unconfirmed:none}).emptyFromRow,1);
+});

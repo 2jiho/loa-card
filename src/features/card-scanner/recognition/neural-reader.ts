@@ -65,6 +65,7 @@ export function createNeuralReader(model: "korean" | "digits" = "korean", lexico
   }
   }
   startWorker();
+  let timeoutRestarts=0;
   function restart(){
     try{worker.onmessage=null;worker.onerror=null;worker.terminate();}
     catch(cleanupError){disposed=true;reportCleanupError(cleanupError);fail(new CardReadTimeout());throw cleanupError;}
@@ -81,6 +82,12 @@ export function createNeuralReader(model: "korean" | "digits" = "korean", lexico
     const id = ++nextId;
     return new Promise<NeuralReading | null>((resolve, reject) => {
       const timer = setTimeout(() => {
+        // One reading that hangs ends that reading, not the reader: a fresh worker takes the next ones
+        // (a few times at most; then the reader stops, as before).
+        if (type === "recognize" && timeoutRestarts < 3) {
+          timeoutRestarts++;
+          try { restart(); return; } catch { /* Fall through: the reader stops. */ }
+        }
         stopAndFail(new Error(type === "ready" ? "OCR 준비 시간이 초과됐습니다. 연결을 확인하고 다시 시작해 주세요." : "OCR 시간 초과"));
       }, type === "ready" ? 120000 : 30000);
       pending.set(id, { resolve, reject, timer });

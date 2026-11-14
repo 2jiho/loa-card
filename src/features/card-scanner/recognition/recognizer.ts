@@ -1,5 +1,4 @@
 import { drawVisualRaster, inspectVisual, portraitIdentity, readVisual, readFullAwakening } from './visual-fields';
-import { observationPixels } from "../acquisition/observation-pixels";
 import { confirmCatalogName } from "./name-confidence";
 import { normalizeName } from "./card-dictionary";
 import { readSortArrow } from "./capture-metadata";
@@ -69,23 +68,6 @@ export function cardHasLabel(canvas: HTMLCanvasElement) {
     (grade) => nameMask(rgba, grade).reduce((n, v) => n + v, 0) >= 35,
   );
 }
-const observationCache = new WeakMap<HTMLCanvasElement, ReturnType<typeof observationPixels>>();
-function canvasObservation(canvas: HTMLCanvasElement) {
-  let value = observationCache.get(canvas);
-  if (!value) {
-    const pixels = canvas.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, canvas.width, canvas.height).data;
-    value = observationPixels(pixels, canvas.width, canvas.height);
-    observationCache.set(canvas, value);
-  }
-  return value;
-}
-export function frameFeature(canvas: HTMLCanvasElement): Uint8Array {
-  return canvasObservation(canvas).art;
-}
-/** Card crops are immutable until released. Share the deterministic Worker features. */
-export function observationFeature(canvas: HTMLCanvasElement, _art?: Uint8Array) {
-  return canvasObservation(canvas).feature;
-}
 export function sameObservation(a: Uint8Array, b: Uint8Array) {
   return [
     [0, 864, 2.5],
@@ -143,10 +125,16 @@ export async function createRecognizer(status: (message: string) => void, signal
     if(!rankWorker){
       try{rankWorker=new Worker(new URL('./portrait-worker.ts',import.meta.url),{type:'module'});}catch{rankFailed=true;return Promise.resolve(null);}
       rankWorker.onmessage=(event:MessageEvent<PortraitRankReply>)=>{const reply=rankReplies.get(event.data.id);rankReplies.delete(event.data.id);reply?.(event.data.ranking);};
-      rankWorker.onerror=()=>{rankFailed=true;endRankWorker();};
+      rankWorker.onerror=rankWorker.onmessageerror=()=>{rankFailed=true;endRankWorker();};
     }
-    const id=++rankId;
-    return new Promise(resolve=>{rankReplies.set(id,resolve);rankWorker!.postMessage({id,gray} satisfies PortraitRankRequest,[gray.buffer]);});
+    const id=++rankId,first=id===1;
+    return new Promise(resolve=>{
+      // A worker that does not answer in time is not used again: the crop is ranked here instead.
+      // The first request also waits for the worker to load its references.
+      const timer=setTimeout(()=>{if(rankReplies.delete(id)){rankFailed=true;endRankWorker();resolve(null);}},first?30_000:5_000);
+      rankReplies.set(id,ranking=>{clearTimeout(timer);resolve(ranking);});
+      rankWorker!.postMessage({id,gray} satisfies PortraitRankRequest,[gray.buffer]);
+    });
   }
   /** Rank the crop's artwork in the worker before checking it (once per crop). */
   async function rankPortrait(canvas: HTMLCanvasElement) {
@@ -208,13 +196,6 @@ export async function createRecognizer(status: (message: string) => void, signal
     },
     catalog: cards,
     portrait,
-    /** Evidence-only portrait check for a fixed-grid rescue crop. It cannot
-     * confirm a card: callers may record the match, never publish an identity. */
-    matchArtworkGray(gray: ArrayLike<number>) {
-      const artwork = matchPortrait(gray);
-      return artwork ? { id: artwork.card.id, name: artwork.card.name,
-        correlation: artwork.portrait.correlation, margin: artwork.portrait.margin } : null;
-    },
     identifyVisual(canvas: HTMLCanvasElement) {
       portraitAttempts.set(canvas,[]);
       const artwork = portrait(canvas);
@@ -227,16 +208,6 @@ export async function createRecognizer(status: (message: string) => void, signal
     },
     namePerformance(canvas:HTMLCanvasElement){return namePerformances.get(canvas);},
     nameOcrMetrics:()=>reader.nameOcrMetrics(),
-    /** Final, bounded name-only re-read of a retained crop. It does not inspect
-     * fields or publish a card; the caller must classify an exact match as a
-     * duplicate only after the full inventory is confirmed. */
-    async matchFinalName(canvas: HTMLCanvasElement) {
-      const fields = inspect(canvas);
-      const attempts: import("./name-diagnostics").NameAttempt[] = [];
-      nameAttempts.set(canvas, attempts);
-      return reader.matchForIdentify(canvas, {full:true, offsetY:fields.offsetY, allowRaw:true,
-        acceptQuick:()=>true, onAttempt:attempt=>attempts.push(attempt)});
-    },
     async identify(canvas: HTMLCanvasElement, full = true, captureStable = false, structural = false,budget?:import('./card-read-budget').CardReadBudget,allowPortraitRefinement=false,observeLabel?:NameLabelObserver,allowGrayNameFallback=false) {
       const attempts: import("./name-diagnostics").NameAttempt[] = [];
       nameAttempts.set(canvas, attempts);
@@ -368,14 +339,16 @@ export async function createRecognizer(status: (message: string) => void, signal
         sort.width = 0;
       }
     },
-    async read(canvas: HTMLCanvasElement, id?: string, corroborate = false, allowOcr = true,budget?:import('./card-read-budget').CardReadBudget) {
+    async read(canvas: HTMLCanvasElement, id?: string, corroborate = false, allowOcr = true,budget?:import('./card-read-budget').CardReadBudget,
+      /** The width of the crop as captured, when this canvas is a copy drawn at another size (a kept preview):
+       * the count thresholds are those of the crop the pixels came from. */cropWidth=canvas.width) {
       budget?.check();
-      if (!allowOcr) return readVisual(canvas, context, inspect(canvas), countPatterns, id ? byId.get(id)?.maxAwakening : undefined);
+      if (!allowOcr) return readVisual(canvas, context, inspect(canvas), countPatterns, id ? byId.get(id)?.maxAwakening : undefined, undefined, cropWidth);
       if (id && byId.get(id)?.maxAwakening === 0)
         return { awakening: 0, extraCopies: 0 };
       const fields = inspect(canvas),
         level = fields.awakening;
-      const full = readFullAwakening(canvas, context, fields, countPatterns);
+      const full = readFullAwakening(canvas, context, fields, countPatterns, undefined, cropWidth);
       if (full) return full;
       if (fields.hasIcon === false)
         return { awakening: level, extraCopies: level === null ? null : 0,
@@ -385,7 +358,7 @@ export async function createRecognizer(status: (message: string) => void, signal
             readings: [], iconPresent: false,...(fields.emptyEvidence?{emptyEvidence:fields.emptyEvidence}:{}) } satisfies CountDiagnostics };
       const maximum = level === null ? 15 : 15 - (level * (level + 1)) / 2;
       drawVisualRaster(canvas, context);
-      const pattern = matchCountPattern(context.getImageData(0, 0, 140, 210).data, countPatterns, fields.offsetY, maximum, true, countContrastFloor(canvas.width), countStrongScore(canvas.width), countAgreementScale(canvas.width));
+      const pattern = matchCountPattern(context.getImageData(0, 0, 140, 210).data, countPatterns, fields.offsetY, maximum, true, countContrastFloor(cropWidth), countStrongScore(cropWidth), countAgreementScale(cropWidth));
       const diagnostic: CountDiagnostics = { maximum, reason: fields.hasIcon === null ? '장수 숫자 미검출 또는 불명확' : pattern.reason, readings: [], pattern, iconPresent: fields.hasIcon ?? undefined };
       if (pattern.value !== null && !corroborate)
         return { awakening: level, extraCopies: pattern.value, countDiagnostics: diagnostic };
@@ -418,8 +391,8 @@ export async function createRecognizer(status: (message: string) => void, signal
         } else if (pattern.candidate !== null && digitValue === pattern.candidate &&
           // Full-screen thresholds scaled for the crop size (countAgreementScale): score 0.30 and
           // gap 0.035 at full screen, 0.22/0.026 for wider resampled crops, 0.12/0.014 below 100 px.
-          Number.isFinite(pattern.score) && pattern.score >= .30 * countAgreementScale(canvas.width) &&
-          Number.isFinite(pattern.gap) && pattern.gap >= .035 * countAgreementScale(canvas.width)) {
+          Number.isFinite(pattern.score) && pattern.score >= .30 * countAgreementScale(cropWidth) &&
+          Number.isFinite(pattern.gap) && pattern.gap >= .035 * countAgreementScale(cropWidth)) {
           // A strong single-digit candidate can be corroborated even when a
           // trailing artwork stroke kept the template result null.
           diagnostic.patternOcrAgreed = true;

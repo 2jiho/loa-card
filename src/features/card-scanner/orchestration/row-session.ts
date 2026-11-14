@@ -146,7 +146,9 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
     cell:{card:number;rows:number;column:number}|null;queuedAt:number;
     frameId:number;fieldStable:boolean;alignment:number;
     /** Set for a crop the artwork already named whose count is to be read again. */
-    count?:{code:number;identity:RowEvidenceIdentity}};
+    count?:{code:number;identity:RowEvidenceIdentity};
+    /** The crop's field revision, for a count re-read (marked read in full once it was). */
+    revision?:string};
   /** Count re-reads started per card. A card that stays unconfirmed is not re-read without end. */
   // Full readings of one card are paced, not capped: after one is queued the next waits `fullGap`
   // seconds of capture time (doubling up to FULL_GAP_MAX while the card keeps needing them).
@@ -155,9 +157,14 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
   // read in full, and a crop is never recorded on its visual reading alone because of a limit.
   const nextFull=new Map<number,number>(),fullGap=new Map<number,number>(),FULL_GAP=.5,FULL_GAP_MAX=8;
   const pendingFull=new Map<number,{item:Waiting;revision:string|undefined}>();
-  /** Per card: the field revisions already sent to the full reading. The same field pixels are
-   * not read again and not recorded again (a repeat of the same pixels is not another observation). */
-  const fullyRead=new Map<number,Set<string>>();
+  /** Per card: the field revisions read in full, and those waiting for it. The same field pixels are
+   * not read again and not recorded again (a repeat of the same pixels is not another observation).
+   * A revision counts as read only once its reading was accepted: one that failed or was dropped
+   * from the line can be read again from the next crop showing it. */
+  const fullyRead=new Map<number,Set<string>>(),fullQueued=new Map<number,Set<string>>();
+  const markRevision=(map:Map<number,Set<string>>,code:number,revision:string|undefined,on:boolean)=>{
+    if(!revision)return;const seen=map.get(code)??new Set<string>();map.set(code,seen);if(on)seen.add(revision);else seen.delete(revision);};
+  let stopped=false;
   const stillClock=createStillClock();
   const backlog:Waiting[]=[];
   let inFlight:Waiting|null=null;
@@ -174,8 +181,8 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
   /** Send a crop to the full reading in the name lane and start the card's wait for the next one. */
   const queueFull=(code:number,item:Waiting,revision:string|undefined)=>{
     dropKept(code);
-    backlog.push(item);nameStats.countQueued++;
-    if(revision){const seen=fullyRead.get(code)??new Set<string>();fullyRead.set(code,seen);seen.add(revision);}
+    item.revision=revision;backlog.push(item);nameStats.countQueued++;
+    markRevision(fullQueued,code,revision,true);
     const gap=fullGap.get(code)??FULL_GAP;
     nextFull.set(code,item.time+gap);fullGap.set(code,Math.min(FULL_GAP_MAX,gap*2));
     nameStats.longestBacklog=Math.max(nameStats.longestBacklog,backlog.length);
@@ -191,7 +198,7 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
     const take=()=>{
       let best=-1;
       for(let index=0;index<backlog.length;index++)if(best<0||rank(backlog[index])<rank(backlog[best]))best=index;
-      return best<0?undefined:backlog.splice(best,1)[0];
+      return best<0||stopped?undefined:backlog.splice(best,1)[0];
     };
     for(let item=take();item;item=take()){
       inFlight=item;
@@ -207,7 +214,9 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
             values=await names!.count!(item.copy,identity.id,true);nameStats.countReads++;
           }
           nameStats.ms.push(performance.now()-began);
+          if(stopped)continue;
           const accepted=evidence!.accept({identity,values:values.full??null,time:item.time,slot:item.slot,frameId:item.frameId,stable:item.fieldStable,borderAlignment:item.alignment,image:item.copy});
+          markRevision(fullQueued,code,item.revision,false);markRevision(fullyRead,code,item.revision,true);
           cards[code].observations.push({time:item.time,awakening:accepted.awakening,extraCopies:accepted.extraCopies});
           if(accepted.awakening!==null&&accepted.extraCopies!==null)complete.add(code);
           continue;
@@ -218,10 +227,19 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
         const began=performance.now();nameStats.waitMs.push(began-item.queuedAt);
         const identity=await names!.identify(item.copy,item.stable,item.alignment>=.8);
         let values=identity?await names!.values(item.copy,identity.id):null;
+        // As for a crop the artwork named: a count the visual reading leaves unconfirmed is read in
+        // full (text reader allowed), then corroborated when the scanner would. Without this, a card
+        // only the name reader can tell apart never had its count read by text.
+        const crop={stable:item.fieldStable,borderAlignment:item.alignment};
+        if(evidence&&identity?.full&&values?.full&&names!.count&&!identity.full.review.length&&
+            evidence.countUnconfirmed({identity:identity.full,values:values.full,...crop})){
+          values=await names!.count(item.copy,identity.id,false);nameStats.countReads++;
+        }
         if(evidence&&identity?.full&&values?.full&&names!.count&&
-            evidence.needsCountReread({identity:identity.full,values:values.full,stable:item.fieldStable,borderAlignment:item.alignment})){
+            evidence.needsCountReread({identity:identity.full,values:values.full,...crop})){
           values=await names!.count(item.copy,identity.id,true);nameStats.countReads++;
         }
+        if(stopped)continue;
         const took=performance.now()-began,both=!!values&&values.awakening!==null&&values.extraCopies!==null;
         nameStats.ms.push(took);nameStats.reads++;
         if(nameStats.log.length<400)nameStats.log.push({time:item.time,slot:item.slot,rowKnown:item.rowWasKnown,settledMs:item.settled,ms:Math.round(took),name:identity?.name??null,complete:both,
@@ -237,7 +255,7 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
         // The cell this crop came from, by the card its frame placed beside it.
         const where=cellOf(item);
         if(placeNames&&where&&table.nameCell(where.island,where.row,where.column,code,item.time))nameStats.placed++;
-      }catch{nameStats.failed++;}
+      }catch{nameStats.failed++;if(item.count)markRevision(fullQueued,item.count.code,item.revision,false);}
       finally{item.copy.width=0;inFlight=null;}
     }
   };
@@ -269,7 +287,19 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
     table,stats,readAll,planRow:plan,
     /** Resolves when the background name lane has nothing in flight. */
     /** Crops waiting in the name lane (for a name or a full count reading), with the one being read. */
-    waitingReads:()=>backlog.length+(inFlight?1:0),
+    waitingReads:()=>backlog.length+(inFlight?1:0)+pendingFull.size,
+    /** Readings finished in the name lane (named, failed, counts read, skipped as already named):
+     * work done, for the scan's progress while nothing else changes. */
+    workDone:()=>nameStats.reads+nameStats.countReads+nameStats.failed+nameStats.skippedNamed,
+    /** Send every kept crop to the full reading now (each card's latest look), without waiting. */
+    flushFull(){for(const [code,kept] of [...pendingFull]){pendingFull.delete(code);queueFull(code,kept.item,kept.revision);}},
+    /** Stop the name lane: nothing more is read or accepted; resolves when the crop in flight is done. */
+    async stop(){
+      stopped=true;
+      for(const item of backlog.splice(0))item.copy.width=0;
+      for(const [,kept] of pendingFull)kept.item.copy.width=0;pendingFull.clear();
+      while(nameLane)await nameLane.catch(()=>{});
+    },
     async namesIdle(){
       // The crops kept for a full reading are each card's latest look: read them before the end.
       for(const [code,kept] of [...pendingFull]){pendingFull.delete(code);queueFull(code,kept.item,kept.revision);}
@@ -311,8 +341,8 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
         if(evidence&&whole&&backgroundNames&&names?.count&&!whole.identity.review.length&&
             evidence.countUnconfirmed({identity:whole.identity,values:whole.values,stable:fieldStable(slot),borderAlignment:cells[slot].alignment??0})){
           const revision=cells[slot].fieldRevision;
-          if(revision&&fullyRead.get(code)?.has(revision)){
-            // These field pixels were already read in full for this card.
+          if(revision&&(fullyRead.get(code)?.has(revision)||fullQueued.get(code)?.has(revision))){
+            // These field pixels were already read in full for this card, or are waiting for it.
             nameStats.countSame++;
             cards[code].observations.push({time,awakening:values?.awakening??null,extraCopies:null});
             return code;
@@ -454,7 +484,8 @@ export function createRowReadSession(visuals:readonly RowReadVisual[],scrollStep
           for(let at=backlog.length-1;at>=0;at--)if(backlog[at].count){index=at;break;}
           if(index<0){nameStats.skippedBusy++;continue;}
           const [moved]=backlog.splice(index,1),code=moved.count!.code;
-          if(!pendingFull.has(code)){pendingFull.set(code,{item:moved,revision:undefined});nameStats.countDeferred++;}
+          markRevision(fullQueued,code,moved.revision,false);
+          if(!pendingFull.has(code)){pendingFull.set(code,{item:moved,revision:moved.revision});nameStats.countDeferred++;}
           else moved.copy.width=0;
           nameStats.countMadeRoom++;
         }

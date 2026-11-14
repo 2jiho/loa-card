@@ -100,6 +100,9 @@ function App() {
   const [backupAttempt, setBackupAttempt] = useState(0);
   const [legacyChoices, setLegacyChoices] = useState<LegacyBackupChoice['choices']>([]);
   const savedState = useRef<ScannerState | null>(null);
+  /** The list on screen before a scan that ended incomplete replaced it. */
+  const [replacedState, setReplacedState] = useState<ScannerState | null>(null);
+  const backupReadyRef = useRef(false);
   const [catalogError, setCatalogError] = useState('');
   const [catalogVersion, setCatalogVersion] = useState('');
   const [catalogAttempt, setCatalogAttempt] = useState(0);
@@ -164,6 +167,7 @@ function App() {
     return () => { cancelled = true; };
   }, []);
   const scanStateRef = useRef<ScannerState | null>(null);
+  useEffect(() => { backupReadyRef.current = backupReady; }, [backupReady]);
   const busyRef = useRef(false);
   useEffect(() => { scanStateRef.current = state; }, [state]);
   useEffect(() => { busyRef.current = busy; }, [busy]);
@@ -195,11 +199,14 @@ function App() {
   useEffect(() => {
     const save = () => {
       const current = scanStateRef.current;
-      if (!current || !current.cards.length) return;
+      // Not while the saved list is being loaded, cleared or replaced (a reset would come back).
+      if (!backupReadyRef.current || !current || !current.cards.length) return;
       const incomplete = busyRef.current || scanIncompleteRef.current ||
         current.interrupted !== undefined || current.status === '스캔 중지';
       if (incomplete) void saveScanProgress(current).catch(() => {});
-      else void saveScanBackup(current).catch(() => {});
+      else if (current !== savedState.current)
+        // A completed list saved now replaces any interrupted-scan checkpoint, so a reload shows it.
+        void saveScanBackup(current).then(() => { savedState.current = current; return clearScanProgress(); }).catch(() => {});
     };
     const onVisibility = () => { if (document.visibilityState === 'hidden') save(); };
     window.addEventListener('pagehide', save);
@@ -233,6 +240,7 @@ function App() {
       scanMonitorStore.clear();
       void clearScanProgress().catch(()=>{});
       setState(saved ?? null); setError(''); setActionError(''); setBackupError(''); setLegacyChoices([]);
+      setReplacedState(null); resetScanDeadline();
       setBackupStatus('카드 목록은 이 브라우저에 자동 저장됩니다.');
     } catch (e) { if (e instanceof LegacyBackupChoice) setLegacyChoices(e.choices); setBackupError(e instanceof Error ? e.message : '목록 복원 실패'); }
     finally { setBackupReady(true); }
@@ -242,7 +250,7 @@ function App() {
     try {
       await clearScanBackup();
       await clearScanProgress().catch(()=>{});
-      release(); inventory.current=[]; savedState.current=null; setState(null);clearScanIncomplete();setProgressRestored(false);setSavedBackupAvailable(false);resetScanDeadline();scanMonitorStore.clear();
+      release(); inventory.current=[]; savedState.current=null; setState(null);clearScanIncomplete();setReplacedState(null);setProgressRestored(false);setSavedBackupAvailable(false);resetScanDeadline();scanMonitorStore.clear();
       setQuery(''); setInventoryFilter('owned'); setPage(1); setResetPending(false); setError(''); setActionError(''); setBackupError('');
       setBackupStatus('카드 목록은 이 브라우저에 자동 저장됩니다.');
     } catch (e) { setBackupError(e instanceof Error ? e.message : '목록 초기화 실패'); }
@@ -290,8 +298,15 @@ function App() {
       beginEngineWork, setProgressRestored,
       setPreparationState, setBusy, setResultView, setInventoryFilter, setPage, setEngineReady,
       engineReadyRef, setEngineCleanupUncertain, setResetPending, setCsvPending, setError,
-      setActionError, setState, setSharing, setScanStartedAt,
+      setActionError, setState, setSharing, setScanStartedAt, setReplacedState,
     });
+  }
+  /** Back to the list a scan that ended incomplete replaced on screen (the saved list was never changed). */
+  function restoreReplaced() {
+    if (!replacedState || busy) return;
+    inventory.current = replacedState.cards; scanMonitorStore.clear();
+    clearScanIncomplete(); setProgressRestored(false); resetScanDeadline();
+    setState(replacedState); setReplacedState(null); setError(''); setActionError('');
   }
 
   function stopSharing() {
@@ -300,6 +315,11 @@ function App() {
   async function share() {
     if(busy || pendingEngines.current>0 || pendingPreparationCleanups.current>0 || preparationCleanupUncertainRef.current || csvReading || !backupReady || !catalog.length ||
       preparationState!=='ready' || shareAttempt.current.picking())return;
+    // The scan reads the share track off the main thread (MediaStreamTrackProcessor, a transferable
+    // stream): say so before the picker opens, not after.
+    if (typeof (globalThis as {MediaStreamTrackProcessor?:unknown}).MediaStreamTrackProcessor !== 'function') {
+      setActionError('이 브라우저에서는 카드 스캔을 할 수 없습니다. Chrome 또는 Edge 최신 버전을 사용해 주세요.');return;
+    }
     release();
     resetScanDeadline();
     syncClock();
@@ -326,6 +346,7 @@ function App() {
     const imported=csvPending.cards;
     const next=csvInventoryState(imported,csvExperience);
     release();scanMonitorStore.clear();inventory.current=imported;clearScanIncomplete();setProgressRestored(false);void clearScanProgress().catch(()=>{});
+    setReplacedState(null);resetScanDeadline();
     setState(next);
     setCsvPending(null);setQuery('');setInventoryFilter('owned');setPage(1);setResultView('cards');setError('');setActionError('');
   }
@@ -416,7 +437,7 @@ function App() {
     : state?.autoStopped&&!busy ? "전체 카드의 이름·각성·장수와 보관함 수량이 확인되어 화면 공유를 종료했어요."
     : state?.autoStopped&&busy ? "전체 카드 화면을 확보해 공유를 종료했어요. 저장한 이미지로 남은 장수·각성을 확인하고 있습니다."
     : busy ? "공유는 종료됐어요. 수집한 화면에서 남은 카드를 확인하고 있습니다."
-    : cards.length ? "같은 보관함을 다시 공유하면 기존 목록에 추가로 반영합니다."
+    : cards.length ? "다시 스캔하면 목록을 처음부터 읽고, 끝까지 확인되면 이 목록을 새 결과로 바꿉니다."
     : "로스트아크 카드 보관함의 성장 탭을 열어 주세요.";
   const scanSummary = <ScannerSummary state={state} cardsLength={cards.length} match={match} review={review}
     inputWarnings={inputWarnings} knownReviewCards={knownReviewCards}
@@ -432,7 +453,7 @@ function App() {
       {actionError && <p className="error" role="alert">{actionError}<button className="text-button" onClick={() => setActionError('')}>닫기</button></p>}
       {busy && activeView!=='cards' && <div className="notice" role="status">
         <span className="scan-spinner" aria-hidden="true" /> 스캔 중 · <ScanReadCount completed={state?.currentRunRead ?? 0} expected={state?.expected ?? null} store={scanMonitorStore} inline/> 판독 · 결과 갱신 중
-        <p>현재까지 확인한 목록 기준입니다. 재스캔은 기존 목록을 갱신하며, 미스캔 카드는 미등록으로 확정하지 않습니다.</p>
+        <p>지금까지 읽은 카드 기준입니다. 스캔이 끝까지 확인되기 전에는 읽지 못한 카드를 미등록으로 보지 않습니다.</p>
         <button className="text-button" onClick={()=>setResultView('cards')}>스캔 진행 보기</button>
       </div>}
       {activeView!=='cards' && scanSummary}
@@ -457,6 +478,7 @@ function App() {
         csvIssues={csvIssues} state={state}
         scanIncompleteReasons={scanIncompleteReasons} progressRestored={progressRestored}
         savedBackupAvailable={savedBackupAvailable} onRestoreBackup={()=>void restoreBackup()}
+        replacedAvailable={!!replacedState} onRestoreReplaced={restoreReplaced}
         preparationMessage={preparationMessage} onRetryPreparation={()=>setPreparationAttempt(value=>value+1)}
         csvPending={csvPending} csvExperience={csvExperience} csvExperienceError={csvExperienceError}
         onCsvExperience={setCsvExperience} onCsvCancel={()=>setCsvPending(null)} onCsvApply={applyCsv}

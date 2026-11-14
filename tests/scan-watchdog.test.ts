@@ -126,3 +126,9 @@ test('normal success does not cancel resources or mark results incomplete',async
     run:async(_s,p,r)=>{r();p(snapshot({status:'완료'}));}});
   assert.equal(cancelled,false);assert.equal(last?.status,'완료');assert.equal(last?.interrupted,undefined);
 });
+test('after the share, readings finished in the name lane count as progress; nothing finishing is still a stall',()=>{
+  // The share ended: no frame arrives, the name lane and the final checks go on (workDone grows).
+  const clock=new ScanProgressClock(0);clock.ready(0);clock.observe(snapshot({sampled:100,workPhase:'reading'}),0);
+  for(let i=1;i<=6;i++){clock.observe(snapshot({sampled:100,workPhase:'reading',workDone:i}),i*5_000);assert.equal(clock.check(i*5_000,true,false),null);}
+  assert.equal(clock.check(30_000+15_000,true,false),'stalled');
+});

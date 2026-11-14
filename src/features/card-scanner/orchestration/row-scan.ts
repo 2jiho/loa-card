@@ -111,6 +111,9 @@ export interface RowScanSnapshot {
    * `verifying`: the final zero check. `done`: everything was read. */
   readonly phase:'capture'|'reading'|'verifying'|'done';
   readonly frames:number;readonly locatedFrames:number;
+  /** Work finished so far (frames read, name and count readings, header and zero-check readings):
+   * it grows while the scan makes progress, also after the share when no frame arrives. */
+  readonly workDone:number;
   /** Whether the last frame read showed the card window. */
   readonly located:boolean;
   /** Frames waiting to be read and frames dropped from the line. */
@@ -171,7 +174,7 @@ export async function runRowScan(options:{
     readonly recognizer:Awaited<ReturnType<typeof createRecognizer>>};
   onProgress?:(text:string)=>void}):Promise<RowLiveResult> {
   const {signal}=options,scrollSteps=options.scrollSteps??51,video=options.target as FrameCallbackVideo;
-  if(typeof video.requestVideoFrameCallback!=='function')throw Error('이 브라우저는 requestVideoFrameCallback을 지원하지 않습니다.');
+  if(options.videoSource&&typeof video.requestVideoFrameCallback!=='function')throw Error('이 브라우저는 requestVideoFrameCallback을 지원하지 않습니다.');
   const prepared=options.prepared;
   const acquisition=prepared?.acquisition??createAcquisitionClient(signal);
   const visuals=prepared?[...prepared.visuals]:Array.from({length:Math.min(8,Math.max(1,Math.round(options.readers??2)))},()=>createVisualClient(signal));
@@ -184,7 +187,9 @@ export async function runRowScan(options:{
   // strip, so it stays graphics-backed: a canvas marked for frequent reading copies every video
   // frame into main memory first.
   const frame=document.createElement('canvas'),frameContext=frame.getContext('2d',options.softwareFrame?{willReadFrequently:true}:{})!;
-  let recognizer:Awaited<ReturnType<typeof createRecognizer>>|undefined,closeWaiting=()=>{},stopLag=()=>{},endWorker=()=>{},endEvidence=()=>{};
+  let recognizer:Awaited<ReturnType<typeof createRecognizer>>|undefined,closeWaiting=()=>{},stopLag=()=>{},endWorker=()=>{},endEvidence=()=>{},stopHeartbeat=()=>{};
+  /** Joins the work still running when the scan stops early (frame reading, the name lane). */
+  let settleWork=async()=>{};
   const input=options.input;
   try{
     await Promise.all([acquisition.ready(),...visuals.map(visual=>visual!.ready())]);
@@ -215,6 +220,8 @@ export async function runRowScan(options:{
     // The scanner's acceptance and merge for what this reading names (needs the reader's catalogue).
     const evidence:RowEvidence|undefined=reader&&options.evidence!==false?createRowEvidence(reader.catalog,150,{trace:options.traceCards??[]}):undefined;
     if(evidence)endEvidence=()=>evidence.dispose();
+    // Set below once the session and the reading exist.
+    let zeroWork=0;
     const session=createRowReadSession(visuals as RowReadVisual[],scrollSteps,Infinity,names,options.nameHoldSeconds,options.backgroundNames!==false,options.placeNames!==false,evidence);
     const thumbClock=createThumbClock();
     // Presented frames wait in a short line, each a graphics-memory snapshot taken in the frame
@@ -254,7 +261,7 @@ export async function runRowScan(options:{
     const Processor=(globalThis as {MediaStreamTrackProcessor?:new(init:{track:MediaStreamTrack;maxBufferSize:number})=>{readable:ReadableStream<VideoFrame>;discardedFrames?:number;totalFrames?:number}}).MediaStreamTrackProcessor;
     const processor=!options.videoSource&&track&&Processor?new Processor({track,maxBufferSize:limit}):undefined;
     if(!options.videoSource&&!processor)throw Error('이 브라우저는 MediaStreamTrackProcessor를 지원하지 않습니다.');
-    let sourceDone=!processor,trackFrames=0,firstStamp:number|null=null;
+    let sourceDone=!processor,trackFrames=0,firstStamp:number|null=null,sourceError:Error|undefined;
     // The track is read in a worker (dev/track-line-worker.ts), which keeps the line of waiting
     // frames; the main thread holds at most the one it asked for. `mainReader`: read the track
     // here instead, as before, for comparison.
@@ -265,6 +272,7 @@ export async function runRowScan(options:{
       worker.onmessage=(event:MessageEvent<TrackLineReply>)=>{
         const reply=event.data;
         if(reply.type==='position'){
+
           const row=reply.position===null?null:Math.round(reply.position*scrollSteps);
           if(row!==null&&row!==liveRow&&!ended){
             liveRow=row;
@@ -281,7 +289,9 @@ export async function runRowScan(options:{
         waiting.push({snapshot:reply.frame,mediaTime:(reply.frame.timestamp-(options.relativeTime?firstStamp:0))/1e6,at:reply.arrivedAt-performance.timeOrigin});
         wake?.();
       };
-      worker.onerror=()=>{sourceDone=true;wake?.();};
+      // A line worker that fails ends the scan with an error, not a silent wait for frames.
+      worker.onerror=event=>{sourceError??=Error('화면 프레임을 받는 작업을 시작하지 못했습니다'+(event.message?`: ${event.message}`:'')+'. 페이지를 새로고침해 주세요.');sourceDone=true;wake?.();};
+      worker.onmessageerror=()=>{sourceError??=Error('화면 프레임을 받지 못했습니다. 페이지를 새로고침해 주세요.');sourceDone=true;wake?.();};
       worker.postMessage({type:'start',readable:processor.readable,limit,copy:!options.heldFrames} satisfies TrackLineRequest,[processor.readable as unknown as Transferable]);
       stopSource=()=>worker.postMessage({type:'stop'} satisfies TrackLineRequest);
       askNext=ask;skipToNewest=()=>worker.postMessage({type:'newest'} satisfies TrackLineRequest);
@@ -318,7 +328,9 @@ export async function runRowScan(options:{
     };
     const headerCanvas=document.createElement('canvas'),headerContext=headerCanvas.getContext('2d',{willReadFrequently:true})!;
     const header={expected:null as number|null,capacity:null as number|null,finalExpected:null as number|null,time:0,kept:false,nextTry:-Infinity,
-      firstAt:null as number|null,reads:0,failures:0,fresh:null as number|null,freshTried:-Infinity};
+      firstAt:null as number|null,reads:0,failures:0,fresh:null as number|null,freshTried:-Infinity,freshToken:0,
+      /** A total read again later that differs from the first one: replaces it once read twice in a row. */
+      recheckAt:-Infinity,differing:null as {owned:number;capacity:number}|null};
     let headerRun:Promise<void>|null=null;
     const growth={points:null as {current:number;maximum:number|null}|null,nextTry:-Infinity,reads:0};
     let growthRun:Promise<void>|null=null;
@@ -348,13 +360,18 @@ export async function runRowScan(options:{
       // While every card of the displayed total is confirmed, the total is read again (about once
       // a second) so that a caller may end the share on a total that is current.
       if(phase==='capture'&&header.expected!==null&&merged.cards.length===header.expected&&merged.confirmed===header.expected){
+        // Each card's newest look still waiting for a full reading is read now: the share ends only
+        // on the latest looks.
+        session.flushFull();
         if(!headerRun&&performance.now()-header.freshTried>=1000){
           header.freshTried=performance.now();
-          headerRun=readHeader().then(total=>{header.fresh=total?.owned??null;}).finally(()=>{headerRun=null;});
+          const token=header.freshToken;
+          headerRun=readHeader().then(total=>{if(token===header.freshToken)header.fresh=total?.owned??null;}).finally(()=>{headerRun=null;});
         }
-      }else header.fresh=null;
+      }else{header.fresh=null;header.freshToken++;}
       const guidance=session.guidance(totalRows,header.capacity,header.expected);
       try{options.onSnapshot({phase,frames,locatedFrames:located,located:lastLocated,
+        workDone:frames+session.workDone()+zeroWork+header.reads+growth.reads,
         waitingFrames:Math.max(waiting.length,workerLine?workerLine.received-workerLine.dropped-workerLine.passed-frames:0),
         droppedFrames:dropped+(workerLine?.dropped??0),waitingReads:session.waitingReads(),
         cards:merged.cards,confirmed:merged.confirmed,displayConfirmed:(()=>{
@@ -372,12 +389,20 @@ export async function runRowScan(options:{
             drawnRead.clear();for(const run of shown.done??[])for(let row=run.from;row<=run.to;row++)drawnRead.add(row);
             return shown;})()};})()});}catch{/* A display callback cannot stop the scan. */}
     };
-    const completion=input.start().finally(()=>{ended=true;shareEnd={at:performance.now(),...counts()};wake?.();publishSnapshot('reading');});
+    // After the share no frame arrives to publish the state; the remaining reading (frames taken
+    // before the end, the name lane, the final checks) is published twice a second so that its
+    // progress is seen. `postPhase` is the phase to publish.
+    let postPhase:'reading'|'verifying'|null=null;
+    const heartbeat=()=>{const timer=setInterval(()=>{if(postPhase)publishSnapshot(postPhase);},500);stopHeartbeat=()=>clearInterval(timer);};
+    const completion=input.start().finally(()=>{ended=true;shareEnd={at:performance.now(),...counts()};wake?.();postPhase='reading';publishSnapshot('reading');heartbeat();
+      // Frames the line worker still held are read; a worker that never says it is done does not keep the scan waiting.
+      setTimeout(()=>{if(!sourceDone){sourceDone=true;wake?.();}},5000);});
+    settleWork=async()=>{try{await reading.catch(()=>{});}catch{/* Not started. */}await session.stop();};
     const counts=()=>{const cards=session.cards();return {cards:cards.length,complete:cards.filter(card=>card.observations.some(observation=>observation.awakening!==null&&observation.extraCopies!==null)).length,
       ...(evidence?{confirmed:evidence.summary().confirmed}:{})};};
     const timeline:{t:number;cards:number;complete:number}[]=[],frameMs:number[]=[],waitMs:number[]=[];
     let frames=0,located=0,started:number|null=null,nextTick=1;
-    let reading:Promise<void>=Promise.resolve();
+    let reading:Promise<void>=Promise.resolve(),missedWindow=false;
     let zeroRun:Promise<void>|null=null;
     const zeroLive={runs:0,ms:0,previewReads:0,resolved:[] as string[]};
     const frameLog:[number,number,0|1,number,number|null][]=[];
@@ -386,6 +411,7 @@ export async function runRowScan(options:{
     const stage={draw:[] as number[],freeze:[] as number[],detect:[] as number[],crop:[] as number[],transfer:[] as number[],materialize:[] as number[],thumb:[] as number[],read:[] as number[]};
     for(;;){
       signal.throwIfAborted();
+      if(sourceError)throw sourceError;
       const current=waiting.shift();
       if(!current){
         if(ended&&sourceDone)break;
@@ -408,7 +434,10 @@ export async function runRowScan(options:{
       if(timing){stage.freeze.push(timing.freezeMs);stage.detect.push(timing.detectMs);stage.crop.push(timing.cropMs);stage.transfer.push(timing.roundTripMs-timing.workerMs);stage.materialize.push(timing.materializeMs);}
       // No card window in this frame: looking for it is slow, and frames without it hold no cards.
       // Only the newest waiting frame is kept, so the line is empty when the window appears.
-      if(!acquired.layout){tellBar(null);skipToNewest();while(waiting.length>1){waiting.shift()!.snapshot.close();passed++;}}
+      // A frame now and then without it (a notice, a fast scroll) does not mean the window is gone: the
+      // waiting frames are passed over only after two such frames in a row.
+      if(!acquired.layout){tellBar(null);if(missedWindow){skipToNewest();while(waiting.length>1){waiting.shift()!.snapshot.close();passed++;}}}
+      missedWindow=!acquired.layout;
       const release=()=>{for(const cell of acquired.cells)if(cell.image)cell.image.width=0;};
       let read:(()=>Promise<void>)|undefined,thumbRow:number|null=null;
       if(acquired.layout&&acquired.cells.length===COLUMNS*GRID_ROWS){
@@ -433,11 +462,22 @@ export async function runRowScan(options:{
             headerRun=readHeader().then(total=>{
               if(total&&header.expected===null){header.expected=total.owned;header.capacity=total.capacity;header.firstAt=Math.round(time*1000)/1000;}
             }).finally(()=>{headerRun=null;});
+          }else if(header.expected!==null&&!headerRun&&time>=header.recheckAt){
+            // The first reading is not final: one misread (a covered or changing header) would leave
+            // the scan unable to finish. A different total read twice in a row replaces it.
+            header.recheckAt=time+3;
+            headerRun=readHeader().then(total=>{
+              if(!total)return;
+              if(total.owned===header.expected&&total.capacity===header.capacity){header.differing=null;return;}
+              if(header.differing&&header.differing.owned===total.owned&&header.differing.capacity===total.capacity){
+                header.expected=total.owned;header.capacity=total.capacity;header.differing=null;header.freshToken++;header.fresh=null;
+              }else header.differing=total;
+            }).finally(()=>{headerRun=null;});
           }
         }
         const thumbStarted=performance.now();
         const bar=acquired.layout.scrollbar;
-        stripContext.drawImage(frame,bar.x,bar.y,bar.width,bar.height,0,0,16,942);
+        stripContext.clearRect(0,0,16,942);stripContext.drawImage(frame,bar.x,bar.y,bar.width,bar.height,0,0,16,942);
         const geometry=readScrollGeometry(stripContext.getImageData(0,0,16,942).data,16,942);
         if(geometry)tellBar(bar,geometry.pageSpan);
         const thumb=thumbClock(time,geometry?.position??null);
@@ -445,7 +485,9 @@ export async function runRowScan(options:{
         if(thumbRow!==null){screenRow=thumbRow;
           const moving=lastThumbRow===null||thumbRow===lastThumbRow?null:thumbRow>lastThumbRow?'down' as const:'up' as const;
           session.view(thumbRow,surelyShownRows(Array.from({length:GRID_ROWS},(_,row)=>
-            acquired.cells.slice(row*COLUMNS,row*COLUMNS+COLUMNS).some(cell=>cell.quality.usable||cell.quality.reason===EMPTY_REASON)),(thumb.settledMs??0)>=200,moving));
+            // Seen only when every cell of the row was readable or an empty slot: a row passed with cells
+            // covered is not drawn read (those cells are asked for).
+            acquired.cells.slice(row*COLUMNS,row*COLUMNS+COLUMNS).every(cell=>cell.quality.usable||cell.quality.reason===EMPTY_REASON)),(thumb.settledMs??0)>=200,moving));
           lastThumbRow=thumbRow;}
         read=async()=>{
           const readStarted=performance.now();
@@ -466,7 +508,7 @@ export async function runRowScan(options:{
         // so a card with no extra copies is confirmed when its crops show it, not only at the end.
         if(evidence&&reader&&options.zeroCheck!==false&&options.zeroCheck!=='end'&&!zeroRun){
           const began=performance.now();
-          zeroRun=evidence.confirmZeros((image,id)=>reader.read(image,id,true,false)).then(check=>{
+          zeroRun=evidence.confirmZeros((image,id,width)=>{zeroWork++;return reader.read(image,id,true,false,undefined,width);}).then(check=>{
             zeroLive.runs++;zeroLive.ms+=performance.now()-began;zeroLive.previewReads+=check.previewReads;zeroLive.resolved.push(...check.resolved);
           }).catch(()=>{}).finally(()=>{zeroRun=null;});
         }
@@ -486,7 +528,7 @@ export async function runRowScan(options:{
     // A name reading still in flight when the share ended finishes; it is counted after the share.
     await session.namesIdle();
     const afterNames=counts();
-    publishSnapshot('verifying');
+    postPhase='verifying';publishSnapshot('verifying');
     // The displayed total of the last frame that showed the card window, read after everything else.
     if(headerRun)await headerRun;
     if(growthRun)await growthRun;
@@ -500,12 +542,13 @@ export async function runRowScan(options:{
       const zeroStarted=performance.now();
       const brief=(values:Awaited<ReturnType<typeof reader.read>>)=>({awakening:values.awakening,extraCopies:values.extraCopies,diagnostics:values.countDiagnostics});
       // `diagnose`: also read each unresolved card's preferred crop three more ways and keep its picture (adds to the time reported).
-      const check=await evidence.confirmZeros((image,id)=>reader.read(image,id,true,false),options.zeroCheck!=='diagnose'?undefined:async(image,id)=>({
-        visual:brief(await reader.read(image,id,false,false)),full:brief(await reader.read(image,id,false,true)),corroborated:brief(await reader.read(image,id,true,true))}));
+      const check=await evidence.confirmZeros((image,id,width)=>{zeroWork++;return reader.read(image,id,true,false,undefined,width);},options.zeroCheck!=='diagnose'?undefined:async(image,id,width)=>({
+        visual:brief(await reader.read(image,id,false,false,undefined,width)),full:brief(await reader.read(image,id,false,true,undefined,width)),corroborated:brief(await reader.read(image,id,true,true,undefined,width))}));
       afterZeroCheck={...check,ms:Math.round(performance.now()-zeroStarted),confirmed:evidence.summary().confirmed};
     }
-    // The card pictures still being encoded belong in the final list.
-    if(evidence)await evidence.picturesSettled();
+    // The card pictures still being encoded belong in the final list (a picture never holds the end up for long).
+    if(evidence)await Promise.race([evidence.picturesSettled(),new Promise(resolve=>setTimeout(resolve,3000))]);
+    postPhase=null;stopHeartbeat();
     publishSnapshot('done');
     const sorted=[...frameMs].sort((a,b)=>a-b),at=(share:number)=>sorted.length?Math.round(sorted[Math.min(sorted.length-1,Math.floor(share*sorted.length))]):0;
     const namesSummary=session.names();
@@ -532,6 +575,9 @@ export async function runRowScan(options:{
         stages:{draw:share(stage.draw),freeze:share(stage.freeze),detect:share(stage.detect),crop:share(stage.crop),transfer:share(stage.transfer),materialize:share(stage.materialize),thumb:share(stage.thumb),read:share(stage.read)},atShareEnd,afterNames,...(afterZeroCheck?{afterZeroCheck}:{}),
         ...(zeroLive.runs?{zeroDuringShare:{runs:zeroLive.runs,ms:Math.round(zeroLive.ms),previewReads:zeroLive.previewReads,resolved:zeroLive.resolved}}:{})}};
   }finally{
+    stopHeartbeat();
+    // Work still running when the scan stopped early finishes (or stops) before its readers go.
+    await settleWork().catch(()=>{});
     closeWaiting();stopLag();endWorker();endEvidence();input.dispose();
     if(!prepared){acquisition.dispose();for(const visual of visuals)visual?.dispose();await recognizer?.dispose();}
     frame.width=0;strip.width=0;

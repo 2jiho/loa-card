@@ -52,7 +52,8 @@ async function detach(frame:VideoFrame):Promise<VideoFrame> {
     const visible=frame.visibleRect;
     const copy=new VideoFrame(data,{format:frame.format,codedWidth:visible?.width??frame.codedWidth,codedHeight:visible?.height??frame.codedHeight,
       timestamp:frame.timestamp,duration:frame.duration??undefined,layout,displayWidth:frame.displayWidth,displayHeight:frame.displayHeight,
-      colorSpace:frame.colorSpace.toJSON()});
+      // The memory moves into the new frame instead of being copied a second time (ignored where unsupported).
+      colorSpace:frame.colorSpace.toJSON(),transfer:[data.buffer]} as VideoFrameBufferInit);
     frame.close();stats.copied++;stats.copyMs+=performance.now()-began;
     return copy;
   }catch{stats.uncopied++;return frame;}
@@ -67,7 +68,7 @@ function sendPosition(frame:VideoFrame,arrivedAt:number):void {
   try{
     strip??=new OffscreenCanvas(STRIP_WIDTH,STRIP_HEIGHT).getContext('2d',{willReadFrequently:true});
     if(!strip)return;
-    strip.drawImage(frame,bar.x,bar.y,bar.width,bar.height,0,0,STRIP_WIDTH,STRIP_HEIGHT);
+    strip.clearRect(0,0,STRIP_WIDTH,STRIP_HEIGHT);strip.drawImage(frame,bar.x,bar.y,bar.width,bar.height,0,0,STRIP_WIDTH,STRIP_HEIGHT);
     const geometry=readScrollGeometry(strip.getImageData(0,0,STRIP_WIDTH,STRIP_HEIGHT).data,STRIP_WIDTH,STRIP_HEIGHT);
     // Something else over the list (another screen, a notice) can read as a thumb of another length.
     if(geometry&&barSpan!==undefined&&Math.abs(geometry.pageSpan-barSpan)>barSpan*.15)return;

@@ -19,7 +19,7 @@ const scope=self as unknown as {onmessage:((event:MessageEvent<PortraitRankReque
 let preparing:Promise<ReturnType<typeof createPortraitMatcher>>|undefined;
 async function prepare() {
   const base=new URL(import.meta.env.BASE_URL,self.location.href).href;
-  const load=async(name:string)=>{const response=await fetch(base+'scanner/'+name);if(!response.ok)throw Error('원화 대조 자료 로드 실패: '+name);return response.json();};
+  const load=async(name:string)=>{const response=await fetch(base+'scanner/'+name,{signal:AbortSignal.timeout(30_000)});if(!response.ok)throw Error('원화 대조 자료 로드 실패: '+name);return response.json();};
   const [catalog,atlas,screen,competitors,extra,extra1080,extra0625]=await Promise.all([load('cards.json'),load('artwork-details.json'),
     load('screen-artwork-details.json'),loadPortraitCompetitors(base),load('screen-artwork-extra.json'),load('screen-artwork-1080.json'),load('screen-artwork-0625.json')]);
   return createPortraitMatcher(catalog.cards as Reference[],atlas,screen.cards,{competitors,

@@ -107,7 +107,9 @@ export async function openWindowShare(options: ShareRefs & {
         stream.current = null;
         options.setSharing(false);
       }
-      options.setActionError(error instanceof Error ? error.message : '화면 공유 실패');
+      // Closing the picker (or a browser that refuses the share) is not a failure to explain in browser words.
+      const refused = error instanceof DOMException && (error.name === 'NotAllowedError' || error.name === 'AbortError');
+      options.setActionError(refused ? '화면 공유를 시작하지 않았습니다. 다시 공유하려면 화면 공유 시작을 눌러 주세요.' : error instanceof Error ? error.message : '화면 공유 실패');
     }
   } finally {
     guard.finish(token);

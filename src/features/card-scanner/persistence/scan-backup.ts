@@ -103,7 +103,15 @@ export function createScanBackup(factory: () => IDBFactory = () => indexedDB,
           request.onsuccess = () => {
             if (settled) return;
             const stored = request.result as Backup | undefined;
-            if (stored && (stored.version !== 1 || typeof stored.revision !== 'string' || (stored.state !== null && !isState(stored.state)))) {
+            // A list that cannot be read can still be cleared (the person chose to start over); it is
+            // never loaded or overwritten by a save.
+            const unreadable = !!stored && (stored.version !== 1 || typeof stored.revision !== 'string' || (stored.state !== null && !isState(stored.state)));
+            if (unreadable && mode === 'clear') {
+              nextRevision = crypto.randomUUID(); store.clear();
+              store.put({ version: 1, revision: nextRevision, savedAt: Date.now(), state: null } satisfies Backup, SLOT);
+              return;
+            }
+            if (unreadable) {
               fail(new Error('저장된 목록 형식을 읽을 수 없습니다. 브라우저 데이터를 지우기 전에 CSV 백업을 확인해 주세요.')); return;
             }
             nextRevision = stored?.revision ?? '';

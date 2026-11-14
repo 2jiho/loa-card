@@ -4,7 +4,7 @@ import type { CountDiagnostics } from "./recognizer-types";
 import { parseGrowthPoints, parseCardSort } from "./capture-metadata";
 import { createNeuralReader } from "./neural-reader";
 import type { Worker, PSM } from "tesseract.js";
-import { buildNameAmbiguityIndex, matchCardName, normalizeName } from "./card-dictionary";
+import { buildNameAmbiguityIndex, dictionarySimilarity, matchCardName, normalizeName } from "./card-dictionary";
 import { createArtworkVerifier } from "./artwork-verifier";
 import type { ArtworkEvidence } from "./artwork-verifier";
 import { matchCtcCardName } from "./ctc-name-match";
@@ -65,6 +65,35 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
   // filtered candidate list, when deciding whether exact text is ambiguous.
   const fullNameIndex=buildNameAmbiguityIndex(cards);
   const matchName=(text:string,candidates:CatalogName[]=cards)=>matchCardName(text,candidates,fullNameIndex);
+  /** The runner-up gap of a name matched within a subset of the catalogue (one grade, or names
+   * without Latin letters), measured against the whole catalogue: a closer name outside the subset
+   * shrinks it. The gap is what a weaker picture needs from the name (portrait-matcher.ts). */
+  const catalogueGap=(text:string,result:{card:CatalogName;score:number;gap:number})=>{
+    const query=normalizeName(text),slack=Math.max(1,Math.floor(query.length*.2));
+    let second=0;
+    for(const card of cards){
+      if(card.id===result.card.id||Math.abs(normalizeName(card.name).length-query.length)>slack)continue;
+      second=Math.max(second,dictionarySimilarity(text,card.name));
+    }
+    return Math.min(result.gap,result.score-second);
+  };
+  // Names one stroke apart within a grade: a name-mask match cannot tell them apart, so the cache
+  // of confirmed names is not used for them (none in the current catalogue; kept for new cards).
+  const nearNames=new Set<string>();
+  {
+    const distance=(a:string,b:string)=>{
+      if(Math.abs(a.length-b.length)>1)return 2;
+      const row=Array.from({length:b.length+1},(_,index)=>index);
+      for(let i=1;i<=a.length;i++){let diagonal=row[0];row[0]=i;
+        for(let j=1;j<=b.length;j++){const above=row[j];row[j]=Math.min(row[j]+1,row[j-1]+1,diagonal+(a[i-1]===b[j-1]?0:1));diagonal=above;}}
+      return row[b.length];
+    };
+    const jamo=(name:string)=>normalizeName(name).normalize('NFD');
+    for(let i=0;i<cards.length;i++)for(let j=i+1;j<cards.length;j++){
+      if(cards[i].rarity!==cards[j].rarity)continue;
+      if(distance(jamo(cards[i].name),jamo(cards[j].name))<=1){nearNames.add(cards[i].id);nearNames.add(cards[j].id);}
+    }
+  }
   const aggregate=newMetrics();
   const snapshot=(metrics:MutableMetrics):NameOcrMetrics=>Object.freeze({scope:'korean-neural-name-request-await' as const,policy:rawResultPolicy,
     ...metrics,recipes:Object.freeze([...metrics.recipes.values()].map(value=>Object.freeze({...value})))});
@@ -274,7 +303,7 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
             );
           });
           if (previous) {
-            const reusable=confirmCatalogName(previous.result,false);
+            const reusable=confirmCatalogName(previous.result,false)&&!nearNames.has(previous.result.card.id);
             onAttempt?.({text:previous.result.rawText,confidence:previous.result.ocrConfidence,engine:'cache',
               variant:'이름 마스크 캐시',reason:bypassCache?'전체 재시도 · 새 OCR을 위해 캐시 우회':
                 reusable?'확정 이름 캐시 재사용':'독립 식별 근거 부족 · 캐시 미사용',
@@ -296,19 +325,20 @@ export function createNameReader(cards: (CatalogName & { feature?: string })[], 
           let result = matchName(text);
           if (!result)
             for (const packed of masks) {
-              result = matchName(
+              const within = matchName(
                 text,
                 cards.filter((c) => c.rarity === packed.grade),
               );
-              if (result) break;
+              if (within) { result = {...within, gap: catalogueGap(text, within)}; break; }
             }
           if (!result && /[A-Za-z0-9]/.test(text)) {
             const clean = text.replace(/[A-Za-z0-9]/g, "");
-            if (text.length - clean.length <= 3)
-              result = matchName(
+            const within = text.length - clean.length <= 3 ? matchName(
                 clean,
                 cards.filter((c) => !/[A-Za-z0-9]/.test(c.name)),
-              );
+              ) : null;
+            // The text was edited to match: never an exact reading of the screen.
+            if (within) result = {...within, gap: catalogueGap(clean, within), exact: false};
           }
           if (onAttempt) onAttempt(nameAttempt(text, confidence * 100, "paddle", variant, cards, !!result));
           return result ? { ...result, ocrConfidence: confidence * 100, ...diagnostics(text, "paddle") } : null;

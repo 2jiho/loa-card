@@ -42,6 +42,8 @@ export interface ScanLifecycleDeps {
   setState: Dispatch<SetStateAction<ScannerState | null>>;
   setSharing: Dispatch<SetStateAction<boolean>>;
   setScanStartedAt: Dispatch<SetStateAction<number>>;
+  /** The list on screen before a run that ended incomplete replaced it (for "back to it"). */
+  setReplacedState: Dispatch<SetStateAction<ScannerState | null>>;
 }
 
 /** How often the whole page takes a new scanner state. While frames are taken the page shares the
@@ -60,7 +62,7 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
     clearScanIncomplete, markScanIncomplete, noteScanProgress, publishMonitor,
     beginEngineWork, setProgressRestored, setPreparationState, setBusy, setResultView, setInventoryFilter,
     setPage, setEngineReady, engineReadyRef, setEngineCleanupUncertain, setResetPending, setCsvPending, setError,
-    setActionError, setState, setSharing, setScanStartedAt,
+    setActionError, setState, setSharing, setScanStartedAt, setReplacedState,
   } = deps;
 
   // A failed run must not become the seed of the next run or overwrite the
@@ -68,6 +70,7 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
   // state while the new engine starts so the card list does not blank out.
   const baseline = structuredClone(inventory.current);
   const previousState = state;
+  setReplacedState(null);
   clearScanIncomplete();
   setProgressRestored(false);
   void clearScanProgress().catch(() => {});
@@ -139,6 +142,8 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
         markScanIncomplete(reasons);
         const shown = scanStateAfterIncomplete(finalState, previousState);
         if (shown) setState(shown);
+        // The run shows what it read; the list before it stays one click away.
+        if (shown !== previousState && previousState?.cards.length) setReplacedState(previousState);
       } else completed = true;
     }
   } catch (e) {
@@ -151,6 +156,7 @@ export async function runScanLifecycle(deps: ScanLifecycleDeps): Promise<void> {
           const base = finalState ?? previousState ?? s;
           return base ? {...base, status: '스캔 중지'} : base;
         });
+      if (finalState && previousState?.cards.length) setReplacedState(previousState);
       else setError(e instanceof Error ? e.message : '스캔 실패');
       try { stream.current?.getTracks().forEach(track => track.stop()); } catch { /* Stream state is unavailable. */ }
       stream.current = null;

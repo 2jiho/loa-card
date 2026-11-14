@@ -42,6 +42,7 @@ export async function runRowScannerInternal(options:{video:HTMLVideoElement;sign
   update({status:'인식 엔진 준비 중',percent:0,sampled:0,stable:0,expected:null,capacity:null,cards:[],
     located:false,unreadable:0,queued:0,droppedFrames:0,liveInput:'track',workPhase:'capture',unidentified:[]});
   let last:RowScanSnapshot|undefined,lastState:ScannerState|undefined;
+  // runRowScan publishes its `done` snapshot before it returns: the last state is the final one.
   // As the scanner does: when everything is confirmed and stays so for a second, the share is
   // ended here, and the scan finishes from what it has.
   let readySince:number|null=null,autoStopped=false;
@@ -77,5 +78,4 @@ export async function runRowScannerInternal(options:{video:HTMLVideoElement;sign
       update(lastState);
     }});
   signal.throwIfAborted();
-  if(last&&last.phase!=='done')update(state({...last,phase:'done'}));
 }

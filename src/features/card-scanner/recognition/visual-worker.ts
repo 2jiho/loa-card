@@ -28,18 +28,12 @@ function readOne(engine:Awaited<ReturnType<typeof prepare>>,bitmap:ImageBitmap) 
  const values=identity?readVisual(image,context,fields,engine.patterns,identity.maxAwakening,snapshot):null;
  return {identity,fields,values};
 }
-self.onmessage=async(event:MessageEvent<{id:number;bitmap?:ImageBitmap;bitmaps?:ImageBitmap[]}>)=>{
- const {id,bitmap,bitmaps}=event.data;
+self.onmessage=async(event:MessageEvent<{id:number;bitmap?:ImageBitmap}>)=>{
+ const {id,bitmap}=event.data;
  try {
   const engine=await(preparing??=prepare());
-  if(bitmaps){
-   // Several crops of one frame in one message (visual-batch.ts). A crop that cannot be
-   // read is null for that crop only; its caller reads it again on the single-crop path.
-   self.postMessage({id,results:bitmaps.map(item=>{try{return readOne(engine,item);}catch{return null;}})});
-   return;
-  }
   if(!bitmap){self.postMessage({id,result:null});return;}
   self.postMessage({id,result:readOne(engine,bitmap)});
  }catch(error){self.postMessage({id,error:String(error)});}
- finally{bitmap?.close();for(const item of bitmaps??[])item.close();}
+ finally{bitmap?.close();}
 };
