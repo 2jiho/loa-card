@@ -164,8 +164,11 @@ async function run():Promise<void> {
       const {cards:readCards,...measurement}=result;
       const reads=measurement.probeReads+measurement.neededReads;
       const status=`줄 중심 판독 · 카드 ${readCards.length} · 읽은 크롭 ${reads}/${measurement.usableCrops}`;
+      // The input's identity, so runs of the same recording can be compared as the same input.
+      const source=await (await fetch(`${BASE}/${encodeURIComponent(recordingId)}/meta`)).json() as {sha256?:string|null;complete?:boolean;frames?:number};
       const saved=await (await fetch(`${BASE}/${encodeURIComponent(recordingId)}/runs`,{method:'POST',body:JSON.stringify({
-        kind:modeValue==='rowlive'?'row-live':modeValue==='rowlight'?'row-light':'row-read',version:1,startedAt,finishedAt:new Date().toISOString(),recording:{id:recordingId},status,
+        kind:modeValue==='rowlive'?'row-live':modeValue==='rowlight'?'row-light':'row-read',version:1,startedAt,finishedAt:new Date().toISOString(),
+        recording:{id:recordingId,sha256:source.sha256??null,complete:source.complete===true,frames:source.frames??null},status,
         // The values the scan settled on (after the zero check, latest capture first), when the
         // evidence merge ran; otherwise the latest reading of each card.
         cards:(()=>{type Settled={id:string;awakening:number|null;extraCopies:number|null;confirmed:boolean};

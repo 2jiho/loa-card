@@ -408,3 +408,118 @@ export async function openRecordingDecoder(root:string,idValue:string,options:{f
   options.signal?.addEventListener('abort',kill,{once:true});
   return {stream:child.stdout,frameBytes:frameByteLength(replay,meta.width,meta.height),pixelFormat:replay,width:meta.width,height:meta.height,kill};
 }
+
+/** Where an imported recording came from (absent on a recorded share). */
+export interface RecordingSource {
+  readonly kind:'video'|'images';
+  /** The video file's SHA-256 (images: of the ordered list of image hashes), and its corpus case
+   * when it was imported from one. */
+  readonly sha256:string;readonly name:string;readonly corpusCase?:string;
+}
+
+/** The color description of an untagged or tagged video, as VideoColorSpaceInit. An untagged
+ * HD video is BT.709 limited range, as a browser playing it assumes. */
+export function videoColorSpace(probe:string):{primaries:string;transfer:string;matrix:string;fullRange:boolean} {
+  const stream=/Video: [^\n]*?yuv420p\(([^)]*)\)/.exec(probe)?.[1]??'';
+  const parts=stream.split(',').map(part=>part.trim());
+  const fullRange=parts.includes('pc');
+  const known=['bt709','smpte170m','bt470bg'];
+  const matrix=parts.find(part=>known.includes(part.split('/')[0]))?.split('/')[0]??'bt709';
+  return {primaries:matrix==='bt470bg'?'bt470bg':matrix,transfer:matrix==='bt709'?'bt709':'smpte170m',matrix,fullRange};
+}
+
+/** Frame times from ffmpeg's `showinfo` log, in ms from the first frame. */
+export function showinfoTimes(log:string):number[] {
+  const times:number[]=[];
+  for(const match of log.matchAll(/\bn:\s*(\d+)\s+pts:\s*-?\d+\s+pts_time:\s*(-?[\d.]+)/g))times[Number(match[1])]=Number(match[2])*1000;
+  // A plain loop: array methods skip the holes a missing frame leaves.
+  for(let index=0;index<times.length;index++)if(!Number.isFinite(times[index]))throw Error('ffmpeg showinfo skipped a frame.');
+  const first=times[0]??0;
+  return times.map(time=>Math.round((time-first)*1000)/1000);
+}
+
+/** A sealed recording from a video file (a screen recording a person made, not a share recorded by
+ * the dev server), so the current scanner can replay it like a share. The video's own YUV 4:2:0
+ * frames are kept losslessly (no scaling or color conversion) and replayed at their own times. The
+ * video was already lossy-compressed by whatever recorded it; that is part of the input. */
+export async function importVideoRecording(root:string,videoPath:string,newIdValue:string,source:RecordingSource):Promise<RecordingMeta> {
+  const newId=recordingIdentifier(newIdValue);
+  const target=join(root,newId);
+  if(existsSync(join(target,'meta.json')))throw Error('Recording already exists.');
+  if(await fileHash(videoPath)!==source.sha256)throw Error('Video bytes do not match the given SHA-256.');
+  const run=(args:string[])=>new Promise<string>((resolve,reject)=>{
+    const child=spawn(ffmpeg(),['-hide_banner',...args]);let log='';
+    child.stderr.on('data',chunk=>{log+=chunk;});
+    child.on('error',reject);child.on('close',value=>value===0?resolve(log):reject(Error(`ffmpeg exit ${value}: ${log.slice(-400)}`)));
+  });
+  const probe=await run(['-i',videoPath,'-f','null','-frames:v','1','-']);
+  const size=/Video: [^\n]*?(\d{2,5})x(\d{2,5})/.exec(probe);
+  if(!size)throw Error('No video stream.');
+  if(!/Video: [^\n]*yuv420p/.test(probe))throw Error('Only YUV 4:2:0 videos are supported.');
+  const width=Number(size[1]),height=Number(size[2]);
+  if(width%2||height%2||width>MAX_SIDE||height>MAX_SIDE)throw Error('Unsupported video size.');
+  await mkdir(target,{recursive:true});
+  const log=await run(['-loglevel','info','-y','-i',videoPath,'-an','-map','0:v:0','-vf','showinfo','-fps_mode','passthrough',
+    ...codecFor('i420').args,join(target,'frames.mkv')]);
+  const times=showinfoTimes(log);
+  if(!times.length)throw Error('The video has no frames.');
+  await writeFile(join(target,'frames.jsonl'),times.map((time,seq)=>JSON.stringify({seq,mediaTimeMs:time,deliveredAtMs:time,receivedAtMs:Math.round(time)})).join('\n')+'\n');
+  const meta:RecordingMeta&{source:RecordingSource}={version:2,id:newId,startedAt:new Date().toISOString(),width,height,pixelFormat:'i420',
+    colorSpace:videoColorSpace(probe),codec:'h264-lossless',status:'open',frames:times.length,complete:false,sha256:null,sealedAt:null,
+    note:null,environment:null,source};
+  await writeJson(join(target,'meta.json'),meta);
+  let decoded=0;
+  for await(const item of readRecordingFrames(root,newId)){void item;decoded++;}
+  if(decoded!==times.length)throw Error(`imported ${decoded} frames, expected ${times.length}`);
+  const sealed:RecordingMeta&{source:RecordingSource}={...meta,status:'sealed',complete:true,sha256:await fileHash(join(target,'frames.mkv')),
+    sealedAt:new Date().toISOString(),
+    note:`imported from the video ${source.name}${source.corpusCase?` (corpus case ${source.corpusCase.slice(0,12)})`:''}: a screen recording a person made, replayed at its own frame times; not a share the dev server recorded`};
+  await writeJson(join(target,'meta.json'),sealed);
+  return sealed;
+}
+
+/** A sealed recording from screenshots, in their order, each held still for `holdMs` at 30 fps (as
+ * if the person stopped scrolling on each). The pixels are the screenshots' RGBA, kept losslessly.
+ * Not a share that happened: the movement between the screenshots is missing. */
+export async function importImagesRecording(root:string,imagePaths:readonly string[],newIdValue:string,source:RecordingSource,holdMs=1000):Promise<RecordingMeta> {
+  const newId=recordingIdentifier(newIdValue);
+  const target=join(root,newId);
+  if(!imagePaths.length)throw Error('No images.');
+  if(existsSync(join(target,'meta.json')))throw Error('Recording already exists.');
+  const run=(args:string[])=>new Promise<string>((done,reject)=>{
+    const child=spawn(ffmpeg(),['-hide_banner',...args]);let log='';
+    child.stderr.on('data',chunk=>{log+=chunk;});
+    child.on('error',reject);child.on('close',value=>value===0?done(log):reject(Error(`ffmpeg exit ${value}: ${log.slice(-400)}`)));
+  });
+  let width=0,height=0;
+  for(const path of imagePaths){
+    const probe=await run(['-i',path,'-f','null','-frames:v','1','-']);
+    const size=/Video: [^\n]*?(\d{2,5})x(\d{2,5})/.exec(probe);
+    if(!size)throw Error(`Not an image: ${path}`);
+    if(width&&(Number(size[1])!==width||Number(size[2])!==height))throw Error('All images must have the same size.');
+    width=Number(size[1]);height=Number(size[2]);
+  }
+  if(width>MAX_SIDE||height>MAX_SIDE)throw Error('Unsupported image size.');
+  const perImage=Math.max(1,Math.round(holdMs/1000*30)),frames=perImage*imagePaths.length;
+  await mkdir(target,{recursive:true});
+  // Each image as a looping 30 fps input cut to exactly `perImage` frames, then joined in order.
+  const inputs=imagePaths.flatMap(path=>['-loop','1','-framerate','30','-i',path]);
+  const graph=imagePaths.map((_,index)=>`[${index}:v]trim=end_frame=${perImage},setpts=PTS-STARTPTS[v${index}]`).join(';')
+    +';'+imagePaths.map((_,index)=>`[v${index}]`).join('')+`concat=n=${imagePaths.length}:v=1:a=0[out]`;
+  await run(['-loglevel','error','-y',...inputs,'-filter_complex',graph,'-map','[out]','-frames:v',String(frames),'-fps_mode','passthrough',
+    ...codecFor('rgba').args,join(target,'frames.mkv')]);
+  const time=(seq:number)=>Math.round(seq*1000/30*1000)/1000;
+  await writeFile(join(target,'frames.jsonl'),Array.from({length:frames},(_,seq)=>JSON.stringify({seq,mediaTimeMs:time(seq),deliveredAtMs:time(seq),receivedAtMs:Math.round(time(seq))})).join('\n')+'\n');
+  const meta:RecordingMeta&{source:RecordingSource}={version:2,id:newId,startedAt:new Date().toISOString(),width,height,pixelFormat:'rgba',
+    colorSpace:{primaries:'bt709',transfer:'iec61966-2-1',matrix:'rgb',fullRange:true},codec:'utvideo',status:'open',frames,complete:false,
+    sha256:null,sealedAt:null,note:null,environment:null,source};
+  await writeJson(join(target,'meta.json'),meta);
+  let decoded=0;
+  for await(const item of readRecordingFrames(root,newId)){void item;decoded++;}
+  if(decoded!==frames)throw Error(`imported ${decoded} frames, expected ${frames}`);
+  const sealed:RecordingMeta&{source:RecordingSource}={...meta,status:'sealed',complete:true,sha256:await fileHash(join(target,'frames.mkv')),
+    sealedAt:new Date().toISOString(),
+    note:`imported from ${imagePaths.length} screenshots (${source.name}${source.corpusCase?`, corpus case ${source.corpusCase.slice(0,12)}`:''}), each held still for ${perImage} frames at 30 fps; not a share that happened (no scrolling between them)`};
+  await writeJson(join(target,'meta.json'),sealed);
+  return sealed;
+}

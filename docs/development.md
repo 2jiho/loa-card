@@ -166,71 +166,35 @@ v0.3.0에서 이전 프레임 단위 스캐너 루프와 앱의 "스캔 진단"(
 
 ## 입력 코퍼스
 
-새로 제공받는 영상·사진·`.loareplay`는 원본을 바꾸지 않고 등록한다. 기본 저장 위치는 Git과 배포에서 제외한 `fixtures/local/corpus/`다. 입력 종류와 **파일 내용·순서·반복**으로 사례를 식별하므로 이름을 바꾼 같은 입력은 중복 저장하지 않는다.
+사람이 제공한 영상·사진은 원본을 바꾸지 않고 `fixtures/local/corpus/`(Git·배포 제외)에 등록한다. 입력 종류와 파일 내용·순서·반복으로 사례를 식별하므로 이름만 바꾼 같은 입력은 다시 저장하지 않는다. 등록할 때 촬영 시각·완전성·baseline·정답은 미확인으로 남긴다.
 
 ```sh
 npm run corpus -- add path/to/recording.mp4 --name fast-scroll --kind video
 npm run corpus -- add path/to/first.png path/to/second.png --name screenshots --kind images
-npm run corpus -- add path/to/session.loareplay --kind replay
 npm run corpus -- list
-npm run corpus -- verify
-npm run corpus -- verify-raw <raw-case-id>
-npm run corpus -- verify-selection <case-id> <selection-id> [--sha256 <receipt-hash>]
-npm run corpus -- lock-status
-npm run corpus -- compare work/reference.json work/actual.json
-npm run corpus -- compare work/partial-reference.json work/actual.json --scope partial
-npm run corpus -- replay-state work/actual.json
-npm run corpus -- record-run <case-id> work/actual.json
+npm run corpus -- verify          # 원본 바이트·순서의 무결성(인식 정확도 검사가 아님)
 ```
 
-사진은 명령에 준 순서를 유지한다. 같은 사진을 여러 번 전달해도 제거하지 않는다. 사례의 `input/` 파일은 읽기 전용으로 사용한다. `verify`는 원본 바이트·순서의 무결성 검사이며 카드 인식 정확도 검사가 아니다. 등록 시 촬영 시각·완전성·baseline·정답은 미확인으로 남긴다.
+등록한 영상·사진을 지금 스캐너로 실행하려면 기록 형식으로 바꾼다(`scripts/import-video-recording.mjs`). 그다음은 화면 공유 기록과 같이 재실행·점검한다. 방법과 한계는 [화면 공유 기록](dev-recording.md#사람이-만든-영상스크린샷을-기록으로-바꾸기)에 있다.
 
-비정상 종료 뒤 코퍼스 쓰기 잠금이 남으면 `lock-status`로 기록된 작성자와 프로세스 존재 여부를 읽기 전용으로 확인한다. 이전 형식이나 손상된 잠금은 미확인이다. 프로세스가 없다는 결과도 PID 재사용과 다른 작성자의 경합 때문에 잠금을 안전하게 삭제할 수 있다는 뜻은 아니다. 진행 중인 모든 코퍼스 작업이 종료됐는지 별도로 확인하기 전에는 잠금을 지우지 않는다. 자동 잠금 복구는 지원하지 않는다.
-
-이전 버전의 앱은 개발 화면 공유의 부분 기록을 `.loaraw` 원시 사례로, 직접 선택한 파일을 선택 사건과 함께 코퍼스에 남겼다. 그 기록 경로는 v0.3.0에서 제거했다. 지금은 이미 보관한 사례를 검증하는 명령만 남아 있다.
-
-- `.loaraw`는 청크와 저장된 메타데이터를 보존하는 자료이며 재판독 입력이 아니다.
-- `corpus verify`는 사례 전체 바이트와 해시만 확인한다.
-- `verify-raw`는 원시 컨테이너 구조와 청크별 크기·순서·해시를 검증한다. 카드 판독 정답이나 입력의 완전성을 뜻하지 않는다.
-- `verify-selection`은 보관된 선택 사건과 사례 매니페스트의 입력 순서·해시, 파일명에 고정된 사건 해시를 대조한다. 영수증 해시를 주면 함께 대조한다. 파일과 파일명을 모두 바꿀 수 있는 공격에 대한 인증은 아니다.
-- 선택·등록·수정 시각은 클라이언트가 보고한 값이다. 촬영 시각은 미확인이다. 구형 사례에는 선택 시각이나 사건이 없을 수 있다.
-
-`compare`는 재현 결과 또는 진단 JSON의 `result`를 읽고 카드 추가·누락·이름·각성·장수·확인 사유, 보관함 수량·판독 수·미식별 수·경험치를 비교한다. `null`은 0과 다르다. 전체 비교는 모든 필드, 부분 비교는 기준에 있는 카드만 검사하며 나머지 차이도 보고서에 남긴다. 일치하면 종료 코드 0, 차이가 있으면 2, 잘못된 파일이면 1이다. 기준과 같다는 뜻이며 기준이 정답이라는 뜻은 아니다. 기대값과 baseline을 자동 생성·교체하지 않는다.
-
-사람이 확인한 일부 카드만 정답으로 쓸 때는 별도 human label 명령을 사용한다. `loacard-human-label` 버전 1은 사례 ID·순서 있는 입력 SHA/크기·확인 문맥과 답변·확인한 카드 필드를 기록한다. `fields`의 생략은 미제공, `{status:'unknown'}`은 명시적 미확인, `{status:'known',value:0}`은 확인한 0이다. 장수·각성 범위와 조합 상한을 검사하며 확인하지 않은 헤더·review·다른 카드를 빈 값으로 채우지 않는다.
+사람이 확인한 일부 카드의 값은 사람 확인 라벨로 따로 둔다. 라벨은 사례 ID·입력 SHA·확인 문맥과 답변·확인한 카드 필드를 기록한다. 생략은 미제공, `{status:'unknown'}`은 명시적 미확인, `{status:'known',value:0}`은 확인한 0이다.
 
 ```sh
 npm run corpus -- import-human <case-id> work/human-label.json --operator-confirmed
 npm run corpus -- list-human <case-id>
 npm run corpus -- verify-human <label-sha256>
-npm run corpus -- compare-human <label-sha256> work/actual.json
+npm run corpus -- quarantine-human <label-sha256> --reason "검토 이유"
+node scripts/compare-labels.mjs <기록 id> [run 파일]     # 가져온 기록의 재실행 결과와 비교
 ```
 
-등록 명령이 반환한 SHA로 라벨을 선택한다. 라벨은 `fixtures/local/corpus/human-labels/`에 내용 해시로 추가하며 기존 사례 manifest·baseline을 고치지 않는다. 실제 크롭 anchor가 있으면 최초 등록에 `--asset work/crop.png`를 명시한다. 이전 개발용 flat sidecar는 `--migrate-private-v1`을 함께 지정할 때만 변환한다. `--operator-confirmed`는 사람이 확인한 자료라는 작업자의 명시적 주장이지 정답의 암호학적 증명이 아니다. 같은 확인 내용에서 만든 원본·재현 라벨은 확인 SHA를 공유하며 독립 확인 두 건으로 세지 않는다.
+- 라벨은 `fixtures/local/corpus/human-labels/`에 내용 해시로 추가하며 사례 manifest·baseline을 고치지 않는다. `--operator-confirmed`는 작업자의 명시적 주장이지 정답의 증명이 아니다.
+- 확인 범위나 카드 연결이 잘못된 라벨은 `quarantine-human`으로 격리한다. 원본은 보존되고 비교에 쓰지 않는다.
+- 부분 라벨의 통과를 전체 인식률로 해석하지 않는다. 프로그램 결과(baseline)를 라벨(expected)로 자동 승격하지 않는다.
+- AI 비전 모델로 만든 후보는 사람이 확인하기 전까지 라벨이 아니다.
 
-라벨의 확인 범위나 크롭의 카드 연결이 잘못됐거나 증명되지 않았음을 발견하면 `npm run corpus -- quarantine-human <label-sha256> --reason "검토 이유"`로 격리한다. 원본 라벨·답변·이미지는 보존하며 `list-human`에서 이유를 표시하고, 격리된 라벨은 값만 비교하는 경우를 포함해 `compare-human`에 사용할 수 없다. 저장 무결성 확인인 `verify-human`은 계속 가능하다. 격리는 이전에 생성된 보고서를 소급 수정하지 않으므로 과거 비교도 다시 살펴봐야 한다. 정정 자료는 실제 확인 범위를 명시해 별도의 라벨로 등록한다.
+이전 버전의 앱 진단 파일(`.loareplay`, `.loaraw`)을 검증하는 명령(`verify-raw`, `verify-selection`, `compare`, `compare-human`, `record-run`, `replay-state`, `scripts/verify-replay-input.ts`)도 남아 있다. 그 파일을 지금 스캐너로 다시 실행하는 경로는 없고, 이 명령들은 그 시절 보고서 형식만 읽는다. 새 검증 입력은 개발 서버의 화면 공유 기록이나 위의 가져온 기록으로 남긴다.
 
-`verify-human`의 `verified: true`는 저장 바이트와 구조가 일치한다는 뜻이다. `verificationScope`와 `comparisonStatus`를 함께 확인한다. 격리되지 않았다는 사실도 라벨의 정답 여부나 원본 픽셀 연결을 증명하지 않는다.
-
-격리는 해당 코퍼스 루트에서 라벨과 정확히 같은 확인 내용의 SHA를 공유하는 다른 라벨에도 적용된다. 별도 루트에는 전파되지 않으며, 확인 시각이나 문구가 바뀌면 같은 답변이라도 SHA가 달라질 수 있으므로 직접 검토한다. 비교 전과 반환 직전에 격리를 확인하지만 프로세스 간 잠금은 없으므로 비교와 격리 등록을 동시에 실행하지 않는다.
-
-AI 비전 모델이 프레임을 판독할 때는 카탈로그 이름 목록(`work/catalog-names.txt`)을 먼저 제공해 목록 안에서만 고르게 한다. 후보 압축은 `node dev/vision-catalog-resolve.mjs public/scanner/cards.json work/vision-hypotheses.json`로 한다. 이 결과는 사람 확인 전까지 operator-asserted 초안이며 expected로 자동 승격하지 않는다.
-
-`verify-human`은 입력·라벨·확인 내용·PNG의 해시와 구조를 검사한다. anchor의 전체 RGBA를 다시 복원한 검사와 구분한다. `compare-human`은 해당 사례·입력에 묶인 보고서에서 라벨 필드의 값과 최신 필드 근거를 별도로 검사한다. 이름만 라벨링하면 최신 이름 확정을 검사하고, 숫자를 하나라도 라벨링하면 기존의 유효한 최신 각성·장수쌍 근거도 요구한다. 이때 다른 숫자를 인간 정답으로 추가하지 않는다. 저장된 0장 값이 같아도 최신 관측의 장수가 `null`이면 숫자 검증을 통과하지 않는다. 엄격한 실행 재생·inventory 체크포인트가 없는 보고서는 최신 근거 미지원이다. 종료 코드는 범위 안 값·최신 근거 일치 0, 값 차이 2, 최신 근거 미확정·미지원 3, 잘못된 입력 1이다. `--values-only`는 값만 진단하며 일치해도 최신 근거 통과로 표시하지 않는다. 부분 라벨 통과를 전체 인식률로 해석하지 않는다.
-
-`record-run`도 같은 검증·보관 규칙을 사용한다. 보고서의 사례 ID·입력 순서·해시·크기를 manifest와 대조하고 원본 바이트의 해시를 파일명으로 써 기존 기록을 덮어쓰지 않는다. 같은 바이트는 한 번만 보관한다. 부분·취소·실패 실행도 남기며 수량이나 출처가 불완전한 결과는 구분한다. 모든 run은 프로그램 관측 자료이며 baseline·expected로 자동 승격하지 않는다. POST 보관 API는 실제 loopback·동일 출처의 UTF-8 JSON만 받고 최대 16MiB로 제한한다.
-
-`.loareplay`에 저장된 입력의 복원 가능성은 다음 읽기 전용 명령으로 따로 검사한다.
-
-```sh
-node --import tsx scripts/verify-replay-input.ts <기록파일.loareplay>
-```
-
-파일 기반으로 기존 복원 코덱을 사용해 실행 이벤트의 순서·총량과 저장된 각 프레임의 픽셀 해시를 검사한다. 프레임은 순차 복원하며 전체 이미지 배열을 보관하지 않는다. 선언된 완전 기록, 부분 기록, 미지원 상태 채널은 별도로 표시한다. 이 검사는 영상 스트림의 디코드, 원래 촬영의 진위, 카드 재판독 정답 또는 실시간 처리 속도를 검증하지 않는다. 픽셀이 없는 구버전 영상 기록은 픽셀 검사를 지원하지 않는다고 표시한다. 기록이 완전하다는 생산자의 선언도 독립적인 원본 입력 완전성의 증거가 아니다.
-
-이전 버전의 앱 진단 파일(`.loareplay`, `.loaraw`) 사례는 계속 보관·검증할 수 있지만, 그 파일을 스캐너로 다시 실행하는 경로는 이전 스캐너 루프와 함께 제거되었다. 새 검증 입력은 개발 서버의 화면 공유 기록으로 남긴다.
-
-새 입력 등록 → 수정 전 결과 → 원인 재현 → 수정 → 이전 사례와 새 사례 재실행을 기본 개발 순서로 사용한다. 기록·재현·비교의 계약은 [입력 기록과 재현 설계](scanner-session-design.md)를 따른다.
+새 입력 등록 → 수정 전 결과 → 원인 재현 → 수정 → 회귀 묶음 재실행(`node scripts/run-regression.mjs`, [화면 공유 기록](dev-recording.md#회귀-묶음))을 기본 개발 순서로 쓴다. 기록·재현·비교의 계약은 [입력 기록과 재현 설계](scanner-session-design.md)를 따른다.
 
 ## 변경에 따른 확인
 

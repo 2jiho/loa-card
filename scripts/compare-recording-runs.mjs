@@ -1,15 +1,15 @@
-// Compare, per recording, the newest sequential replay of two builds card by card.
-// Usage: node scripts/compare-recording-runs.mjs [--root fixtures/local/recordings] [--base HEAD] [--json]
+// Compare, per recording, the newest replay of two builds card by card.
+// Usage: node scripts/compare-recording-runs.mjs [--root fixtures/local/recordings] [--base HEAD] [--mode rowlive] [--json]
 //   --base  prefix of the baseline build label in the run summaries (default "HEAD", written by the
 //           comparison page of a checked-out release). Every other build counts as "current".
-// A run is used only when it is a full sequential replay (no subset experiment) of a complete
-// recording. Live results (`run-live.json`) are shown for reference. See docs/dev-recording.md.
+// A run is used only when it is a full replay in --mode (rowlive by default; no subset experiment).
+// Runs of the same build on one PC still differ with its load, so compare several runs. Live results (`run-live.json`) are shown for reference. See docs/dev-recording.md.
 import {readdirSync,readFileSync,existsSync} from 'node:fs';
 import {join} from 'node:path';
 
 const args=process.argv.slice(2);
 const option=(name,fallback)=>{const i=args.indexOf(name);return i>=0&&args[i+1]?args[i+1]:fallback;};
-const root=option('--root','fixtures/local/recordings'),base=option('--base','HEAD'),asJson=args.includes('--json');
+const root=option('--root','fixtures/local/recordings'),base=option('--base','HEAD'),mode=option('--mode','rowlive'),asJson=args.includes('--json');
 
 const readJson=path=>{try{return JSON.parse(readFileSync(path,'utf8'));}catch{return null;}};
 const cardKey=card=>`${card.awakening}/${card.extraCopies}`;
@@ -28,7 +28,7 @@ for(const id of existsSync(root)?readdirSync(root).sort():[]){
   const dir=join(root,id),meta=readJson(join(dir,'meta.json'));
   if(!meta||!existsSync(join(dir,'runs')))continue;
   const runs=readdirSync(join(dir,'runs')).filter(n=>/^run-2/.test(n)).sort()
-    .map(name=>({name,report:readJson(join(dir,'runs',name))})).filter(r=>r.report&&r.report.summary&&!r.report.subsetOf&&r.report.summary.mode==='sequential');
+    .map(name=>({name,report:readJson(join(dir,'runs',name))})).filter(r=>r.report&&r.report.summary&&!r.report.subsetOf&&r.report.summary.mode===mode);
   const isBase=r=>String(r.report.summary.build).startsWith(base);
   const baseline=[...runs].reverse().find(isBase),current=[...runs].reverse().find(r=>!isBase(r));
   if(!baseline||!current)continue;
@@ -43,7 +43,7 @@ for(const id of existsSync(root)?readdirSync(root).sort():[]){
 
 if(asJson){console.log(JSON.stringify(results,null,1));}
 else{
-  console.log(`기준선(${base}) 대 현재 · 같은 기록의 순차 재실행, 카드 단위\n`);
+  console.log(`기준선(${base}) 대 현재 · 같은 기록의 ${mode} 재실행, 카드 단위\n`);
   for(const r of results){
     console.log(`■ ${r.id}  프레임 ${r.frames}${r.complete?'':' (불완전)'}${r.sameInput?'':'  ※ 입력 동일성 미확인'}`);
     console.log(`  기준선 읽음 ${r.baseline.read} · 카드 ${r.baseline.cards} · 미확인 ${r.baseline.unidentified}`);
